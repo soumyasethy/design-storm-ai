@@ -1,0 +1,22 @@
+{
+  "name": "DesignStorm Exporter",
+  "id": "designstorm-exporter",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["*"]
+  },
+  "permissions": [
+    "currentuser",
+    "activeusers"
+  ],
+  "capabilities": [
+    "inspect",
+    "codegen"
+  ],
+  "enableProposedApi": false,
+  "enablePrivatePluginApi": false,
+  "documentAccess": "dynamic-page"
+} 

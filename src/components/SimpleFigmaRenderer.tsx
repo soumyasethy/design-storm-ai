@@ -1,311 +1,520 @@
-import React from 'react';
+'use client';
 
-interface FigmaNode {
-  id: string;
-  name: string;
-  type: string;
-  children?: FigmaNode[];
-  absoluteBoundingBox?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  fills?: any[];
-  strokes?: any[];
-  strokeWeight?: number;
-  cornerRadius?: number;
-  characters?: string;
-  style?: {
-    fontFamily?: string;
-    fontSize?: number;
-    fontWeight?: number;
-    textAlignHorizontal?: string;
-    textAlignVertical?: string;
-  };
-  // Additional Figma properties for production rendering
-  effects?: any[];
-  opacity?: number;
-  blendMode?: string;
-  layoutMode?: string;
-  primaryAxisSizingMode?: string;
-  counterAxisSizingMode?: string;
-  paddingLeft?: number;
-  paddingRight?: number;
-  paddingTop?: number;
-  paddingBottom?: number;
-  itemSpacing?: number;
-}
+import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
+import { 
+  rgbaToCss, 
+  getFontFamily, 
+  getCornerRadius, 
+  getTextAlign, 
+  getVerticalAlign,
+  isFooterComponent,
+  getImageScaleMode,
+  isNodeVisible
+} from '@/lib/utils';
 
 interface SimpleFigmaRendererProps {
-  node: FigmaNode;
-  className?: string;
-  generateCode?: boolean; // Toggle between visual preview and code generation
-  parentOffset?: { x: number; y: number }; // For relative positioning
+  node: any;
+  showDebug?: boolean;
+  isRoot?: boolean;
+  parentBoundingBox?: { x: number; y: number; width: number; height: number };
+  imageMap?: Record<string, string>;
+  fileKey?: string;
+  figmaToken?: string;
 }
 
-// Calculate bounding box from children if not provided
-const calculateBoundingBox = (node: FigmaNode): { x: number; y: number; width: number; height: number } | null => {
-  if (node.absoluteBoundingBox) {
-    return node.absoluteBoundingBox;
-  }
+// Enhanced image rendering with footer icon support
+const FigmaImage: React.FC<{ 
+  node: any; 
+  imageUrl: string; 
+  baseStyles: React.CSSProperties; 
+  showDebug: boolean 
+}> = ({ node, imageUrl, baseStyles, showDebug }) => {
+  const [imageError, setImageError] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
   
-  if (node.children && node.children.length > 0) {
-    const childBoxes = node.children
-      .map(child => calculateBoundingBox(child))
-      .filter(Boolean) as Array<{ x: number; y: number; width: number; height: number }>;
-    
-    if (childBoxes.length > 0) {
-      const minX = Math.min(...childBoxes.map(box => box.x));
-      const minY = Math.min(...childBoxes.map(box => box.y));
-      const maxX = Math.max(...childBoxes.map(box => box.x + box.width));
-      const maxY = Math.max(...childBoxes.map(box => box.y + box.height));
-      
-      return {
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY
-      };
-    }
-  }
+  // Special handling for footer icons (circular)
+  const isFooterIcon = isFooterComponent(node) || 
+                      node.name?.toLowerCase().includes('linkedin') || 
+                      node.name?.toLowerCase().includes('instagram') || 
+                      node.name?.toLowerCase().includes('youtube') ||
+                      node.name?.toLowerCase().includes('social');
   
-  return null;
-};
-
-const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({ 
-  node, 
-  className = '',
-  generateCode = false,
-  parentOffset = { x: 0, y: 0 }
-}) => {
-  // Calculate bounding box
-  const boundingBox = calculateBoundingBox(node);
+  const scaleMode = getImageScaleMode(node);
   
-  if (!boundingBox) {
-    console.log('No bounding box for node:', node.name, node.type);
-    return null;
-  }
-
-  const { x, y, width, height } = boundingBox;
+  const imageStyles: React.CSSProperties = {
+    width: '100%',
+    height: '100%',
+    objectFit: scaleMode,
+    borderRadius: isFooterIcon ? '50%' : baseStyles.borderRadius,
+  };
   
-  // Apply parent offset for relative positioning
-  const adjustedX = x - parentOffset.x;
-  const adjustedY = y - parentOffset.y;
-
-  const minWidth = Math.max(width, 1);
-  const minHeight = Math.max(height, 1);
-
-  // Convert Figma colors to CSS
-  const getBackgroundColor = () => {
-    if (node.fills && node.fills.length > 0) {
-      const fill = node.fills[0];
-      if (fill.type === 'SOLID' && fill.color) {
-        const { r, g, b } = fill.color;
-        return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
-      }
-    }
-    // Default color coding for different node types
-    switch (node.type) {
-      case 'TEXT':
-        return 'rgba(59, 130, 246, 0.2)';
-      case 'RECTANGLE':
-        return 'rgba(34, 197, 94, 0.2)';
-      case 'ELLIPSE':
-        return 'rgba(168, 85, 247, 0.2)';
-      case 'FRAME':
-        return 'rgba(168, 85, 247, 0.1)';
-      case 'GROUP':
-        return 'rgba(251, 146, 60, 0.1)';
-      case 'CANVAS':
-        return 'rgba(156, 163, 175, 0.05)';
-      default:
-        return 'rgba(156, 163, 175, 0.15)';
-    }
+  const handleImageError = () => {
+    console.error(`❌ Image failed to load: ${imageUrl}`);
+    setImageError(true);
+    setImageLoading(false);
   };
-
-  const getBorderColor = () => {
-    if (node.strokes && node.strokes.length > 0) {
-      const stroke = node.strokes[0];
-      if (stroke.type === 'SOLID' && stroke.color) {
-        const { r, g, b } = stroke.color;
-        return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
-      }
-    }
-    return '#d1d5db';
+  
+  const handleImageLoad = () => {
+    console.log(`✅ Image loaded successfully: ${node.name}`);
+    setImageLoading(false);
   };
-
-  const getTextColor = () => {
-    if (node.fills && node.fills.length > 0) {
-      const fill = node.fills[0];
-      if (fill.type === 'SOLID' && fill.color) {
-        const { r, g, b } = fill.color;
-        return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
-      }
-    }
-    return '#111827';
-  };
-
-  const getTextContent = () => {
-    if (node.type === 'TEXT' && node.characters) {
-      return node.characters;
-    }
-    return `${node.name} (${node.type})`;
-  };
-
-  const getFontSize = () => {
-    if (node.style?.fontSize) {
-      return `${node.style.fontSize}px`;
-    }
-    return '12px';
-  };
-
-  // Generate Tailwind classes for production code
-  const generateTailwindClasses = () => {
-    const classes = ['absolute'];
-    
-    // Positioning
-    classes.push(`left-[${adjustedX}px]`, `top-[${adjustedY}px]`);
-    
-    // Dimensions
-    classes.push(`w-[${minWidth}px]`, `h-[${minHeight}px]`);
-    
-    // Background
-    if (node.fills && node.fills.length > 0) {
-      const fill = node.fills[0];
-      if (fill.type === 'SOLID' && fill.color) {
-        const { r, g, b } = fill.color;
-        classes.push(`bg-[rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})]`);
-      }
-    }
-    
-    // Border
-    if (node.strokes && node.strokes.length > 0) {
-      classes.push(`border`, `border-[${getBorderColor()}]`);
-      if (node.strokeWeight) {
-        classes.push(`border-[${node.strokeWeight}px]`);
-      }
-    }
-    
-    // Border radius
-    if (node.cornerRadius) {
-      classes.push(`rounded-[${node.cornerRadius}px]`);
-    }
-    
-    // Typography
-    if (node.type === 'TEXT') {
-      classes.push('flex', 'items-center', 'justify-center');
-      if (node.style?.fontSize) {
-        classes.push(`text-[${node.style.fontSize}px]`);
-      }
-      if (node.style?.fontWeight) {
-        classes.push(`font-${node.style.fontWeight >= 700 ? 'bold' : node.style.fontWeight >= 600 ? 'semibold' : 'normal'}`);
-      }
-      if (node.style?.textAlignHorizontal) {
-        const align = node.style.textAlignHorizontal.toLowerCase();
-        classes.push(`text-${align === 'center' ? 'center' : align === 'right' ? 'right' : 'left'}`);
-      }
-    }
-    
-    // Opacity
-    if (node.opacity !== undefined) {
-      classes.push(`opacity-${Math.round(node.opacity * 100)}`);
-    }
-    
-    return classes.join(' ');
-  };
-
-  // Generate React component code
-  const generateComponentCode = () => {
-    const tailwindClasses = generateTailwindClasses();
-    const componentName = node.name.replace(/[^a-zA-Z0-9]/g, '') || 'Component';
-    
-    let code = '';
-    
-    if (node.type === 'TEXT') {
-      code = `<div className="${tailwindClasses}">${node.characters || node.name}</div>`;
-    } else if (node.children && node.children.length > 0) {
-      code = `<div className="${tailwindClasses}">\n`;
-      code += `  {/* ${node.name} */}\n`;
-      code += `  ${node.children.map(child => 
-        `<${child.name.replace(/[^a-zA-Z0-9]/g, '') || 'Child'} />`
-      ).join('\n  ')}\n`;
-      code += '</div>';
-    } else {
-      code = `<div className="${tailwindClasses}">\n`;
-      code += `  {/* ${node.name} */}\n`;
-      code += '</div>';
-    }
-    
-    return code;
-  };
-
-  const styles: React.CSSProperties = {
-    position: 'absolute',
-    left: `${adjustedX}px`,
-    top: `${adjustedY}px`,
-    width: `${minWidth}px`,
-    height: `${minHeight}px`,
-    backgroundColor: getBackgroundColor(),
-    border: `1px solid ${getBorderColor()}`,
-    borderRadius: node.cornerRadius ? `${node.cornerRadius}px` : '0px',
-    fontSize: getFontSize(),
-    color: getTextColor(),
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    boxSizing: 'border-box',
-    overflow: 'hidden',
-    wordBreak: 'break-word',
-    textAlign: 'center',
-    padding: '2px',
-    fontFamily: node.style?.fontFamily || 'system-ui, sans-serif',
-    fontWeight: node.style?.fontWeight || 'normal',
-    zIndex: 1,
-    opacity: node.opacity !== undefined ? node.opacity : 1,
-  };
-
-  if (generateCode) {
+  
+  if (imageError) {
     return (
-      <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-xs">
-        <div className="mb-2 text-white">Generated Code for: {node.name}</div>
-        <pre className="whitespace-pre-wrap">
-          {generateComponentCode()}
-        </pre>
-        <div className="mt-2 text-gray-400">
-          Tailwind Classes: {generateTailwindClasses()}
-        </div>
+      <div 
+        style={{
+          ...imageStyles,
+          backgroundColor: '#f3f4f6',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#9ca3af',
+          fontSize: '12px',
+        }}
+      >
+        <span>Image failed to load</span>
       </div>
     );
   }
-
+  
   return (
-    <div 
-      style={styles}
-      className={`text-xs ${className}`}
-      title={`${node.name} (${node.type}) - ${width}x${height} - ${generateTailwindClasses()}`}
+    <>
+      {imageLoading && (
+        <div 
+          style={{
+            ...imageStyles,
+            background: 'linear-gradient(45deg, #f0f0f0 25%, transparent 25%), linear-gradient(-45deg, #f0f0f0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f0f0f0 75%), linear-gradient(-45deg, transparent 75%, #f0f0f0 75%)',
+            backgroundSize: '20px 20px',
+            backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
+          }}
+        />
+      )}
+      <Image
+        src={imageUrl}
+        alt={node.name || 'Figma image'}
+        width={parseInt(baseStyles.width as string) || 100}
+        height={parseInt(baseStyles.height as string) || 100}
+        style={imageStyles}
+        onLoad={handleImageLoad}
+        onError={handleImageError}
+        priority={false}
+      />
+    </>
+  );
+};
+
+// Enhanced text rendering with pixel-perfect typography
+const FigmaText: React.FC<{ 
+  node: any; 
+  baseStyles: React.CSSProperties; 
+  showDebug: boolean 
+}> = ({ node, baseStyles, showDebug }) => {
+  const { characters, style } = node;
+  
+  if (!characters) return null;
+  
+  const textStyles: React.CSSProperties = {
+    // Font family
+    fontFamily: style?.fontFamily ? getFontFamily(style.fontFamily) : 'inherit',
+    
+    // Font size
+    fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
+    
+    // Font weight
+    fontWeight: style?.fontWeight || 'normal',
+    
+    // Text alignment
+    textAlign: style?.textAlignHorizontal ? getTextAlign(style.textAlignHorizontal) as any : 'left',
+    
+    // Line height
+    lineHeight: style?.lineHeightPx ? `${style.lineHeightPx}px` : 
+                style?.lineHeightPercent ? `${style.lineHeightPercent}%` : 'normal',
+    
+    // Letter spacing
+    letterSpacing: style?.letterSpacing ? `${style.letterSpacing}px` : 'normal',
+    
+    // Text decoration
+    textDecoration: style?.textDecoration ? style.textDecoration.toLowerCase() : 'none',
+    
+    // Text color from fills
+    color: node.fills?.[0]?.type === 'SOLID' && node.fills[0].color ? 
+           rgbaToCss(node.fills[0].color.r, node.fills[0].color.g, node.fills[0].color.b, node.fills[0].color.a) : 
+           'inherit',
+    
+    // Text wrapping
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'break-word',
+    wordBreak: 'break-word',
+  };
+  
+  const combinedStyles = {
+    ...baseStyles,
+    ...textStyles,
+    display: 'flex',
+    alignItems: getVerticalAlign(style?.textAlignVertical || 'TOP'),
+    justifyContent: getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'center' ? 'center' : 
+                  getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'right' ? 'flex-end' : 'flex-start',
+  };
+  
+  return (
+    <div
+      style={combinedStyles}
+      title={`${node.name} (${node.type})`}
       data-figma-node-id={node.id}
       data-figma-node-type={node.type}
       data-figma-node-name={node.name}
     >
-      <span style={{ fontSize: 'inherit', color: 'inherit' }}>
-        {getTextContent()}
-      </span>
+      {showDebug && (
+        <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+          <div className="font-bold">{node.name}</div>
+          <div>{node.type} - {baseStyles.width}×{baseStyles.height}</div>
+          <div className="text-xs">{characters.substring(0, 20)}{characters.length > 20 ? '...' : ''}</div>
+          <div>Font: {style?.fontFamily} {style?.fontSize}px</div>
+        </div>
+      )}
+      <span className="block w-full h-full leading-none whitespace-pre-wrap">{characters}</span>
+    </div>
+  );
+};
+
+// Enhanced shape rendering with better styling
+const FigmaShape: React.FC<{ 
+  node: any; 
+  baseStyles: React.CSSProperties; 
+  showDebug: boolean 
+}> = ({ node, baseStyles, showDebug }) => {
+  const { fills, strokes, cornerRadius, effects } = node;
+  
+  const shapeStyles: React.CSSProperties = {
+    // Background color from fills
+    backgroundColor: fills?.[0]?.type === 'SOLID' && fills[0].color ? 
+                    rgbaToCss(fills[0].color.r, fills[0].color.g, fills[0].color.b, fills[0].color.a) : 
+                    'transparent',
+    
+    // Border from strokes
+    border: strokes?.[0]?.type === 'SOLID' && strokes[0].color ? 
+            `${strokes[0].strokeWeight || 1}px solid ${rgbaToCss(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b, strokes[0].color.a)}` : 
+            'none',
+    
+    // Border radius
+    borderRadius: cornerRadius ? getCornerRadius(cornerRadius) : '0',
+    
+    // Effects (shadows, etc.)
+    ...(effects?.reduce((acc: any, effect: any) => {
+      if (effect.visible === false) return acc;
       
-      {node.children && node.children.length > 0 && (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-          {node.children.map(child => (
-            <SimpleFigmaRenderer 
-              key={child.id} 
-              node={child} 
-              generateCode={generateCode}
-              parentOffset={boundingBox}
-            />
-          ))}
+      switch (effect.type) {
+        case 'DROP_SHADOW':
+          const offsetX = effect.offset?.x || 0;
+          const offsetY = effect.offset?.y || 0;
+          const radius = effect.radius || 0;
+          const color = effect.color ? rgbaToCss(effect.color.r, effect.color.g, effect.color.b, effect.color.a) : 'rgba(0, 0, 0, 0.5)';
+          acc.boxShadow = `${offsetX}px ${offsetY}px ${radius}px ${color}`;
+          break;
+        case 'INNER_SHADOW':
+          const innerOffsetX = effect.offset?.x || 0;
+          const innerOffsetY = effect.offset?.y || 0;
+          const innerRadius = effect.radius || 0;
+          const innerColor = effect.color ? rgbaToCss(effect.color.r, effect.color.g, effect.color.b, effect.color.a) : 'rgba(0, 0, 0, 0.5)';
+          acc.boxShadow = `inset ${innerOffsetX}px ${innerOffsetY}px ${innerRadius}px ${innerColor}`;
+          break;
+        case 'BACKGROUND_BLUR':
+          acc.backdropFilter = `blur(${effect.radius || 0}px)`;
+          break;
+      }
+      return acc;
+    }, {} as React.CSSProperties) || {}),
+  };
+  
+  const combinedStyles = {
+    ...baseStyles,
+    ...shapeStyles,
+  };
+  
+  return (
+    <div
+      style={combinedStyles}
+      title={`${node.name} (${node.type})`}
+      data-figma-node-id={node.id}
+      data-figma-node-type={node.type}
+      data-figma-node-name={node.name}
+    >
+      {showDebug && (
+        <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+          <div className="font-bold">{node.name}</div>
+          <div>{node.type} - {baseStyles.width}×{baseStyles.height}</div>
+          <div>Radius: {cornerRadius || 0}px</div>
+          <div>Effects: {effects?.length || 0}</div>
         </div>
       )}
     </div>
   );
+};
+
+// Main SimpleFigmaRenderer component
+const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({ 
+  node, 
+  showDebug = false, 
+  isRoot = false,
+  parentBoundingBox,
+  imageMap = {},
+  fileKey,
+  figmaToken
+}) => {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+
+  // Load image if this node has image fills
+  useEffect(() => {
+    if (node.fills && node.fills.some((fill: any) => fill.type === 'IMAGE') && node.id) {
+      const url = imageMap?.[node.id] || node.fills.find((fill: any) => fill.type === 'IMAGE')?.imageUrl;
+      if (url && typeof url === 'string' && url.length > 0) {
+        setImageUrl(url);
+      } else {
+        setImageUrl(null);
+      }
+    }
+  }, [node, imageMap]);
+
+  // Skip invisible nodes
+  if (!isNodeVisible(node)) {
+    return null;
+  }
+
+  const { type, name, absoluteBoundingBox, children, fills, strokes, cornerRadius, characters, style, opacity, effects } = node;
+
+  // Calculate positioning styles
+  const positionStyles: React.CSSProperties = {};
+  
+  if (absoluteBoundingBox) {
+    const { x, y, width, height } = absoluteBoundingBox;
+    
+    if (parentBoundingBox) {
+      // Calculate relative positioning for children
+      positionStyles.position = 'absolute';
+      positionStyles.left = `${x - parentBoundingBox.x}px`;
+      positionStyles.top = `${y - parentBoundingBox.y}px`;
+      positionStyles.width = `${width}px`;
+      positionStyles.height = `${height}px`;
+    } else {
+      // Root node positioning
+      positionStyles.position = 'relative';
+      positionStyles.width = `${width}px`;
+      positionStyles.height = `${height}px`;
+    }
+  }
+  
+  // Handle opacity
+  if (opacity !== undefined && opacity !== 1) {
+    positionStyles.opacity = opacity;
+  }
+  
+  // Handle z-index
+  if (node.zIndex !== undefined) {
+    positionStyles.zIndex = node.zIndex;
+  }
+  
+  // Add debug styling
+  if (showDebug) {
+    positionStyles.border = '1px solid #3b82f6';
+    positionStyles.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+  }
+
+  // Render based on node type
+  switch (type) {
+    case 'CANVAS':
+    case 'PAGE':
+      return (
+        <div 
+          className="relative"
+          style={{
+            width: `${node.absoluteBoundingBox?.width || 0}px`,
+            height: `${node.absoluteBoundingBox?.height || 0}px`,
+            ...(showDebug ? { 
+              border: '2px dashed #3b82f6',
+              backgroundColor: 'rgba(59, 130, 246, 0.1)'
+            } : {})
+          }}
+        >
+          {showDebug && (
+            <div className="absolute top-4 left-4 bg-black bg-opacity-75 text-white text-xs p-2 rounded z-50">
+              <div>Canvas: {name}</div>
+              <div>Type: {type}</div>
+              <div>Children: {children?.length || 0}</div>
+            </div>
+          )}
+          
+          {children?.map((child: any, index: number) => (
+            <SimpleFigmaRenderer
+              key={child.id || index}
+              node={child}
+              showDebug={showDebug}
+              parentBoundingBox={node.absoluteBoundingBox}
+              imageMap={imageMap}
+              fileKey={fileKey}
+              figmaToken={figmaToken}
+            />
+          ))}
+        </div>
+      );
+
+    case 'FRAME':
+    case 'GROUP':
+      return (
+        <div
+          className="relative"
+          style={positionStyles}
+          title={`${name} (${type})`}
+          data-figma-node-id={node.id}
+          data-figma-node-type={type}
+          data-figma-node-name={name}
+        >
+          {showDebug && (
+            <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+              <div className="font-bold">{name}</div>
+              <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
+            </div>
+          )}
+          
+          {children?.map((child: any, index: number) => (
+            <SimpleFigmaRenderer
+              key={child.id || index}
+              node={child}
+              showDebug={showDebug}
+              parentBoundingBox={node.absoluteBoundingBox}
+              imageMap={imageMap}
+              fileKey={fileKey}
+              figmaToken={figmaToken}
+            />
+          ))}
+        </div>
+      );
+
+    case 'TEXT':
+      return <FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} />;
+
+    case 'RECTANGLE':
+    case 'ELLIPSE':
+    case 'VECTOR':
+    case 'LINE':
+      // Handle image fills
+      if (imageUrl) {
+        return (
+          <div
+            style={positionStyles}
+            title={`${name} (${type})`}
+            data-figma-node-id={node.id}
+            data-figma-node-type={type}
+            data-figma-node-name={name}
+          >
+            {showDebug && (
+              <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+                <div className="font-bold">{name}</div>
+                <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
+                <div className="text-green-300">🖼️ Image loaded</div>
+              </div>
+            )}
+            
+            <FigmaImage node={node} imageUrl={imageUrl} baseStyles={positionStyles} showDebug={showDebug} />
+          </div>
+        );
+      }
+      
+      // Handle regular shapes
+      return <FigmaShape node={node} baseStyles={positionStyles} showDebug={showDebug} />;
+
+    case 'INSTANCE':
+    case 'COMPONENT':
+      return (
+        <div
+          style={positionStyles}
+          title={`${name} (${type})`}
+          data-figma-node-id={node.id}
+          data-figma-node-type={type}
+          data-figma-node-name={name}
+        >
+          {showDebug && (
+            <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+              <div className="font-bold">{name}</div>
+              <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
+              <div className="text-purple-300">🔧 Component</div>
+            </div>
+          )}
+          
+          {children?.map((child: any, index: number) => (
+            <SimpleFigmaRenderer
+              key={child.id || index}
+              node={child}
+              showDebug={showDebug}
+              parentBoundingBox={node.absoluteBoundingBox}
+              imageMap={imageMap}
+              fileKey={fileKey}
+              figmaToken={figmaToken}
+            />
+          ))}
+        </div>
+      );
+
+    default:
+      // Handle any other node types
+      if (absoluteBoundingBox) {
+        return (
+          <div
+            style={positionStyles}
+            title={`${name} (${type})`}
+            data-figma-node-id={node.id}
+            data-figma-node-type={type}
+            data-figma-node-name={name}
+          >
+            {showDebug && (
+              <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+                <div className="font-bold">{name}</div>
+                <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
+                <div className="text-gray-300">❓ Unknown type</div>
+              </div>
+            )}
+            
+            {children?.map((child: any, index: number) => (
+              <SimpleFigmaRenderer
+                key={child.id || index}
+                node={child}
+                showDebug={showDebug}
+                parentBoundingBox={node.absoluteBoundingBox}
+                imageMap={imageMap}
+                fileKey={fileKey}
+                figmaToken={figmaToken}
+              />
+            ))}
+          </div>
+        );
+      }
+      
+      // Handle nodes without bounding box but with children
+      if (children && children.length > 0) {
+        return (
+          <>
+            {children.map((child: any, index: number) => (
+              <SimpleFigmaRenderer
+                key={child.id || index}
+                node={child}
+                showDebug={showDebug}
+                parentBoundingBox={node.absoluteBoundingBox}
+                imageMap={imageMap}
+                fileKey={fileKey}
+                figmaToken={figmaToken}
+              />
+            ))}
+          </>
+        );
+      }
+      
+      // Log unsupported nodes
+      if (showDebug) {
+        console.warn(`Unsupported node type: ${type} (${name})`);
+      }
+      
+      return null;
+  }
 };
 
 export default SimpleFigmaRenderer; 
