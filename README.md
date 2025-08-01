@@ -34,3 +34,27 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+
+
+
+
+# 🧠 DesignStorm: Figma to Next.js Dev Tool
+
+## Mission
+Build an IDE-like platform that converts Figma designs into pixel-perfect, responsive, and production-ready Next.js (TS + Tailwind + shadcn/ui) code.
+
+## Unique Flow
+1. Parse raw Figma JSON
+2. Render exact design via absolute positioning
+3. Scale proportionally across breakpoints
+4. Use AI (GPT/Claude) to refactor layout into semantic HTML
+5. Inject `shadcn/ui` components
+6. Export as full Next.js project
+7. In-browser Monaco Editor + Prompt AI + Terminal support
+
+## Why We’re Better
+- 1:1 Figma fidelity (not approximate)
+- Responsive via scale → flex/grid AI refactor
+- Clean code output + developer friendly
+

@@ -1,0 +1,23 @@
+{
+  "name": "Test Project",
+  "version": "1.0.0",
+  "description": "A simple test JSON file",
+  "data": {
+    "users": [
+      {
+        "id": 1,
+        "name": "John Doe",
+        "email": "john@example.com"
+      },
+      {
+        "id": 2,
+        "name": "Jane Smith",
+        "email": "jane@example.com"
+      }
+    ],
+    "settings": {
+      "theme": "dark",
+      "language": "en"
+    }
+  }
+} 

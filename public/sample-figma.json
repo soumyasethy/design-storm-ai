@@ -1,0 +1,238 @@
+{
+  "document": {
+    "id": "0:0",
+    "name": "Document",
+    "type": "DOCUMENT",
+    "children": [
+      {
+        "id": "1:2",
+        "name": "Page 1",
+        "type": "CANVAS",
+        "children": [
+          {
+            "id": "2:3",
+            "name": "Frame 1",
+            "type": "FRAME",
+            "absoluteBoundingBox": {
+              "x": 0,
+              "y": 0,
+              "width": 375,
+              "height": 812
+            },
+            "fills": [
+              {
+                "type": "SOLID",
+                "color": {
+                  "r": 1,
+                  "g": 1,
+                  "b": 1
+                }
+              }
+            ],
+            "children": [
+              {
+                "id": "3:4",
+                "name": "Header",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 375,
+                  "height": 80
+                },
+                "fills": [
+                  {
+                    "type": "SOLID",
+                    "color": {
+                      "r": 0.2,
+                      "g": 0.4,
+                      "b": 0.8
+                    }
+                  }
+                ],
+                "cornerRadius": 0
+              },
+              {
+                "id": "3:5",
+                "name": "Welcome Text",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                  "x": 20,
+                  "y": 100,
+                  "width": 335,
+                  "height": 48
+                },
+                "characters": "Welcome to Figma to Code",
+                "style": {
+                  "fontFamily": "Inter",
+                  "fontSize": 24,
+                  "fontWeight": 600,
+                  "textAlignHorizontal": "LEFT",
+                  "textAlignVertical": "TOP"
+                },
+                "fills": [
+                  {
+                    "type": "SOLID",
+                    "color": {
+                      "r": 0.1,
+                      "g": 0.1,
+                      "b": 0.1
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "3:6",
+                "name": "Content Card",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                  "x": 20,
+                  "y": 180,
+                  "width": 335,
+                  "height": 200
+                },
+                "fills": [
+                  {
+                    "type": "SOLID",
+                    "color": {
+                      "r": 0.98,
+                      "g": 0.98,
+                      "b": 0.98
+                    }
+                  }
+                ],
+                "strokes": [
+                  {
+                    "type": "SOLID",
+                    "color": {
+                      "r": 0.9,
+                      "g": 0.9,
+                      "b": 0.9
+                    }
+                  }
+                ],
+                "strokeWeight": 1,
+                "cornerRadius": 8,
+                "children": [
+                  {
+                    "id": "4:7",
+                    "name": "Card Title",
+                    "type": "TEXT",
+                    "absoluteBoundingBox": {
+                      "x": 40,
+                      "y": 200,
+                      "width": 295,
+                      "height": 24
+                    },
+                    "characters": "Sample Card",
+                    "style": {
+                      "fontFamily": "Inter",
+                      "fontSize": 18,
+                      "fontWeight": 500,
+                      "textAlignHorizontal": "LEFT",
+                      "textAlignVertical": "TOP"
+                    },
+                    "fills": [
+                      {
+                        "type": "SOLID",
+                        "color": {
+                          "r": 0.1,
+                          "g": 0.1,
+                          "b": 0.1
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "4:8",
+                    "name": "Card Description",
+                    "type": "TEXT",
+                    "absoluteBoundingBox": {
+                      "x": 40,
+                      "y": 240,
+                      "width": 295,
+                      "height": 60
+                    },
+                    "characters": "This is a sample card component that demonstrates how Figma elements are parsed and displayed in the preview.",
+                    "style": {
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": 400,
+                      "textAlignHorizontal": "LEFT",
+                      "textAlignVertical": "TOP"
+                    },
+                    "fills": [
+                      {
+                        "type": "SOLID",
+                        "color": {
+                          "r": 0.4,
+                          "g": 0.4,
+                          "b": 0.4
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "3:9",
+                "name": "Button",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                  "x": 20,
+                  "y": 420,
+                  "width": 335,
+                  "height": 48
+                },
+                "fills": [
+                  {
+                    "type": "SOLID",
+                    "color": {
+                      "r": 0.2,
+                      "g": 0.4,
+                      "b": 0.8
+                    }
+                  }
+                ],
+                "cornerRadius": 6,
+                "children": [
+                  {
+                    "id": "4:10",
+                    "name": "Button Text",
+                    "type": "TEXT",
+                    "absoluteBoundingBox": {
+                      "x": 175,
+                      "y": 434,
+                      "width": 25,
+                      "height": 20
+                    },
+                    "characters": "Click",
+                    "style": {
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": 500,
+                      "textAlignHorizontal": "CENTER",
+                      "textAlignVertical": "CENTER"
+                    },
+                    "fills": [
+                      {
+                        "type": "SOLID",
+                        "color": {
+                          "r": 1,
+                          "g": 1,
+                          "b": 1
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "components": {},
+  "styles": {}
+} 
