@@ -1957,7 +1957,12 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
             <svg
               width={absoluteBoundingBox?.width || 100}
               height={absoluteBoundingBox?.height || 100}
-              style={{ position: 'absolute', top: 0, left: 0 }}
+              style={{ 
+                position: 'absolute', 
+                top: 0, 
+                left: 0,
+                borderRadius: `${Math.min(absoluteBoundingBox?.width || 100, absoluteBoundingBox?.height || 100) / 2}px`
+              }}
             >
               <defs>
                 <mask id={`mask-group-${node.id}`}>
@@ -1965,9 +1970,48 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                   {children?.map((child: any, index: number) => {
                     const childMaskMode = getMaskGroupMode(child);
                     
-                    // Handle different child types for mask groups
+                    // Handle mask child (ELLIPSE with isMask: true)
+                    if (child.isMask && child.type === 'ELLIPSE') {
+                      const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
+                        child.absoluteBoundingBox || {};
+                      
+                      return (
+                        <g key={child.id || index} mask="normal">
+                          <ellipse
+                            cx={x - (absoluteBoundingBox?.x || 0) + childWidth / 2}
+                            cy={y - (absoluteBoundingBox?.y || 0) + childHeight / 2}
+                            rx={childWidth / 2}
+                            ry={childHeight / 2}
+                            fill={child.fills?.[0]?.type === 'SOLID' && child.fills[0].color ? 
+                              rgbaToCss(child.fills[0].color.r, child.fills[0].color.g, child.fills[0].color.b, child.fills[0].color.a) : 
+                              'rgb(217, 217, 217)'}
+                          />
+                        </g>
+                      );
+                    }
+                    
+                    // Handle content child (RECTANGLE with image)
+                    if (child.type === 'RECTANGLE' && child.fills?.some((fill: any) => fill.type === 'IMAGE')) {
+                      const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
+                        child.absoluteBoundingBox || {};
+                      
+                      return (
+                        <g key={child.id || index} mask="normal">
+                          <rect 
+                            x={x - (absoluteBoundingBox?.x || 0)}
+                            y={y - (absoluteBoundingBox?.y || 0)}
+                            width={childWidth}
+                            height={childHeight}
+                            fill="black"
+                            rx={child.cornerRadius || 0}
+                            ry={child.cornerRadius || 0}
+                          />
+                        </g>
+                      );
+                    }
+                    
+                    // Handle other child types
                     if (child.type === 'RECTANGLE') {
-                      // Render rectangle as mask element
                       const fill = child.fills?.[0];
                       const fillColor = fill?.type === 'SOLID' && fill.color ? 
                         rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a) : 
@@ -1980,8 +2024,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                       return (
                         <g key={child.id || index} mask={childMaskMode}>
                           <rect
-                            x={x}
-                            y={y}
+                            x={x - (absoluteBoundingBox?.x || 0)}
+                            y={y - (absoluteBoundingBox?.y || 0)}
                             width={childWidth}
                             height={childHeight}
                             fill={fillColor}
@@ -1990,31 +2034,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                           />
                         </g>
                       );
-                    } else if (child.type === 'IMAGE' || child.fills?.some((fill: any) => fill.type === 'IMAGE')) {
-                      // Render image as mask element
-                      const imageFill = child.fills?.find((fill: any) => fill.type === 'IMAGE');
-                      const imageUrl = imageFill?.imageUrl || imageMap[child.id];
-                      
-                      if (imageUrl) {
-                        const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
-                          child.absoluteBoundingBox || {};
-                        
-                        return (
-                          <g key={child.id || index} mask={childMaskMode}>
-                            <image
-                              href={imageUrl}
-                              x={x}
-                              y={y}
-                              width={childWidth}
-                              height={childHeight}
-                              preserveAspectRatio="xMidYMid slice"
-                            />
-                          </g>
-                        );
-                      }
-                    } else if (child.type === 'VECTOR' || child.isVector) {
-                      // Render vector as mask element
-                      const fill = child.vectorFill || child.fills?.[0];
+                    } else if (child.type === 'ELLIPSE') {
+                      const fill = child.fills?.[0];
                       const fillColor = fill?.type === 'SOLID' && fill.color ? 
                         rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a) : 
                         'black';
@@ -2022,27 +2043,14 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                       const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
                         child.absoluteBoundingBox || {};
                       
-                      // Create vector path
-                      let vectorPath = '';
-                      if (child.vectorPaths && child.vectorPaths.length > 0) {
-                        vectorPath = child.vectorPaths[0].path;
-                      } else if (child.vectorType === 'RECTANGLE') {
-                        const radius = child.vectorCornerRadius || 0;
-                        vectorPath = `M 0 ${radius} Q 0 0 ${radius} 0 L ${childWidth - radius} 0 Q ${childWidth} 0 ${childWidth} ${radius} L ${childWidth} ${childHeight - radius} Q ${childWidth} ${childHeight} ${childWidth - radius} ${childHeight} L ${radius} ${childHeight} Q 0 ${childHeight} 0 ${childHeight - radius} Z`;
-                      } else if (child.vectorType === 'ELLIPSE') {
-                        const centerX = childWidth / 2;
-                        const centerY = childHeight / 2;
-                        const radiusX = childWidth / 2;
-                        const radiusY = childHeight / 2;
-                        vectorPath = `M ${centerX - radiusX} ${centerY} A ${radiusX} ${radiusY} 0 1 1 ${centerX + radiusX} ${centerY} A ${radiusX} ${radiusY} 0 1 1 ${centerX - radiusX} ${centerY} Z`;
-                      }
-                      
                       return (
                         <g key={child.id || index} mask={childMaskMode}>
-                          <path
-                            d={vectorPath}
+                          <ellipse
+                            cx={x - (absoluteBoundingBox?.x || 0) + childWidth / 2}
+                            cy={y - (absoluteBoundingBox?.y || 0) + childHeight / 2}
+                            rx={childWidth / 2}
+                            ry={childHeight / 2}
                             fill={fillColor}
-                            transform={`translate(${x}, ${y})`}
                           />
                         </g>
                       );
