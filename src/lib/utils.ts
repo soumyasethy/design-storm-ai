@@ -705,3 +705,148 @@ export function getLineStyles(node: any): React.CSSProperties {
     borderRadius: '0',
   };
 }
+
+// Parse Figma CSS and extract styles for specific elements
+export function parseFigmaCSS(cssContent: string): Record<string, React.CSSProperties> {
+  const styles: Record<string, React.CSSProperties> = {};
+  
+  // Split CSS into rules
+  const rules = cssContent.split('/*').filter(rule => rule.trim());
+  
+  rules.forEach(rule => {
+    const lines = rule.split('\n');
+    const selector = lines[0]?.trim();
+    
+    if (!selector) return;
+    
+    const cssProperties: React.CSSProperties = {};
+    
+    lines.slice(1).forEach(line => {
+      const trimmedLine = line.trim();
+      if (!trimmedLine || trimmedLine.startsWith('/*')) return;
+      
+      const colonIndex = trimmedLine.indexOf(':');
+      if (colonIndex === -1) return;
+      
+      const property = trimmedLine.substring(0, colonIndex).trim();
+      const value = trimmedLine.substring(colonIndex + 1).trim().replace(';', '');
+      
+      switch (property) {
+        case 'position':
+          cssProperties.position = value as any;
+          break;
+        case 'width':
+          cssProperties.width = value;
+          break;
+        case 'height':
+          cssProperties.height = value;
+          break;
+        case 'left':
+          cssProperties.left = value;
+          break;
+        case 'top':
+          cssProperties.top = value;
+          break;
+        case 'right':
+          cssProperties.right = value;
+          break;
+        case 'bottom':
+          cssProperties.bottom = value;
+          break;
+        case 'background':
+          if (value.startsWith('#')) {
+            cssProperties.backgroundColor = value;
+          } else if (value.includes('url(')) {
+            cssProperties.backgroundImage = value;
+          }
+          break;
+        case 'border':
+          cssProperties.border = value;
+          break;
+        case 'font-family':
+          cssProperties.fontFamily = value.replace(/'/g, '');
+          break;
+        case 'font-size':
+          cssProperties.fontSize = value;
+          break;
+        case 'font-weight':
+          cssProperties.fontWeight = parseInt(value) || value;
+          break;
+        case 'color':
+          cssProperties.color = value;
+          break;
+        case 'line-height':
+          cssProperties.lineHeight = value;
+          break;
+        case 'text-align':
+          cssProperties.textAlign = value as any;
+          break;
+        case 'z-index':
+          cssProperties.zIndex = parseInt(value);
+          break;
+        case 'opacity':
+          cssProperties.opacity = parseFloat(value);
+          break;
+        case 'transform':
+          cssProperties.transform = value;
+          break;
+        case 'border-radius':
+          cssProperties.borderRadius = value;
+          break;
+      }
+    });
+    
+    if (Object.keys(cssProperties).length > 0) {
+      styles[selector] = cssProperties;
+    }
+  });
+  
+  return styles;
+}
+
+// Get exact styles from Figma CSS for a specific element
+export function getExactFigmaStyles(nodeName: string, cssStyles: Record<string, React.CSSProperties>): React.CSSProperties {
+  // Try exact match first
+  if (cssStyles[nodeName]) {
+    return cssStyles[nodeName];
+  }
+  
+  // Try partial matches
+  const partialMatches = Object.keys(cssStyles).filter(key => 
+    key.toLowerCase().includes(nodeName.toLowerCase()) ||
+    nodeName.toLowerCase().includes(key.toLowerCase())
+  );
+  
+  if (partialMatches.length > 0) {
+    return cssStyles[partialMatches[0]];
+  }
+  
+  return {};
+}
+
+// Enhanced font family mapping based on Figma CSS
+export function getFigmaFontFamily(family: string): string {
+  if (!family) return 'inherit';
+  
+  const fontMap: Record<string, string> = {
+    'IBM Plex Sans': '"IBM Plex Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Space Grotesk': '"Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Inter': 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    'Roboto': 'Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Open Sans': '"Open Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Lato': 'Lato, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Poppins': 'Poppins, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Montserrat': 'Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Source Sans Pro': '"Source Sans Pro", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Raleway': 'Raleway, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Ubuntu': 'Ubuntu, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Nunito': 'Nunito, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Arial': 'Arial, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Helvetica': 'Helvetica, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Times New Roman': '"Times New Roman", Times, serif',
+    'Georgia': 'Georgia, serif',
+    'Verdana': 'Verdana, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  };
+  
+  return fontMap[family] || `${family}, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+}

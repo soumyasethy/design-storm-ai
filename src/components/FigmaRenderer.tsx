@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import Image from 'next/image';
-import { getSpecialColor, isCircularElement, getLineStyles } from '@/lib/utils';
+import { getSpecialColor, isCircularElement, getLineStyles, parseFigmaCSS, getExactFigmaStyles, getFigmaFontFamily } from '@/lib/utils';
 
 interface FigmaRendererProps {
   node: any;
@@ -16,6 +16,7 @@ interface FigmaRendererProps {
   fileKey?: string;
   figmaToken?: string;
   devMode?: boolean;
+  figmaCSS?: Record<string, React.CSSProperties>;
 }
 
 interface FigmaNode {
@@ -119,7 +120,7 @@ const getFillStyles = (fills: any[], nodeId?: string, imageMap?: Record<string, 
   const fill = fills[0];
   const styles: React.CSSProperties = {};
   
-  if (fill.type === 'SOLID' && fill.color) {
+     if (fill.type === 'SOLID' && fill.color) {
     // Use hex colors for better accuracy
     const hexColor = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
     styles.backgroundColor = hexColor;
@@ -128,14 +129,14 @@ const getFillStyles = (fills: any[], nodeId?: string, imageMap?: Record<string, 
     if (fill.color.a !== undefined && fill.color.a !== 1) {
       styles.opacity = fill.color.a;
     }
-  } else if (fill.type === 'IMAGE') {
+   } else if (fill.type === 'IMAGE') {
     const imageUrl = fill.imageUrl || (nodeId && imageMap && imageMap[nodeId]);
-    if (imageUrl) {
-      styles.backgroundImage = `url('${imageUrl}')`;
-      styles.backgroundSize = 'cover';
-      styles.backgroundPosition = 'center';
-      styles.backgroundRepeat = 'no-repeat';
-    }
+     if (imageUrl) {
+       styles.backgroundImage = `url('${imageUrl}')`;
+       styles.backgroundSize = 'cover';
+       styles.backgroundPosition = 'center';
+       styles.backgroundRepeat = 'no-repeat';
+     }
   } else if (fill.type === 'GRADIENT_LINEAR' && fill.gradientStops) {
     const stops = fill.gradientStops.map((stop: any) => {
       const hexColor = rgbToHex(stop.color.r, stop.color.g, stop.color.b);
@@ -148,7 +149,7 @@ const getFillStyles = (fills: any[], nodeId?: string, imageMap?: Record<string, 
       return `${hexColor} ${stop.position * 100}%`;
     }).join(', ');
     styles.background = `radial-gradient(circle, ${stops})`;
-  }
+   }
   
   return styles;
 };
@@ -380,59 +381,67 @@ const getEffectStyles = (effects: any[]): React.CSSProperties => {
 };
 
 // Enhanced text styles with rich text support and pixel-perfect rendering
-const getTextStyles = (node: any): React.CSSProperties => {
-  const styles: React.CSSProperties = {};
-  
-  if (node.style) {
-    // Font family - prioritize Inter for better rendering
-    if (node.style.fontFamily) {
-      styles.fontFamily = getFontFamily(node.style.fontFamily);
-    } else {
+const getTextStyles = (node: any, figmaCSS?: Record<string, React.CSSProperties>): React.CSSProperties => {
+    const styles: React.CSSProperties = {};
+    
+    // First, try to get exact styles from Figma CSS
+    if (figmaCSS && node.name) {
+      const exactStyles = getExactFigmaStyles(node.name, figmaCSS);
+      if (Object.keys(exactStyles).length > 0) {
+        Object.assign(styles, exactStyles);
+      }
+    }
+    
+    if (node.style) {
+    // Font family - prioritize Figma CSS fonts
+      if (node.style.fontFamily && !styles.fontFamily) {
+        styles.fontFamily = getFigmaFontFamily(node.style.fontFamily);
+    } else if (!styles.fontFamily) {
       // Default to Inter if no font family specified
       styles.fontFamily = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    }
-    
+      }
+      
     // Font size - ensure exact pixel values
-    if (node.style.fontSize) {
-      styles.fontSize = `${node.style.fontSize}px`;
-    }
-    
+      if (node.style.fontSize && !styles.fontSize) {
+        styles.fontSize = `${node.style.fontSize}px`;
+      }
+      
     // Font weight - exact weight matching with fallbacks
-    if (node.style.fontWeight) {
-      styles.fontWeight = node.style.fontWeight;
-    } else {
+      if (node.style.fontWeight && !styles.fontWeight) {
+        styles.fontWeight = node.style.fontWeight;
+    } else if (!styles.fontWeight) {
       // Default font weight for better readability
       styles.fontWeight = 400;
-    }
-    
+      }
+      
     // Text alignment - exact horizontal alignment
-    if (node.style.textAlignHorizontal) {
-      styles.textAlign = getTextAlign(node.style.textAlignHorizontal) as any;
-    }
-    
+      if (node.style.textAlignHorizontal && !styles.textAlign) {
+        styles.textAlign = getTextAlign(node.style.textAlignHorizontal) as any;
+      }
+      
     // Vertical alignment for text containers
-    if (node.style.textAlignVertical) {
+    if (node.style.textAlignVertical && !styles.alignItems) {
       styles.display = 'flex';
       styles.alignItems = getVerticalAlign(node.style.textAlignVertical) as any;
     }
     
     // Line height - exact pixel or percentage values
-    if (node.style.lineHeightPx) {
-      styles.lineHeight = `${node.style.lineHeightPx}px`;
-    } else if (node.style.lineHeightPercent) {
-      styles.lineHeight = `${node.style.lineHeightPercent}%`;
-    } else if (node.style.fontSize) {
+      if (node.style.lineHeightPx && !styles.lineHeight) {
+        styles.lineHeight = `${node.style.lineHeightPx}px`;
+      } else if (node.style.lineHeightPercent && !styles.lineHeight) {
+        styles.lineHeight = `${node.style.lineHeightPercent}%`;
+    } else if (node.style.fontSize && !styles.lineHeight) {
       // Default line height based on font size for better readability
       styles.lineHeight = `${node.style.fontSize * 1.2}px`;
-    }
-    
+      }
+      
     // Letter spacing - exact pixel values
-    if (node.style.letterSpacing) {
-      styles.letterSpacing = `${node.style.letterSpacing}px`;
-    }
+      if (node.style.letterSpacing && !styles.letterSpacing) {
+        styles.letterSpacing = `${node.style.letterSpacing}px`;
+      }
     
     // Text decoration - handle underline and other decorations
-    if (node.style.textDecoration) {
+    if (node.style.textDecoration && !styles.textDecoration) {
       const decoration = node.style.textDecoration.toLowerCase();
       if (decoration === 'underline') {
         styles.textDecoration = 'underline';
@@ -445,9 +454,9 @@ const getTextStyles = (node: any): React.CSSProperties => {
   }
   
   // Handle text fills with exact color matching and special color handling
-  if (node.fills && node.fills.length > 0) {
-    const fill = node.fills[0];
-    if (fill.type === 'SOLID' && fill.color) {
+    if (node.fills && node.fills.length > 0) {
+      const fill = node.fills[0];
+      if (fill.type === 'SOLID' && fill.color && !styles.color) {
       // Convert to hex for better color accuracy
       const hexColor = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
       // Use special color handling for specific text elements
@@ -456,17 +465,17 @@ const getTextStyles = (node: any): React.CSSProperties => {
   }
   
   // Enhanced text wrapping properties for better inline rendering
-  styles.whiteSpace = 'pre-wrap';
-  styles.overflowWrap = 'break-word';
-  styles.wordBreak = 'break-word';
-  styles.display = 'inline'; // Ensure text elements are inline by default
+    if (!styles.whiteSpace) styles.whiteSpace = 'pre-wrap';
+    if (!styles.overflowWrap) styles.overflowWrap = 'break-word';
+    if (!styles.wordBreak) styles.wordBreak = 'break-word';
+    if (!styles.display) styles.display = 'inline'; // Ensure text elements are inline by default
   
   // Ensure proper text rendering
   (styles as any).fontSmoothing = 'antialiased';
   (styles as any).webkitFontSmoothing = 'antialiased';
-  
-  return styles;
-};
+    
+    return styles;
+  };
 
 // Enhanced shape styles with improved circular handling and transforms
 const getShapeStyles = (node: any): React.CSSProperties => {
@@ -802,7 +811,8 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
   parentMaskType = 'ALPHA',
   fileKey,
   figmaToken,
-  devMode = false
+  devMode = false,
+  figmaCSS
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
@@ -931,14 +941,14 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
       case 'TEXT':
         if (!characters) return null;
         
-        const textStyles = getTextStyles(node);
+        const textStyles = getTextStyles(node, figmaCSS);
         const combinedTextStyles = {
-          ...baseStyles,
-          ...textStyles,
-          display: 'flex',
-          alignItems: getVerticalAlign(style?.textAlignVertical || 'TOP'),
-          justifyContent: getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'center' ? 'center' : 
-                        getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'right' ? 'flex-end' : 'flex-start',
+              ...baseStyles,
+              ...textStyles,
+              display: 'flex',
+              alignItems: getVerticalAlign(style?.textAlignVertical || 'TOP'),
+              justifyContent: getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'center' ? 'center' : 
+                            getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'right' ? 'flex-end' : 'flex-start',
         };
         
         // Enhanced text rendering with rich text support and inline alignment
@@ -1143,8 +1153,8 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
         
         // Handle regular lines with border styling
         return (
-          <div
-            style={{
+              <div 
+                style={{
               ...baseStyles,
               ...getLineStyles(node),
             }}
