@@ -239,11 +239,6 @@ const FigmaImage: React.FC<{
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#9ca3af',
-          fontSize: '12px',
           border: showDebug ? '1px solid #ef4444' : 'none',
         }}
       >
@@ -253,7 +248,6 @@ const FigmaImage: React.FC<{
             <div>{node.name}</div>
           </div>
         )}
-        {imageError && <span>Image failed to load</span>}
       </div>
     );
   }
@@ -2156,32 +2150,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat',
                 borderRadius: positionStyles.borderRadius,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-                color: '#0369a1',
-                fontSize: '12px',
-                fontFamily: 'Inter, sans-serif',
-                fontWeight: '500',
               }}
-            >
-              <div style={{ textAlign: 'center', padding: '8px' }}>
-                <div style={{ fontSize: '16px', marginBottom: '4px', opacity: '0.7' }}>🖼️</div>
-                <div style={{ fontSize: '10px', lineHeight: '1.2' }}>Image</div>
-                {node.name && (
-                  <div style={{ 
-                    fontSize: '9px', 
-                    opacity: '0.6',
-                    maxWidth: '100%',
-    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}>
-                    {node.name.length > 12 ? node.name.substring(0, 12) + '...' : node.name}
-                  </div>
-                )}
-              </div>
-            </div>
+            />
           </div>
         );
       }
