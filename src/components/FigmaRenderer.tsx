@@ -15,6 +15,7 @@ interface FigmaRendererProps {
   parentMaskType?: string;
   fileKey?: string;
   figmaToken?: string;
+  devMode?: boolean;
 }
 
 interface FigmaNode {
@@ -796,7 +797,8 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
   parentMask = false,
   parentMaskType = 'ALPHA',
   fileKey,
-  figmaToken
+  figmaToken,
+  devMode = false
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
@@ -842,8 +844,8 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
       opacity: opacity !== undefined ? opacity : 1,
     };
     
-    // Add debug styling
-    if (showDebug) {
+    // Add debug styling only in dev mode
+    if (showDebug && devMode) {
       baseStyles.border = '1px solid #3b82f6';
       baseStyles.backgroundColor = 'rgba(59, 130, 246, 0.1)';
     }
@@ -864,7 +866,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
               } : {})
             }}
           >
-            {showDebug && (
+            {showDebug && devMode && (
               <div className="absolute top-4 left-4 bg-black bg-opacity-75 text-white text-xs p-2 rounded z-50">
                 <div>Canvas: {name}</div>
                 <div>Type: {type}</div>
@@ -881,6 +883,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
                 imageMap={imageMap}
                 fileKey={fileKey}
                 figmaToken={figmaToken}
+                devMode={devMode}
               />
             ))}
           </div>
@@ -897,7 +900,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
             data-figma-node-type={type}
             data-figma-node-name={name}
           >
-            {showDebug && (
+            {showDebug && devMode && (
               <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
                 <div className="font-bold">{name}</div>
                 <div>{type} - {baseStyles.width}×{baseStyles.height}</div>
@@ -1036,7 +1039,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
             data-figma-node-type={type}
             data-figma-node-name={name}
           >
-            {showDebug && (
+            {showDebug && devMode && (
               <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
                 <div className="font-bold">{name}</div>
                 <div>{type} - {baseStyles.width}×{baseStyles.height}</div>
@@ -1064,7 +1067,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
               data-figma-node-type={type}
               data-figma-node-name={name}
             >
-              {showDebug && (
+              {showDebug && devMode && (
                 <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
                   <div className="font-bold">{name}</div>
                   <div>{type} - {baseStyles.width}×{baseStyles.height}</div>
@@ -1086,7 +1089,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
             data-figma-node-type={type}
             data-figma-node-name={name}
           >
-            {showDebug && (
+            {showDebug && devMode && (
               <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
                 <div className="font-bold">{name}</div>
                 <div>{type} - {baseStyles.width}×{baseStyles.height}</div>
@@ -1104,6 +1107,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
                 parentMaskType={maskType}
                 fileKey={fileKey}
                 figmaToken={figmaToken}
+                devMode={devMode}
               />
             ))}
           </div>
@@ -1120,7 +1124,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
               data-figma-node-type={type}
               data-figma-node-name={name}
             >
-              {showDebug && (
+              {showDebug && devMode && (
                 <div className="absolute -top-8 left-0 bg-pink-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
                   <div className="font-bold">{name}</div>
                   <div>{type} - Geometric Line</div>
@@ -1142,7 +1146,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
             data-figma-node-type={type}
             data-figma-node-name={name}
           >
-            {showDebug && (
+            {showDebug && devMode && (
               <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
                 <div className="font-bold">{name}</div>
                 <div>{type} - {baseStyles.width}×{baseStyles.height}</div>
@@ -1160,6 +1164,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
                 parentMaskType={maskType}
                 fileKey={fileKey}
                 figmaToken={figmaToken}
+                devMode={devMode}
               />
             ))}
           </div>
@@ -1175,7 +1180,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
             data-figma-node-type={type}
             data-figma-node-name={name}
           >
-            {showDebug && (
+            {showDebug && devMode && (
               <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
                 <div className="font-bold">{name}</div>
                 <div>{type} - {baseStyles.width}×{baseStyles.height}</div>
@@ -1194,6 +1199,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
                 parentMaskType={maskType}
                 fileKey={fileKey}
                 figmaToken={figmaToken}
+                devMode={devMode}
               />
             ))}
           </div>

@@ -21,6 +21,7 @@ interface SimpleFigmaRendererProps {
   imageMap?: Record<string, string>;
   fileKey?: string;
   figmaToken?: string;
+  devMode?: boolean;
 }
 
 // Enhanced image rendering with footer icon support
@@ -28,8 +29,9 @@ const FigmaImage: React.FC<{
   node: any; 
   imageUrl: string; 
   baseStyles: React.CSSProperties; 
-  showDebug: boolean 
-}> = ({ node, imageUrl, baseStyles, showDebug }) => {
+  showDebug: boolean;
+  devMode: boolean;
+}> = ({ node, imageUrl, baseStyles, showDebug, devMode }) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   
@@ -114,8 +116,9 @@ const FigmaImage: React.FC<{
 const FigmaText: React.FC<{ 
   node: any; 
   baseStyles: React.CSSProperties; 
-  showDebug: boolean 
-}> = ({ node, baseStyles, showDebug }) => {
+  showDebug: boolean;
+  devMode: boolean;
+}> = ({ node, baseStyles, showDebug, devMode }) => {
   // Add null check to prevent runtime errors
   if (!node || typeof node !== 'object') {
     console.warn('FigmaText: Invalid node provided', node);
@@ -215,7 +218,7 @@ const FigmaText: React.FC<{
       data-figma-node-type={node.type}
       data-figma-node-name={node.name}
     >
-      {showDebug && (
+      {showDebug && devMode && (
         <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
           <div className="font-bold">{node.name}</div>
           <div>{node.type} - {baseStyles.width}×{baseStyles.height}</div>
@@ -235,8 +238,9 @@ const FigmaText: React.FC<{
 const FigmaShape: React.FC<{ 
   node: any; 
   baseStyles: React.CSSProperties; 
-  showDebug: boolean 
-}> = ({ node, baseStyles, showDebug }) => {
+  showDebug: boolean;
+  devMode: boolean;
+}> = ({ node, baseStyles, showDebug, devMode }) => {
   // Add null check to prevent runtime errors
   if (!node || typeof node !== 'object') {
     console.warn('FigmaShape: Invalid node provided', node);
@@ -298,7 +302,7 @@ const FigmaShape: React.FC<{
       data-figma-node-type={node.type}
       data-figma-node-name={node.name}
     >
-      {showDebug && (
+      {showDebug && devMode && (
         <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
           <div className="font-bold">{node.name}</div>
           <div>{node.type} - {baseStyles.width}×{baseStyles.height}</div>
@@ -318,7 +322,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   parentBoundingBox,
   imageMap = {},
   fileKey,
-  figmaToken
+  figmaToken,
+  devMode = false
 }) => {
   // Add null check to prevent runtime errors
   if (!node || typeof node !== 'object') {
@@ -399,7 +404,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
             } : {})
           }}
         >
-          {showDebug && (
+          {showDebug && devMode && (
             <div className="absolute top-4 left-4 bg-black bg-opacity-75 text-white text-xs p-2 rounded z-50">
               <div>Canvas: {name}</div>
               <div>Type: {type}</div>
@@ -416,6 +421,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               imageMap={imageMap}
               fileKey={fileKey}
               figmaToken={figmaToken}
+              devMode={devMode}
             />
           ))}
         </div>
@@ -432,7 +438,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
           data-figma-node-type={type}
           data-figma-node-name={name}
         >
-          {showDebug && (
+          {showDebug && devMode && (
             <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
               <div className="font-bold">{name}</div>
               <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
@@ -448,13 +454,14 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               imageMap={imageMap}
               fileKey={fileKey}
               figmaToken={figmaToken}
+              devMode={devMode}
             />
           ))}
         </div>
       );
 
     case 'TEXT':
-      return <FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} />;
+      return <FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />;
 
     case 'RECTANGLE':
     case 'ELLIPSE':
@@ -470,7 +477,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
             data-figma-node-type={type}
             data-figma-node-name={name}
           >
-            {showDebug && (
+            {showDebug && devMode && (
               <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
                 <div className="font-bold">{name}</div>
                 <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
@@ -478,13 +485,13 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               </div>
             )}
             
-            <FigmaImage node={node} imageUrl={imageUrl} baseStyles={positionStyles} showDebug={showDebug} />
+            <FigmaImage node={node} imageUrl={imageUrl} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />
           </div>
         );
       }
       
       // Handle regular shapes
-      return <FigmaShape node={node} baseStyles={positionStyles} showDebug={showDebug} />;
+      return <FigmaShape node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />;
 
     case 'INSTANCE':
     case 'COMPONENT':
@@ -496,7 +503,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
           data-figma-node-type={type}
           data-figma-node-name={name}
         >
-          {showDebug && (
+          {showDebug && devMode && (
             <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
               <div className="font-bold">{name}</div>
               <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
@@ -513,6 +520,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               imageMap={imageMap}
               fileKey={fileKey}
               figmaToken={figmaToken}
+              devMode={devMode}
             />
           ))}
         </div>
@@ -529,8 +537,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
             data-figma-node-type={type}
             data-figma-node-name={name}
           >
-            {showDebug && (
-              <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+            {showDebug && devMode && (
+              <div className="absolute -top-8 left-1 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
                 <div className="font-bold">{name}</div>
                 <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
                 <div className="text-gray-300">❓ Unknown type</div>
@@ -546,6 +554,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 imageMap={imageMap}
                 fileKey={fileKey}
                 figmaToken={figmaToken}
+                devMode={devMode}
               />
             ))}
           </div>
@@ -565,6 +574,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 imageMap={imageMap}
                 fileKey={fileKey}
                 figmaToken={figmaToken}
+                devMode={devMode}
               />
             ))}
           </>
