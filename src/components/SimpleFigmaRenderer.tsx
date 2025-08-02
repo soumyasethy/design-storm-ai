@@ -68,11 +68,11 @@ const getVectorRotationTransform = (
   return transformStyle;
 };
 
-// Enhanced fill styles with comprehensive gradient support
+// Enhanced fill styles with comprehensive gradient support and frame background colors
 const getFillStyles = (fills: any[], nodeId?: string, imageMap?: Record<string, string>): React.CSSProperties => {
   if (!fills || fills.length === 0) {
-    // Return a light gray background for debugging when no fills are provided
-    return { backgroundColor: 'rgba(200, 200, 200, 0.3)' };
+    // Return transparent background for frames and groups, light gray for debugging other elements
+    return { backgroundColor: 'transparent' };
   }
   
   const fill = fills[0];
@@ -604,21 +604,23 @@ const getEnhancedStrokeStyles = (node: any): React.CSSProperties => {
   
   if (!stroke) return styles;
   
-  // Get stroke color with enhanced support
+  // Get stroke color with enhanced support for dashed lines and various line types
   let strokeColor = 'transparent';
   let strokeWidth = 0;
   let strokeAlign = 'CENTER';
   let strokeCap = 'NONE';
   let strokeJoin = 'MITER';
   let dashPattern: number[] = [];
+  let strokeStyle = 'solid';
   
-      if (stroke.type === 'SOLID' && stroke.color) {
+  if (stroke.type === 'SOLID' && stroke.color) {
     strokeColor = rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a);
     strokeWidth = stroke.strokeWeight || node.strokeWeight || 1;
     strokeAlign = stroke.strokeAlign || 'CENTER';
     strokeCap = stroke.strokeCap || 'NONE';
     strokeJoin = stroke.strokeJoin || 'MITER';
     dashPattern = stroke.dashPattern || [];
+    strokeStyle = stroke.strokeStyle || 'solid';
   } else if (stroke.color) {
     // Handle vectorStroke format
     strokeColor = rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a);
@@ -627,6 +629,25 @@ const getEnhancedStrokeStyles = (node: any): React.CSSProperties => {
     strokeCap = stroke.cap || 'NONE';
     strokeJoin = stroke.join || 'MITER';
     dashPattern = stroke.dashPattern || [];
+    strokeStyle = stroke.style || 'solid';
+  }
+  
+  // Enhanced dash pattern detection and support for various line types
+  if (dashPattern && dashPattern.length > 0) {
+    strokeStyle = 'dashed';
+  } else if (strokeStyle === 'DASHED' || strokeStyle === 'DOTTED' || strokeStyle === 'DASH_DOT') {
+    // Handle different stroke styles
+    switch (strokeStyle) {
+      case 'DASHED':
+        dashPattern = [strokeWidth * 3, strokeWidth * 2];
+        break;
+      case 'DOTTED':
+        dashPattern = [strokeWidth, strokeWidth];
+        break;
+      case 'DASH_DOT':
+        dashPattern = [strokeWidth * 3, strokeWidth, strokeWidth, strokeWidth];
+        break;
+    }
   }
   
   // Apply border styles based on stroke alignment
@@ -635,25 +656,26 @@ const getEnhancedStrokeStyles = (node: any): React.CSSProperties => {
     
     if (strokeAlign === 'INSIDE') {
       // Inside stroke - border shrinks the content area
-      styles.border = `${strokeWidth}px solid ${strokeColor}`;
+      styles.border = `${strokeWidth}px ${strokeStyle} ${strokeColor}`;
     } else if (strokeAlign === 'OUTSIDE') {
       // Outside stroke - outline extends beyond the element
-      styles.outline = `${strokeWidth}px solid ${strokeColor}`;
+      styles.outline = `${strokeWidth}px ${strokeStyle} ${strokeColor}`;
       styles.outlineOffset = '0px';
     } else {
       // CENTER (default) - border is centered on the element edge
-      styles.border = `${strokeWidth}px solid ${strokeColor}`;
+      styles.border = `${strokeWidth}px ${strokeStyle} ${strokeColor}`;
     }
     
-    // Handle dash patterns for borders
+    // Enhanced dash pattern support for borders with better CSS compatibility
     if (dashPattern && dashPattern.length > 0) {
+      const dashArray = dashPattern.join(', ');
       if (strokeAlign === 'OUTSIDE') {
         // For outline, we need to use a different approach
         styles.outlineStyle = 'dashed';
-        (styles as any).outlineDasharray = dashPattern.join(', ');
+        (styles as any).outlineDasharray = dashArray;
       } else {
         styles.borderStyle = 'dashed';
-        (styles as any).borderDasharray = dashPattern.join(', ');
+        (styles as any).borderDasharray = dashArray;
       }
     }
   }
@@ -948,12 +970,13 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
     mirrorAxis
   } = node;
   
-  // Get stroke properties with enhanced vector stroke support
+  // Get stroke properties with enhanced vector stroke support for dashed lines and various line types
   let strokeColor = '#FF004F'; // Default red from your example
   let strokeWidth = 2;
   let strokeCapStyle: 'inherit' | 'round' | 'butt' | 'square' = 'butt';
   let strokeJoinStyle: 'inherit' | 'round' | 'bevel' | 'miter' = 'miter';
   let strokeDashArray = 'none';
+  let strokeStyle = 'solid';
   
   if (vectorStroke) {
     strokeColor = vectorStroke.color ? 
@@ -963,12 +986,30 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
     strokeCapStyle = (vectorStroke.cap?.toLowerCase() as any) || 'butt';
     strokeJoinStyle = (vectorStroke.join?.toLowerCase() as any) || 'miter';
     strokeDashArray = vectorStroke.dashPattern?.join(', ') || 'none';
+    strokeStyle = vectorStroke.style || 'solid';
   } else {
     const stroke = strokes?.[0];
     strokeColor = stroke?.type === 'SOLID' && stroke.color ? 
       rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a) : 
       '#FF004F';
     strokeWidth = strokeWeight || stroke?.strokeWeight || 2;
+    strokeStyle = stroke?.strokeStyle || 'solid';
+  }
+  
+  // Enhanced dash pattern detection and support for various line types
+  if (strokeDashArray === 'none' && strokeStyle !== 'solid') {
+    // Handle different stroke styles
+    switch (strokeStyle) {
+      case 'DASHED':
+        strokeDashArray = `${strokeWidth * 3}, ${strokeWidth * 2}`;
+        break;
+      case 'DOTTED':
+        strokeDashArray = `${strokeWidth}, ${strokeWidth}`;
+        break;
+      case 'DASH_DOT':
+        strokeDashArray = `${strokeWidth * 3}, ${strokeWidth}, ${strokeWidth}, ${strokeWidth}`;
+        break;
+    }
   }
   
   // Get dimensions
@@ -1834,10 +1875,20 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
 
     case 'FRAME':
     case 'GROUP':
+      // Enhanced frame and group rendering with background color support
+      const frameFillStyles = getFillStyles(fills || []);
+      const combinedFrameStyles = {
+        ...positionStyles,
+        ...frameFillStyles,
+        // Ensure proper layering for frames and groups
+        position: 'relative' as const,
+        zIndex: node.zIndex || 'auto'
+      };
+      
       return (
         <div
           className="relative"
-          style={positionStyles}
+          style={combinedFrameStyles}
           title={`${name} (${type})`}
           data-figma-node-id={node.id}
           data-figma-node-type={type}
@@ -2005,11 +2056,23 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     case 'RECTANGLE':
     case 'ELLIPSE':
     case 'VECTOR':
+      // Enhanced shape rendering with icon support and background colors
+      const shapeFillStyles = getFillStyles(fills || []);
+      const shapeStrokeStyles = getEnhancedStrokeStyles(node);
+      const combinedShapeStyles = {
+        ...positionStyles,
+        ...shapeFillStyles,
+        ...shapeStrokeStyles,
+        // Ensure proper layering for shapes and icons
+        position: 'relative' as const,
+        zIndex: node.zIndex || 'auto'
+      };
+      
       // Handle image fills
       if (imageUrl) {
         return (
           <div
-            style={positionStyles}
+            style={combinedShapeStyles}
             title={`${name} (${type})`}
             data-figma-node-id={node.id}
             data-figma-node-type={type}
@@ -2020,10 +2083,13 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 <div className="font-bold">{name}</div>
                 <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
                 <div className="text-green-300">🖼️ Image loaded</div>
+                {shapeFillStyles.backgroundColor && shapeFillStyles.backgroundColor !== 'transparent' && (
+                  <div className="text-yellow-300">🎨 BG: {shapeFillStyles.backgroundColor}</div>
+                )}
               </div>
             )}
             
-            <FigmaImage node={node} imageUrl={imageUrl} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />
+            <FigmaImage node={node} imageUrl={imageUrl} baseStyles={combinedShapeStyles} showDebug={showDebug} devMode={devMode} />
           </div>
         );
       }
@@ -2089,15 +2155,24 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
         );
       }
       
-      // Handle regular shapes
-      return <FigmaShape node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />;
+      // Handle regular shapes with enhanced icon support
+      return <FigmaShape node={node} baseStyles={combinedShapeStyles} showDebug={showDebug} devMode={devMode} />;
 
     case 'LINE':
     case 'VECTOR':
-      // Handle lines and vectors with proper stroke rendering
-    return (
+      // Enhanced line and vector rendering with dashed line support
+      const lineStrokeStyles = getEnhancedStrokeStyles(node);
+      const combinedLineStyles = {
+        ...positionStyles,
+        ...lineStrokeStyles,
+        // Ensure proper layering for lines and vectors
+        position: 'relative' as const,
+        zIndex: node.zIndex || 'auto'
+      };
+      
+      return (
         <div
-          style={positionStyles}
+          style={combinedLineStyles}
           title={`${name} (${type})`}
           data-figma-node-id={node.id}
           data-figma-node-type={type}
@@ -2108,12 +2183,15 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               <div className="font-bold">{name}</div>
               <div>{type} - Vector Stroke</div>
               <div className="text-pink-300">📐 {node.strokes?.[0]?.color ? `#${rgbToHex(node.strokes[0].color.r, node.strokes[0].color.g, node.strokes[0].color.b)}` : 'default'}</div>
-        </div>
+              {lineStrokeStyles.borderStyle === 'dashed' && (
+                <div className="text-yellow-300">🔄 Dashed Line</div>
+              )}
+            </div>
           )}
           
-          {renderSimpleVectorStroke(node, positionStyles)}
-      </div>
-    );
+          {renderSimpleVectorStroke(node, combinedLineStyles)}
+        </div>
+      );
 
     case 'INSTANCE':
     case 'COMPONENT':
