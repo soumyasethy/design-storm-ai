@@ -331,16 +331,17 @@ const FigmaText: React.FC<{
            rgbaToCss(node.fills[0].color.r, node.fills[0].color.g, node.fills[0].color.b, node.fills[0].color.a) : 
            'inherit',
     
-    // Text wrapping and overflow
+    // Text wrapping and overflow with 5% buffer for font family differences
     whiteSpace: 'pre-wrap',
     overflowWrap: 'break-word',
     wordBreak: 'break-word',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     
-    // Ensure text fits within bounding box
-    maxWidth: '100%',
+    // Ensure text fits within bounding box with 5% buffer
+    maxWidth: '105%', // Add 5% buffer for font family differences
     maxHeight: '100%',
+    width: '105%', // Ensure container is slightly wider
     
     // Debug styling
     ...(showDebug && {
@@ -500,6 +501,8 @@ const FigmaText: React.FC<{
                   getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'right' ? 'flex-end' : 'flex-start',
     gap: '4px', // Add gap for inline elements
     overflow: 'hidden',
+    // Add 5% buffer to container width for font family differences
+    width: baseStyles.width ? `calc(${baseStyles.width} + 5%)` : '105%',
   };
   
   const processedText = processRichText(characters);
@@ -527,6 +530,9 @@ const FigmaText: React.FC<{
           overflowWrap: 'break-word',
           wordBreak: 'break-word',
           overflow: 'hidden',
+          fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
+          fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
+          fontWeight: style?.fontWeight || 'normal',
         }}
         dangerouslySetInnerHTML={{ __html: processedText }}
       />
