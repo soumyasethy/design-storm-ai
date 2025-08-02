@@ -1982,9 +1982,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                             cy={y - (absoluteBoundingBox?.y || 0) + childHeight / 2}
                             rx={childWidth / 2}
                             ry={childHeight / 2}
-                            fill={child.fills?.[0]?.type === 'SOLID' && child.fills[0].color ? 
-                              rgbaToCss(child.fills[0].color.r, child.fills[0].color.g, child.fills[0].color.b, child.fills[0].color.a) : 
-                              'rgb(217, 217, 217)'}
+                            fill="white"
                           />
                         </g>
                       );
@@ -2075,12 +2073,54 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                   })}
                 </mask>
               </defs>
-              <rect 
-                width="100%" 
-                height="100%" 
-                fill="currentColor"
-                mask={`url(#mask-group-${node.id})`}
-              />
+              {/* Render the actual content with mask applied */}
+              {children?.map((child: any, index: number) => {
+                // Find the content child (not the mask child)
+                if (!child.isMask && child.type === 'RECTANGLE' && child.fills?.some((fill: any) => fill.type === 'IMAGE')) {
+                  const imageFill = child.fills?.find((fill: any) => fill.type === 'IMAGE');
+                  const imageUrl = imageFill?.imageUrl || imageMap[child.id];
+                  
+                  if (imageUrl) {
+                    return (
+                      <image
+                        key={child.id || index}
+                        href={imageUrl}
+                        x="0"
+                        y="0"
+                        width="100%"
+                        height="100%"
+                        preserveAspectRatio="xMidYMid slice"
+                        mask={`url(#mask-group-${node.id})`}
+                      />
+                    );
+                  } else {
+                    // Use placeholder if no image URL
+                    return (
+                      <image
+                        key={child.id || index}
+                        href="/placeholder.svg"
+                        x="0"
+                        y="0"
+                        width="100%"
+                        height="100%"
+                        preserveAspectRatio="xMidYMid slice"
+                        mask={`url(#mask-group-${node.id})`}
+                      />
+                    );
+                  }
+                }
+                return null;
+              })}
+              
+              {/* Fallback if no content child found */}
+              {!children?.some((child: any) => !child.isMask && child.type === 'RECTANGLE' && child.fills?.some((fill: any) => fill.type === 'IMAGE')) && (
+                <rect 
+                  width="100%" 
+                  height="100%" 
+                  fill="black"
+                  mask={`url(#mask-group-${node.id})`}
+                />
+              )}
             </svg>
           ) : (
             /* Regular children rendering */
