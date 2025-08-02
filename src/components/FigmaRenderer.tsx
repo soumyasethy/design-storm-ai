@@ -85,6 +85,17 @@ interface FigmaNode {
   componentId?: string;
   componentSetId?: string;
   zIndex?: number;
+  // Enhanced properties for geometric elements and transforms
+  transform?: Array<number>; // Matrix transform
+  skew?: number; // Skew angle in degrees
+  scale?: { x: number; y: number }; // Scale factors
+  clipPath?: string; // CSS clip-path
+  maskImage?: string; // Mask image URL
+  geometricType?: string; // 'line', 'angle', 'diagonal', etc.
+  lineStart?: { x: number; y: number }; // For geometric lines
+  lineEnd?: { x: number; y: number }; // For geometric lines
+  angleDegrees?: number; // For angled elements
+  sectionTransition?: string; // 'angled-cut', 'diagonal', etc.
 }
 
 // Enhanced color conversion utilities
@@ -278,6 +289,21 @@ const getLayoutStyles = (node: any): React.CSSProperties => {
     styles.overflow = 'hidden'; // Default to hidden to prevent content bleeding
   }
   
+  // Handle section transitions and angled cuts
+  if (node.sectionTransition) {
+    switch (node.sectionTransition) {
+      case 'angled-cut':
+        styles.clipPath = 'polygon(0 0, 100% 0, 100% 85%, 0 100%)';
+        break;
+      case 'diagonal':
+        styles.clipPath = 'polygon(0 0, 100% 15%, 100% 100%, 0 85%)';
+        break;
+      case 'reverse-angled':
+        styles.clipPath = 'polygon(0 15%, 100% 0, 100% 100%, 0 85%)';
+        break;
+    }
+  }
+  
   return styles;
 };
 
@@ -441,7 +467,7 @@ const getTextStyles = (node: any): React.CSSProperties => {
   return styles;
 };
 
-// Enhanced shape styles with improved circular handling
+// Enhanced shape styles with improved circular handling and transforms
 const getShapeStyles = (node: any): React.CSSProperties => {
   const styles: React.CSSProperties = {};
   
@@ -464,9 +490,51 @@ const getShapeStyles = (node: any): React.CSSProperties => {
     }
   }
   
+  // Handle complex transforms for angled cards and geometric elements
+  let transform = '';
+  
   // Handle rotation
   if (node.rotation !== undefined && node.rotation !== 0) {
-    styles.transform = `rotate(${node.rotation}rad)`;
+    transform += `rotate(${node.rotation}rad) `;
+  }
+  
+  // Handle skew for angled cards
+  if (node.skew !== undefined && node.skew !== 0) {
+    transform += `skew(${node.skew}deg) `;
+  }
+  
+  // Handle scale
+  if (node.scale) {
+    transform += `scale(${node.scale.x || 1}, ${node.scale.y || 1}) `;
+  }
+  
+  // Handle matrix transform
+  if (node.transform && Array.isArray(node.transform)) {
+    transform += `matrix(${node.transform.join(', ')}) `;
+  }
+  
+  if (transform) {
+    styles.transform = transform.trim();
+  }
+  
+  // Handle clip-path for angled cuts
+  if (node.clipPath) {
+    styles.clipPath = node.clipPath;
+  }
+  
+  // Handle mask image
+  if (node.maskImage) {
+    styles.maskImage = `url(${node.maskImage})`;
+    styles.maskSize = 'cover';
+    styles.maskPosition = 'center';
+  }
+  
+  // Add box shadow for cards
+  if (node.name?.toLowerCase().includes('card') || 
+      node.name?.toLowerCase().includes('manufacturing') ||
+      node.name?.toLowerCase().includes('brands') ||
+      node.name?.toLowerCase().includes('stores')) {
+    styles.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.1)';
   }
   
   // Handle strokes for better border rendering
@@ -512,6 +580,120 @@ const isNodeVisible = (node: any): boolean => {
   if (node.visible === false) return false;
   if (node.opacity === 0) return false;
   return true;
+};
+
+// Render geometric accent lines with exact positioning and styling
+const renderGeometricLine = (node: any, baseStyles: React.CSSProperties) => {
+  const { name, absoluteBoundingBox, lineStart, lineEnd, angleDegrees, geometricType } = node;
+  
+  // Determine line color based on node name or type
+  const getLineColor = () => {
+    const nodeName = name?.toLowerCase() || '';
+    if (nodeName.includes('pink') || nodeName.includes('accent') || nodeName.includes('primary')) {
+      return '#FF0A54'; // Pink accent
+    }
+    if (nodeName.includes('blue') || nodeName.includes('secondary')) {
+      return '#0066FF'; // Blue
+    }
+    if (nodeName.includes('red')) {
+      return '#ff0055'; // Red
+    }
+    return '#FF0A54'; // Default pink
+  };
+
+  const lineColor = getLineColor();
+  const strokeWidth = node.strokeWeight || 2;
+
+  if (geometricType === 'diagonal' || angleDegrees) {
+    // Render diagonal/angled line
+    const angle = angleDegrees || 45;
+    const length = absoluteBoundingBox?.width || 100;
+    
+    return (
+      <div
+        style={{
+          ...baseStyles,
+          position: 'absolute',
+          transform: `rotate(${angle}deg)`,
+          transformOrigin: '0 0',
+        }}
+      >
+        <svg
+          width={length}
+          height={strokeWidth}
+          style={{ display: 'block' }}
+        >
+          <line
+            x1="0"
+            y1={strokeWidth / 2}
+            x2={length}
+            y2={strokeWidth / 2}
+            stroke={lineColor}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+    );
+  }
+
+  if (lineStart && lineEnd) {
+    // Render line between two points
+    const dx = lineEnd.x - lineStart.x;
+    const dy = lineEnd.y - lineStart.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+    return (
+      <div
+        style={{
+          ...baseStyles,
+          position: 'absolute',
+          left: `${lineStart.x}px`,
+          top: `${lineStart.y}px`,
+          transform: `rotate(${angle}deg)`,
+          transformOrigin: '0 0',
+        }}
+      >
+        <svg
+          width={length}
+          height={strokeWidth}
+          style={{ display: 'block' }}
+        >
+          <line
+            x1="0"
+            y1={strokeWidth / 2}
+            x2={length}
+            y2={strokeWidth / 2}
+            stroke={lineColor}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+    );
+  }
+
+  // Default vertical line
+  return (
+    <div style={baseStyles}>
+      <svg
+        width={strokeWidth}
+        height={absoluteBoundingBox?.height || 100}
+        style={{ display: 'block' }}
+      >
+        <line
+          x1={strokeWidth / 2}
+          y1="0"
+          x2={strokeWidth / 2}
+          y2={absoluteBoundingBox?.height || 100}
+          stroke={lineColor}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
+  );
 };
 
 // Enhanced image rendering with improved circular handling and centering
@@ -809,6 +991,38 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
             );
           }
           
+          // Handle "vertically integrated" with bold styling
+          if (text.includes('vertically integrated')) {
+            return text.replace(
+              /vertically integrated/g,
+              '<span style="font-weight: 700; display: inline;">vertically integrated</span>'
+            );
+          }
+          
+          // Handle "EXPLORE MANUFACTURING @AGILITAS →" with proper inline alignment
+          if (text.includes('EXPLORE MANUFACTURING @AGILITAS →')) {
+            return text.replace(
+              /EXPLORE MANUFACTURING @AGILITAS →/g,
+              '<span style="color: #FFFFFF; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">EXPLORE MANUFACTURING @AGILITAS <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
+            );
+          }
+          
+          // Handle "EXPLORE BRAND @AGILITAS →" with proper inline alignment
+          if (text.includes('EXPLORE BRAND @AGILITAS →')) {
+            return text.replace(
+              /EXPLORE BRAND @AGILITAS →/g,
+              '<span style="color: #FFFFFF; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">EXPLORE BRAND @AGILITAS <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
+            );
+          }
+          
+          // Handle "EXPLORE STORES @AGILITAS →" with proper inline alignment
+          if (text.includes('EXPLORE STORES @AGILITAS →')) {
+            return text.replace(
+              /EXPLORE STORES @AGILITAS →/g,
+              '<span style="color: #FFFFFF; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">EXPLORE STORES @AGILITAS <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
+            );
+          }
+          
           return text;
         };
         
@@ -840,7 +1054,6 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
       case 'RECTANGLE':
       case 'ELLIPSE':
       case 'VECTOR':
-      case 'LINE':
         // Handle image fills
         if (imageUrl) {
           return (
@@ -865,6 +1078,62 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
         }
         
         // Handle regular shapes
+        return (
+          <div
+            style={baseStyles}
+            title={`${name} (${type})`}
+            data-figma-node-id={node.id}
+            data-figma-node-type={type}
+            data-figma-node-name={name}
+          >
+            {showDebug && (
+              <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+                <div className="font-bold">{name}</div>
+                <div>{type} - {baseStyles.width}×{baseStyles.height}</div>
+              </div>
+            )}
+            
+            {children?.map((child: any, index: number) => (
+              <FigmaRenderer
+                key={child.id || index}
+                node={child}
+                showDebug={showDebug}
+                parentBoundingBox={node.absoluteBoundingBox}
+                imageMap={imageMap}
+                parentMask={isMask}
+                parentMaskType={maskType}
+                fileKey={fileKey}
+                figmaToken={figmaToken}
+              />
+            ))}
+          </div>
+        );
+
+      case 'LINE':
+        // Handle geometric accent lines
+        if (node.geometricType || node.angleDegrees || node.lineStart || node.lineEnd) {
+          return (
+            <div
+              style={baseStyles}
+              title={`${name} (${type})`}
+              data-figma-node-id={node.id}
+              data-figma-node-type={type}
+              data-figma-node-name={name}
+            >
+              {showDebug && (
+                <div className="absolute -top-8 left-0 bg-pink-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+                  <div className="font-bold">{name}</div>
+                  <div>{type} - Geometric Line</div>
+                  <div className="text-pink-300">📐 {node.geometricType || 'angled'}</div>
+                </div>
+              )}
+              
+              {renderGeometricLine(node, baseStyles)}
+            </div>
+          );
+        }
+        
+        // Handle regular lines
         return (
           <div
             style={baseStyles}

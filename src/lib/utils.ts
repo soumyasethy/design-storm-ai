@@ -279,21 +279,29 @@ export function getSpecialColor(nodeName: string, defaultColor: string): string 
   
   const name = nodeName.toLowerCase();
   
-  // Handle specific color requirements
-  if (name.includes('all-in') || name.includes('accent')) {
+  // Handle specific color requirements for the Agilitas design
+  if (name.includes('all-in') || name.includes('accent') || name.includes('pink')) {
     return '#FF0A54'; // Pink accent
   }
   
-  if (name.includes('explore') || name.includes('learn more') || name.includes('button')) {
+  if (name.includes('explore') || name.includes('learn more') || name.includes('button') || name.includes('cta')) {
     return '#0066FF'; // Blue for interactive elements
   }
   
-  if (name.includes('heading') || name.includes('title')) {
-    return '#1E1E1E'; // Dark gray for headings
+  if (name.includes('heading') || name.includes('title') || name.includes('manufacturing') || name.includes('brands') || name.includes('stores')) {
+    return '#FFFFFF'; // White for section headings on dark backgrounds
   }
   
-  if (name.includes('body') || name.includes('paragraph')) {
-    return '#1E1E1E'; // Dark gray for body text
+  if (name.includes('body') || name.includes('paragraph') || name.includes('description')) {
+    return '#FFFFFF'; // White for body text on dark backgrounds
+  }
+  
+  if (name.includes('vertically integrated') || name.includes('integrated')) {
+    return '#1E1E1E'; // Dark gray for main headings on light backgrounds
+  }
+  
+  if (name.includes('geometric') || name.includes('line') || name.includes('accent-line')) {
+    return '#FF0A54'; // Pink for geometric accent lines
   }
   
   return defaultColor;
@@ -348,16 +356,24 @@ export function isCircularElement(node: any): boolean {
   const { width, height } = node.absoluteBoundingBox || {};
   const radius = node.cornerRadius || 0;
   
-  // Check by name
+  // Check by name for specific design elements
   if (name.includes('linkedin') || name.includes('instagram') || name.includes('youtube') ||
       name.includes('social') || name.includes('avatar') || name.includes('icon') ||
-      name.includes('circle') || name.includes('round')) {
+      name.includes('circle') || name.includes('round') || name.includes('logo') ||
+      name.includes('manufacturing') || name.includes('brands') || name.includes('stores')) {
     return true;
   }
   
-  // Check by dimensions and radius
+  // Check by dimensions and radius for perfect circles
   if (width && height && radius) {
     return Math.abs(width - height) < 2 && radius >= Math.min(width, height) / 2;
+  }
+  
+  // Check for square elements that should be circular (like footer icons)
+  if (width && height && Math.abs(width - height) < 2) {
+    if (name.includes('footer') || name.includes('social') || name.includes('icon')) {
+      return true;
+    }
   }
   
   return false;
@@ -574,4 +590,81 @@ export function generateTailwindClasses(node: any): string {
   }
   
   return classes.join(' ');
+}
+
+// Handle section transitions and angled cuts
+export function getSectionTransition(node: any): string | null {
+  if (!node || typeof node !== 'object') {
+    return null;
+  }
+  
+  const name = node.name?.toLowerCase() || '';
+  
+  // Determine section transition based on node name and context
+  if (name.includes('angled-cut') || name.includes('diagonal') || name.includes('transition')) {
+    if (name.includes('upward') || name.includes('positive')) {
+      return 'angled-cut';
+    }
+    if (name.includes('downward') || name.includes('negative')) {
+      return 'reverse-angled';
+    }
+    return 'diagonal';
+  }
+  
+  // Auto-detect based on section names
+  if (name.includes('manufacturing') || name.includes('brands') || name.includes('stores')) {
+    // These sections typically have angled transitions
+    return 'angled-cut';
+  }
+  
+  return null;
+}
+
+// Get geometric line properties for accent lines
+export function getGeometricLineProperties(node: any): {
+  geometricType: string;
+  angleDegrees: number;
+  lineColor: string;
+} {
+  if (!node || typeof node !== 'object') {
+    return {
+      geometricType: 'vertical',
+      angleDegrees: 0,
+      lineColor: '#FF0A54'
+    };
+  }
+  
+  const name = node.name?.toLowerCase() || '';
+  
+  // Determine line properties based on node name
+  if (name.includes('diagonal') || name.includes('angled')) {
+    return {
+      geometricType: 'diagonal',
+      angleDegrees: 45,
+      lineColor: '#FF0A54'
+    };
+  }
+  
+  if (name.includes('horizontal')) {
+    return {
+      geometricType: 'horizontal',
+      angleDegrees: 0,
+      lineColor: '#FF0A54'
+    };
+  }
+  
+  if (name.includes('vertical') || name.includes('accent')) {
+    return {
+      geometricType: 'vertical',
+      angleDegrees: 0,
+      lineColor: '#FF0A54'
+    };
+  }
+  
+  // Default to vertical pink accent line
+  return {
+    geometricType: 'vertical',
+    angleDegrees: 0,
+    lineColor: '#FF0A54'
+  };
 }
