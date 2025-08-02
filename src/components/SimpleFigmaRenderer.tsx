@@ -234,12 +234,16 @@ const FigmaImage: React.FC<{
     return (
       <div 
         style={{
-          width: '100%',
-          height: '100%',
+          ...imageStyles,
           backgroundImage: 'url(/placeholder.svg)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
+          border: showDebug ? '1px solid #ef4444' : 'none',
+          // Apply Figma's default styling as if it were a real image
+          ...getFillStyles(node.fills || [], node.id, {}),
+          ...getEnhancedStrokeStyles(node),
+          ...getEnhancedEffectStyles(node),
         }}
       >
         {showDebug && (
@@ -257,12 +261,12 @@ const FigmaImage: React.FC<{
       {imageLoading && (
         <div 
           style={{
-            width: '100%',
-            height: '100%',
+            ...imageStyles,
             backgroundImage: 'url(/placeholder.svg)',
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',
+            opacity: '0.7',
           }}
         />
       )}
@@ -2149,6 +2153,11 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat',
+                borderRadius: positionStyles.borderRadius,
+                // Apply Figma's default styling as if it were a real image
+                ...getFillStyles(node.fills || [], node.id, imageMap),
+                ...getEnhancedStrokeStyles(node),
+                ...getEnhancedEffectStyles(node),
               }}
             />
           </div>

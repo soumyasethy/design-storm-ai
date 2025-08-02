@@ -1,21 +1,4 @@
 <svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' viewBox='0 0 800 800'>
-  <!-- Background with 50% black fill -->
-  <rect fill='rgba(0,0,0,0.5)' width='800' height='800'/>
-  
-  <!-- Transparent outline border -->
-  <rect fill='none' stroke='rgba(0,0,0,0.3)' stroke-width='2' width='800' height='800'/>
-  
-  <!-- Image icon in center -->
-  <g transform='translate(400, 400)'>
-    <!-- Camera/Image icon -->
-    <rect fill='rgba(255,255,255,0.7)' x='-60' y='-40' width='120' height='80' rx='8'/>
-    <circle fill='rgba(255,255,255,0.9)' cx='0' cy='-10' r='15'/>
-    <rect fill='rgba(255,255,255,0.9)' x='-25' y='10' width='50' height='25' rx='4'/>
-  </g>
-  
-  <!-- Corner indicators -->
-  <circle fill='rgba(0,0,0,0.3)' cx='50' cy='50' r='8'/>
-  <circle fill='rgba(0,0,0,0.3)' cx='750' cy='50' r='8'/>
-  <circle fill='rgba(0,0,0,0.3)' cx='50' cy='750' r='8'/>
-  <circle fill='rgba(0,0,0,0.3)' cx='750' cy='750' r='8'/>
+  <!-- Clean transparent placeholder - no icons, no background colors -->
+  <!-- This will inherit Figma's default styling (border radius, padding, etc.) -->
 </svg>
