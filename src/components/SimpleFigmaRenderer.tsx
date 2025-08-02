@@ -462,7 +462,7 @@ const FigmaText: React.FC<{
       // Text color from fills
       if (segment.style.fills && segment.style.fills.length > 0) {
         const fill = segment.style.fills[0];
-        if (fill.type === 'SOLID' && fill.color) {
+      if (fill.type === 'SOLID' && fill.color) {
           const color = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
           spanStyles.push(`color: ${color}`);
         }
@@ -945,7 +945,14 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
     scale,
     skew,
     isMirrored,
-    mirrorAxis
+    mirrorAxis,
+    // Additional vector properties for complex shapes
+    vectorPaths,
+    vectorSegments,
+    vectorCurves,
+    vectorHandles,
+    vectorClosed,
+    vectorFillRule
   } = node;
   
   // Get stroke properties with enhanced vector stroke support
@@ -1056,6 +1063,30 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
   
   // Create SVG path for vector stroke with enhanced support
   const createVectorPath = () => {
+    // Handle complex vector paths if provided
+    if (vectorPaths && vectorPaths.length > 0) {
+      return vectorPaths[0].path || vectorPaths[0];
+    }
+    
+    // Handle vector segments if provided
+    if (vectorSegments && vectorSegments.length > 0) {
+      let path = '';
+      vectorSegments.forEach((segment: any, index: number) => {
+        if (index === 0) {
+          path += `M ${segment.start.x} ${segment.start.y}`;
+        }
+        if (segment.type === 'LINE') {
+          path += ` L ${segment.end.x} ${segment.end.y}`;
+        } else if (segment.type === 'CURVE') {
+          path += ` Q ${segment.handle1.x} ${segment.handle1.y} ${segment.end.x} ${segment.end.y}`;
+        }
+      });
+      if (vectorClosed) {
+        path += ' Z';
+      }
+      return path;
+    }
+    
     // Handle vector points if provided
     if (vectorPoints && vectorPoints.length >= 2) {
       const start = vectorPoints[0];
@@ -1091,7 +1122,33 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
       return `M ${startX} ${startY} L ${endX} ${endY}`;
     }
     
-    // Default vertical line
+    // Enhanced vector path detection based on dimensions and properties
+    // Check if it's a vertical line (tall and narrow)
+    if (height > width * 3) {
+      return `M ${width/2} 0 L ${width/2} ${height}`;
+    }
+    
+    // Check if it's a horizontal line (wide and short)
+    if (width > height * 3) {
+      return `M 0 ${height/2} L ${width} ${height/2}`;
+    }
+    
+    // Check if it's a diagonal line (similar width and height)
+    if (Math.abs(width - height) < Math.max(width, height) * 0.3) {
+      return `M 0 0 L ${width} ${height}`;
+    }
+    
+    // Check if it's a curved line (based on name or properties)
+    if (name?.toLowerCase().includes('curve') || 
+        name?.toLowerCase().includes('arc') ||
+        name?.toLowerCase().includes('circle')) {
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const radius = Math.min(width, height) / 2;
+      return `M ${centerX - radius} ${centerY} A ${radius} ${radius} 0 1 1 ${centerX + radius} ${centerY}`;
+    }
+    
+    // Default vertical line for unknown vector types
     return `M ${width/2} 0 L ${width/2} ${height}`;
   };
   
@@ -1456,6 +1513,8 @@ const FigmaShape: React.FC<{
     return renderSimpleEllipse(node, baseStyles);
   } else if (node.type === 'RECTANGLE') {
     return renderSimpleRectangle(node, baseStyles, showDebug, devMode);
+  } else if (node.type === 'VECTOR') {
+    return renderSimpleVectorStroke(node, baseStyles);
   }
   
   // Default shape rendering for other types
@@ -2004,7 +2063,6 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
 
     case 'RECTANGLE':
     case 'ELLIPSE':
-    case 'VECTOR':
       // Handle image fills
       if (imageUrl) {
         return (
