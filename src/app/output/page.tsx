@@ -798,17 +798,38 @@ export default function OutputPage() {
               console.error('❌ Error loading from localStorage:', err);
               // Clear invalid localStorage data
               localStorage.removeItem('figmaData');
-              console.log('📤 No valid data found, ready for file upload');
-              setLoading(false);
-              return;
             }
           } else {
-            // No data anywhere, show upload interface
-            console.log('📤 No data found, ready for file upload');
-            setLoading(false);
-            return;
+            // No stored data, try to load home-figma.json as default
+            try {
+              console.log('🏠 Loading default home-figma.json data');
+              const response = await fetch('/test-input/home-figma.json');
+              if (response.ok) {
+                const figmaData = await response.json();
+                console.log('✅ Loaded default home-figma.json data');
+                
+                setImageMap({});
+                setImageLoadingStatus('Processing default data...');
+                
+                setDataSource('Default Home Design');
+                setFigmaData(figmaData);
+                parseFigmaData(figmaData);
+                
+                // Store in localStorage for future use
+                localStorage.setItem('figmaData', JSON.stringify(figmaData));
+              } else {
+                console.log('⚠️ No default data available, showing empty state');
+              }
+            } catch (err) {
+              console.log('⚠️ Could not load default data:', err);
+            }
           }
         }
+        
+        // No data anywhere, show upload interface
+        console.log('📤 No data found, ready for file upload');
+        setLoading(false);
+        return;
         
       } catch (err) {
         console.error('❌ Error loading Figma data:', err);

@@ -1,4 +1,38 @@
+---
+alwaysApply: true
+---
+
 # Dynamic Figma Optimization Rules
+
+## Core Principles
+- Dont create new file. Always optimise within existing file furthur
+- Dont do auto commit
+- Never hardcode any values - always extract from design
+- Use CSS custom properties for all design tokens
+- Implement container queries over media queries
+- Create adaptive systems that scale intelligently
+- Generate fallbacks programmatically
+
+## Auto-extraction Patterns
+- Colors: Extract from image analysis, not manual input
+- Spacing: Calculate from design proportions  
+- Typography: Generate scales from hierarchy analysis
+- Layout: Detect patterns and create flexible systems
+- Components: Identify reusable elements automatically
+
+## Dynamic Implementation
+- All CSS values must be calculated or extracted
+- Use clamp() for fluid scaling
+- Implement progressive enhancement
+- Create self-adapting component systems
+- Generate responsive behavior from design analysis
+
+## Quality Gates
+- Zero hardcoded hex colors
+- Zero fixed pixel values  
+- Zero manual breakpoints
+- All systems must be design-agnostic
+- Changes must work for any Figma design# Dynamic Figma Optimization Rules
 
 ## Core Principles
 - Dont create new file. Always optimise within existing file furthur

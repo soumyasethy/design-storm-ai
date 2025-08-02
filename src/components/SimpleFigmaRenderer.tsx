@@ -199,7 +199,9 @@ const FigmaImage: React.FC<{
                       node.name?.toLowerCase().includes('linkedin') || 
                       node.name?.toLowerCase().includes('instagram') || 
                       node.name?.toLowerCase().includes('youtube') ||
-                      node.name?.toLowerCase().includes('social');
+                      node.name?.toLowerCase().includes('social') ||
+                      node.name?.toLowerCase().includes('avatar') ||
+                      node.name?.toLowerCase().includes('profile');
   
   const scaleMode = getImageScaleMode(node);
   
@@ -226,7 +228,6 @@ const FigmaImage: React.FC<{
       <div 
         style={{
           ...imageStyles,
-          backgroundColor: '#f3f4f6',
           backgroundImage: 'url(/placeholder.svg)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
@@ -234,12 +235,8 @@ const FigmaImage: React.FC<{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: '#9ca3af',
-          fontSize: '12px',
         }}
-      >
-        <span>Image failed to load</span>
-      </div>
+      />
     );
   }
   
@@ -290,7 +287,7 @@ const FigmaText: React.FC<{
   
   const textStyles: React.CSSProperties = {
     // Font family
-            fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
+    fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
     
     // Font size
     fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
@@ -316,46 +313,214 @@ const FigmaText: React.FC<{
            rgbaToCss(node.fills[0].color.r, node.fills[0].color.g, node.fills[0].color.b, node.fills[0].color.a) : 
            'inherit',
     
-    // Text wrapping
+    // Enhanced text wrapping for better fidelity
     whiteSpace: 'pre-wrap',
     overflowWrap: 'break-word',
     wordBreak: 'break-word',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    alignItems: style?.textAlignHorizontal === 'CENTER' ? 'center' : 
+              style?.textAlignHorizontal === 'RIGHT' ? 'flex-end' : 'flex-start',
   };
   
-  // Enhanced rich text processing
+  // Enhanced rich text processing with character style overrides
   const processRichText = (text: string) => {
-    // Handle special text patterns for rich formatting
-    if (text.includes('All-In.')) {
-      return text.replace(
-        /All-In\./g, 
-        '<span style="color: #FF0A54; font-weight: 700;">All-In.</span>'
-      );
+    // If no character style overrides, use simple styling
+    if (!node.characterStyleOverrides || !node.styleOverrideTable) {
+      return text;
+    }
+
+    const { characterStyleOverrides, styleOverrideTable } = node;
+    const segments: Array<{ text: string; style: any; classes: string[] }> = [];
+    let currentStyle = characterStyleOverrides[0] || 0;
+    let currentText = '';
+
+    // Process each character and group consecutive characters with same style
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const styleOverride = characterStyleOverrides[i] || 0;
+      
+      // Handle line breaks and paragraph structure
+      if (char === '\n') {
+        if (currentText) {
+          const styleKey = currentStyle.toString();
+          const styleData = styleOverrideTable[styleKey] || style;
+          const classes = getTailwindClasses(styleData, node.fills, styleOverrideTable);
+          
+          segments.push({
+            text: currentText,
+            style: styleData,
+            classes: classes
+          });
+          currentText = '';
+        }
+        segments.push({
+          text: '<br>',
+          style: null,
+          classes: []
+        });
+        continue;
+      }
+
+      // If style changes, create a new segment
+      if (styleOverride !== currentStyle && currentText) {
+        const styleKey = currentStyle.toString();
+        const styleData = styleOverrideTable[styleKey] || style;
+        const classes = getTailwindClasses(styleData, node.fills, styleOverrideTable);
+        
+        segments.push({
+          text: currentText,
+          style: styleData,
+          classes: classes
+        });
+        currentText = '';
+        currentStyle = styleOverride;
+      }
+
+      currentText += char;
+    }
+
+    // Add the last segment
+    if (currentText) {
+      const styleKey = currentStyle.toString();
+      const styleData = styleOverrideTable[styleKey] || style;
+      const classes = getTailwindClasses(styleData, node.fills, styleOverrideTable);
+      
+      segments.push({
+        text: currentText,
+        style: styleData,
+        classes: classes
+      });
+    }
+
+    // Generate HTML with Tailwind classes
+    const html = segments.map(segment => {
+      if (segment.text === '<br>') {
+        return '<br>';
+      }
+      
+      const classes = segment.classes.join(' ');
+      return classes ? `<span class="${classes}">${segment.text}</span>` : segment.text;
+    }).join('');
+
+    return html;
+  };
+
+  // Convert Figma styles to Tailwind CSS classes
+  const getTailwindClasses = (textStyle: any, fills: any[], styleOverrideTable?: any): string[] => {
+    const classes: string[] = [];
+
+    // Font family
+    if (textStyle?.fontFamily) {
+      const fontFamily = getFontFamilyWithFallback(textStyle.fontFamily);
+      if (fontFamily.includes('Inter')) {
+        classes.push('font-inter');
+      } else if (fontFamily.includes('IBM Plex Sans')) {
+        classes.push('font-ibm-plex-sans');
+      } else if (fontFamily.includes('Space Grotesk')) {
+        classes.push('font-space-grotesk');
+      } else {
+        classes.push('font-sans');
+      }
+    }
+
+    // Font weight
+    if (textStyle?.fontWeight) {
+      const weight = textStyle.fontWeight;
+      if (weight === 400) classes.push('font-normal');
+      else if (weight === 500) classes.push('font-medium');
+      else if (weight === 600) classes.push('font-semibold');
+      else if (weight === 700) classes.push('font-bold');
+      else if (weight === 800) classes.push('font-extrabold');
+      else if (weight === 900) classes.push('font-black');
+      else classes.push(`font-[${weight}]`);
+    }
+
+    // Font size
+    if (textStyle?.fontSize) {
+      const size = textStyle.fontSize;
+      if (size <= 12) classes.push('text-xs');
+      else if (size <= 14) classes.push('text-sm');
+      else if (size <= 16) classes.push('text-base');
+      else if (size <= 18) classes.push('text-lg');
+      else if (size <= 20) classes.push('text-xl');
+      else if (size <= 24) classes.push('text-2xl');
+      else if (size <= 30) classes.push('text-3xl');
+      else if (size <= 36) classes.push('text-4xl');
+      else classes.push(`text-[${size}px]`);
+    }
+
+    // Line height
+    if (textStyle?.lineHeightPx) {
+      const lineHeight = textStyle.lineHeightPx;
+      const fontSize = textStyle.fontSize || 16;
+      const ratio = lineHeight / fontSize;
+      
+      if (ratio <= 1.1) classes.push('leading-tight');
+      else if (ratio <= 1.3) classes.push('leading-snug');
+      else if (ratio <= 1.5) classes.push('leading-normal');
+      else if (ratio <= 1.7) classes.push('leading-relaxed');
+      else if (ratio <= 2.0) classes.push('leading-loose');
+      else classes.push(`leading-[${lineHeight}px]`);
+    }
+
+    // Letter spacing
+    if (textStyle?.letterSpacing) {
+      const spacing = textStyle.letterSpacing;
+      if (spacing === 0) classes.push('tracking-normal');
+      else if (spacing < 0) classes.push('tracking-tighter');
+      else if (spacing <= 0.5) classes.push('tracking-wide');
+      else if (spacing <= 1) classes.push('tracking-wider');
+      else if (spacing <= 2) classes.push('tracking-widest');
+      else classes.push(`tracking-[${spacing}px]`);
+    }
+
+    // Text decoration
+    if (textStyle?.textDecoration) {
+      if (textStyle.textDecoration === 'underline') {
+        classes.push('underline', 'decoration-current', 'decoration-1', 'underline-offset-2');
+      } else if (textStyle.textDecoration === 'line-through') {
+        classes.push('line-through', 'decoration-current', 'decoration-1');
+      }
+    }
+
+    // Text color - prioritize style-specific fills, then fall back to node fills
+    let colorApplied = false;
+    if (textStyle?.fills && textStyle.fills.length > 0) {
+      const fill = textStyle.fills[0];
+      if (fill.type === 'SOLID' && fill.color) {
+        const hexColor = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
+        classes.push(`text-[${hexColor}]`);
+        colorApplied = true;
+      }
     }
     
-    if (text.includes('Explore →')) {
-      return text.replace(
-        /Explore →/g,
-        '<span style="color: #0066FF; text-decoration: underline; cursor: pointer; display: inline-flex; align-items: center; gap: 2px;">Explore <span style="font-size: 0.9em;">→</span></span>'
-      );
+    // Fall back to node fills if no color was applied
+    if (!colorApplied && fills && fills.length > 0) {
+      const fill = fills[0];
+      if (fill.type === 'SOLID' && fill.color) {
+        const hexColor = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
+        classes.push(`text-[${hexColor}]`);
+      }
     }
-    
-    // Handle bold text patterns for emphasis
-    if (text.includes('largest') || text.includes('futuristic') || text.includes('vertically integrated')) {
-      return text
-        .replace(/(largest)/g, '<span style="font-weight: 700;">$1</span>')
-        .replace(/(futuristic)/g, '<span style="font-weight: 700;">$1</span>')
-        .replace(/(vertically integrated)/g, '<span style="font-weight: 700;">$1</span>');
+
+    // Text alignment
+    if (textStyle?.textAlignHorizontal) {
+      if (textStyle.textAlignHorizontal === 'CENTER') classes.push('text-center');
+      else if (textStyle.textAlignHorizontal === 'RIGHT') classes.push('text-right');
+      else if (textStyle.textAlignHorizontal === 'JUSTIFIED') classes.push('text-justify');
+      else classes.push('text-left');
     }
-    
-    // Handle "Learn More →" buttons with proper spacing
-    if (text.includes('Learn More →')) {
-      return text.replace(
-        /Learn More →/g,
-        '<span style="color: #0066FF; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">Learn More <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
-      );
+
+    // Text case
+    if (textStyle?.textCase) {
+      if (textStyle.textCase === 'UPPER') classes.push('uppercase');
+      else if (textStyle.textCase === 'LOWER') classes.push('lowercase');
+      else if (textStyle.textCase === 'TITLE') classes.push('capitalize');
     }
-    
-    return text;
+
+    return classes;
   };
 
   const combinedStyles = {
@@ -1377,7 +1542,9 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   const { type, name, absoluteBoundingBox, children, fills, strokes, cornerRadius, characters, style, opacity, effects } = node;
 
   // Calculate positioning styles with comprehensive support
-  const positionStyles: React.CSSProperties = {};
+  const positionStyles: React.CSSProperties = {
+    overflow: 'hidden', // Prevent content from leaking outside containers
+  };
   
   if (absoluteBoundingBox) {
     const { x, y, width, height } = absoluteBoundingBox;
