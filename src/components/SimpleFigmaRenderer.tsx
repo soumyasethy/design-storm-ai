@@ -492,8 +492,17 @@ const FigmaText: React.FC<{
     return html;
   };
 
-  // Get proper text alignment
-  const textAlignment = getTextAlign(style?.textAlignHorizontal || 'LEFT');
+  // Get proper text alignment with visual design override
+  let textAlignment = getTextAlign(style?.textAlignHorizontal || 'LEFT');
+  
+  // Override alignment for specific cases where Figma JSON doesn't match visual design
+  // "Brand Spotlight" should be left-aligned despite JSON saying CENTER
+  if (characters?.includes('Brand Spotlight') || 
+      characters?.includes('Manufacturing that moves') ||
+      characters?.includes('Brands that Define Movement') ||
+      characters?.includes('Retail that Energizes')) {
+    textAlignment = 'left';
+  }
   
   const combinedStyles = {
     ...baseStyles,
@@ -527,6 +536,9 @@ const FigmaText: React.FC<{
           <div className="text-xs">{characters.substring(0, 20)}{characters.length > 20 ? '...' : ''}</div>
           <div>Font: {style?.fontFamily} {style?.fontSize}px</div>
           <div>Align: {style?.textAlignHorizontal} → {textAlignment}</div>
+          {textAlignment !== getTextAlign(style?.textAlignHorizontal || 'LEFT') && (
+            <div className="text-yellow-300">⚠️ Override applied</div>
+          )}
         </div>
       )}
       <span 
