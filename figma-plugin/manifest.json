@@ -6,7 +6,8 @@
   "ui": "ui.html",
   "editorType": ["figma", "dev"],
   "networkAccess": {
-    "allowedDomains": ["*"]
+    "allowedDomains": ["*"],
+    "reasoning": "Plugin needs to export design data and images to external services for code generation"
   },
   "permissions": [
     "currentuser",
