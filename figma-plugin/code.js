@@ -87,19 +87,23 @@ async function exportSelectedNodes() {
     throw new Error('No nodes selected. Please select one or more elements.');
   }
   
+  console.log(`🎯 Exporting ${selection.length} selected nodes:`, selection.map(n => n.name));
+  
   const exportData = {
     selection: [],
     assets: [],
     images: [],
     fonts: [],
+    imageMap: {},
     metadata: {
       selectionCount: selection.length,
       exportedAt: new Date().toISOString(),
-      pluginVersion: '1.0.0'
+      pluginVersion: '1.0.0',
+      exportedBy: 'DesignStorm Plugin'
     }
   };
   
-  // Extract selected nodes
+  // Extract selected nodes with full hierarchy
   for (const node of selection) {
     const nodeData = await extractNodeData(node);
     exportData.selection.push(nodeData);
@@ -109,6 +113,11 @@ async function exportSelectedNodes() {
   exportData.assets = await extractAssetsFromNodes(selection);
   exportData.images = await extractImagesFromNodes(selection);
   exportData.fonts = await extractFontsFromNodes(selection);
+  
+  // Build image map for selected nodes
+  exportData.imageMap = await buildImageMap(exportData.images);
+  
+  console.log(`✅ Exported ${exportData.images.length} images from selection`);
   
   return exportData;
 }
@@ -316,7 +325,10 @@ async function extractAllImages() {
   // Traverse all nodes to find images
   const allNodes = getAllNodes(figma.root);
   
+  console.log(`🔍 Scanning ${allNodes.length} nodes for images...`);
+  
   for (const node of allNodes) {
+    // Check fills for images
     if (node.fills) {
       for (const fill of node.fills) {
         if (fill.type === 'IMAGE' && fill.imageHash) {
@@ -330,17 +342,42 @@ async function extractAllImages() {
                 nodeName: node.name,
                 bytes: imageBytes,
                 width: image.width,
-                height: image.height
+                height: image.height,
+                type: 'fill'
               });
+              console.log(`📸 Found image in fills: ${node.name} (${image.width}x${image.height})`);
             }
           } catch (error) {
-            console.warn('Could not extract image:', fill.imageHash, error);
+            console.warn('Could not extract image from fills:', fill.imageHash, error);
           }
         }
       }
     }
+    
+    // Check if node itself is an image (like imported images)
+    if (node.type === 'RECTANGLE' && node.name.toLowerCase().includes('image')) {
+      try {
+        const image = figma.getImageByHash(node.id);
+        if (image) {
+          const imageBytes = await image.getBytesAsync();
+          images.push({
+            hash: node.id,
+            nodeId: node.id,
+            nodeName: node.name,
+            bytes: imageBytes,
+            width: image.width,
+            height: image.height,
+            type: 'rectangle'
+          });
+          console.log(`📸 Found image rectangle: ${node.name} (${image.width}x${image.height})`);
+        }
+      } catch (error) {
+        // Not all rectangles are images, so this is expected
+      }
+    }
   }
   
+  console.log(`✅ Extracted ${images.length} images total`);
   return images;
 }
 
@@ -512,6 +549,7 @@ async function extractNodeAssets(node) {
 async function extractNodeImages(node) {
   const images = [];
   
+  // Check fills for images
   if (node.fills) {
     for (const fill of node.fills) {
       if (fill.type === 'IMAGE' && fill.imageHash) {
@@ -525,13 +563,37 @@ async function extractNodeImages(node) {
               nodeName: node.name,
               bytes: imageBytes,
               width: image.width,
-              height: image.height
+              height: image.height,
+              type: 'fill'
             });
+            console.log(`📸 Found image in node: ${node.name} (${image.width}x${image.height})`);
           }
         } catch (error) {
-          console.warn('Could not extract image:', error);
+          console.warn('Could not extract image from node:', node.name, error);
         }
       }
+    }
+  }
+  
+  // Check if node itself is an image
+  if (node.type === 'RECTANGLE' && (node.name.toLowerCase().includes('image') || node.name.toLowerCase().includes('photo'))) {
+    try {
+      const image = figma.getImageByHash(node.id);
+      if (image) {
+        const imageBytes = await image.getBytesAsync();
+        images.push({
+          hash: node.id,
+          nodeId: node.id,
+          nodeName: node.name,
+          bytes: imageBytes,
+          width: image.width,
+          height: image.height,
+          type: 'rectangle'
+        });
+        console.log(`📸 Found image rectangle: ${node.name} (${image.width}x${image.height})`);
+      }
+    } catch (error) {
+      // Not all rectangles are images, so this is expected
     }
   }
   

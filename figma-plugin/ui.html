@@ -334,6 +334,16 @@
       </div>
     </div>
     
+    <div class="info-box" style="background: #f0f9ff; border-color: #7dd3fc;">
+      <div class="info-title" style="color: #0369a1;">💡 How to Select Frames</div>
+      <div class="info-text" style="color: #0c4a6e;">
+        • <strong>Click on any frame or element</strong> in your design<br>
+        • <strong>Hold Shift</strong> to select multiple elements<br>
+        • <strong>Select a parent frame</strong> to include all children<br>
+        • <strong>Use "Export Selected Elements"</strong> for focused exports
+      </div>
+    </div>
+    
     <div id="progress-section" class="section hidden">
       <div class="progress">
         <div id="progress-bar" class="progress-bar"></div>
@@ -411,8 +421,12 @@
       downloadSection.classList.add('hidden');
       statsSection.classList.add('hidden');
       
-      // Update progress
-      updateProgress(10, 'Starting export...');
+      // Update progress with better messaging
+      if (type === 'all') {
+        updateProgress(10, 'Starting complete design export...');
+      } else {
+        updateProgress(10, 'Starting selection export...');
+      }
       
       try {
         // Send message to plugin
@@ -422,7 +436,11 @@
           }
         }, '*');
         
-        updateProgress(50, 'Processing design data...');
+        updateProgress(30, 'Scanning for images and assets...');
+        
+        // Simulate progress updates
+        setTimeout(() => updateProgress(60, 'Extracting image data...'), 2000);
+        setTimeout(() => updateProgress(80, 'Building export package...'), 4000);
         
       } catch (error) {
         showError('Failed to start export: ' + error.message);
