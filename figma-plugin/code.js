@@ -378,32 +378,44 @@ async function extractNodeData(node) {
 async function extractFills(fills) {
   const extractedFills = [];
   
+  // Check if fills is iterable
+  if (!fills || !Array.isArray(fills)) {
+    console.warn('Fills is not an array:', fills);
+    return extractedFills;
+  }
+  
   for (const fill of fills) {
-    const extractedFill = {
-      type: fill.type,
-      visible: fill.visible,
-      opacity: fill.opacity,
-      blendMode: fill.blendMode
-    };
-    
-    if (fill.type === 'SOLID') {
-      extractedFill.color = fill.color;
-    } else if (fill.type === 'GRADIENT_LINEAR' || fill.type === 'GRADIENT_RADIAL' || fill.type === 'GRADIENT_ANGULAR' || fill.type === 'GRADIENT_DIAMOND') {
-      extractedFill.gradientTransform = fill.gradientTransform;
-      extractedFill.gradientStops = fill.gradientStops;
-    } else if (fill.type === 'IMAGE') {
-      // Extract image data
-      const imageData = await extractImageData(fill);
-      extractedFill.image = imageData;
+    try {
+      if (!fill) continue;
       
-      // Also add imageRef for compatibility with existing renderer
-      if (imageData.hash && imageData.imageBytes) {
-        extractedFill.imageRef = imageData.hash;
-        extractedFill.imageUrl = `data:image/png;base64,${bytesToBase64(new Uint8Array(imageData.imageBytes))}`;
+      const extractedFill = {
+        type: fill.type,
+        visible: fill.visible,
+        opacity: fill.opacity,
+        blendMode: fill.blendMode
+      };
+      
+      if (fill.type === 'SOLID') {
+        extractedFill.color = fill.color;
+      } else if (fill.type === 'GRADIENT_LINEAR' || fill.type === 'GRADIENT_RADIAL' || fill.type === 'GRADIENT_ANGULAR' || fill.type === 'GRADIENT_DIAMOND') {
+        extractedFill.gradientTransform = fill.gradientTransform;
+        extractedFill.gradientStops = fill.gradientStops;
+      } else if (fill.type === 'IMAGE') {
+        // Extract image data
+        const imageData = await extractImageData(fill);
+        extractedFill.image = imageData;
+        
+        // Also add imageRef for compatibility with existing renderer
+        if (imageData.hash && imageData.imageBytes) {
+          extractedFill.imageRef = imageData.hash;
+          extractedFill.imageUrl = `data:image/png;base64,${bytesToBase64(new Uint8Array(imageData.imageBytes))}`;
+        }
       }
+      
+      extractedFills.push(extractedFill);
+    } catch (error) {
+      console.warn('Error processing fill:', error);
     }
-    
-    extractedFills.push(extractedFill);
   }
   
   return extractedFills;
@@ -473,69 +485,82 @@ async function extractAllAssets() {
 async function extractAllImages() {
   const images = [];
   
-  // Traverse all nodes to find images
-  const allNodes = getAllNodes(figma.root);
-  
-  console.log(`🔍 Scanning ${allNodes.length} nodes for images...`);
-  
-  // Limit the number of images to prevent freezing
-  let imageCount = 0;
-  const maxImages = 50; // Limit to prevent UI freezing
-  
-  for (const node of allNodes) {
-    if (imageCount >= maxImages) {
-      console.log(`⚠️ Reached maximum image limit (${maxImages}), stopping extraction`);
-      break;
+  try {
+    // Traverse all nodes to find images
+    const allNodes = getAllNodes(figma.root);
+    
+    if (!allNodes || !Array.isArray(allNodes)) {
+      console.warn('allNodes is not an array:', allNodes);
+      return images;
     }
     
-    // Check fills for images
-    if (node.fills) {
-      for (const fill of node.fills) {
-        if (fill.type === 'IMAGE' && fill.imageHash && imageCount < maxImages) {
+    console.log(`🔍 Scanning ${allNodes.length} nodes for images...`);
+    
+    // Limit the number of images to prevent freezing
+    let imageCount = 0;
+    const maxImages = 50; // Limit to prevent UI freezing
+    
+    for (const node of allNodes) {
+      if (imageCount >= maxImages) {
+        console.log(`⚠️ Reached maximum image limit (${maxImages}), stopping extraction`);
+        break;
+      }
+      
+      try {
+        // Check fills for images
+        if (node.fills && Array.isArray(node.fills)) {
+          for (const fill of node.fills) {
+            if (fill && fill.type === 'IMAGE' && fill.imageHash && imageCount < maxImages) {
+              try {
+                const image = figma.getImageByHash(fill.imageHash);
+                if (image) {
+                  // For now, just store metadata without bytes to prevent freezing
+                  images.push({
+                    hash: fill.imageHash,
+                    nodeId: node.id,
+                    nodeName: node.name,
+                    width: image.width,
+                    height: image.height,
+                    type: 'fill',
+                    hasBytes: false // Flag to indicate we don't have bytes
+                  });
+                  imageCount++;
+                  console.log(`📸 Found image in fills: ${node.name} (${image.width}x${image.height})`);
+                }
+              } catch (error) {
+                console.warn('Could not extract image from fills:', fill.imageHash, error);
+              }
+            }
+          }
+        }
+        
+        // Check if node itself is an image (like imported images)
+        if (node.type === 'RECTANGLE' && node.name && node.name.toLowerCase().includes('image') && imageCount < maxImages) {
           try {
-            const image = figma.getImageByHash(fill.imageHash);
+            const image = figma.getImageByHash(node.id);
             if (image) {
-              // For now, just store metadata without bytes to prevent freezing
               images.push({
-                hash: fill.imageHash,
+                hash: node.id,
                 nodeId: node.id,
                 nodeName: node.name,
                 width: image.width,
                 height: image.height,
-                type: 'fill',
+                type: 'rectangle',
                 hasBytes: false // Flag to indicate we don't have bytes
               });
               imageCount++;
-              console.log(`📸 Found image in fills: ${node.name} (${image.width}x${image.height})`);
+              console.log(`📸 Found image rectangle: ${node.name} (${image.width}x${image.height})`);
             }
           } catch (error) {
-            console.warn('Could not extract image from fills:', fill.imageHash, error);
+            // Not all rectangles are images, so this is expected
           }
         }
-      }
-    }
-    
-    // Check if node itself is an image (like imported images)
-    if (node.type === 'RECTANGLE' && node.name.toLowerCase().includes('image') && imageCount < maxImages) {
-      try {
-        const image = figma.getImageByHash(node.id);
-        if (image) {
-          images.push({
-            hash: node.id,
-            nodeId: node.id,
-            nodeName: node.name,
-            width: image.width,
-            height: image.height,
-            type: 'rectangle',
-            hasBytes: false // Flag to indicate we don't have bytes
-          });
-          imageCount++;
-          console.log(`📸 Found image rectangle: ${node.name} (${image.width}x${image.height})`);
-        }
       } catch (error) {
-        // Not all rectangles are images, so this is expected
+        console.warn('Error processing node for images:', error);
       }
     }
+  } catch (error) {
+    console.warn('Error in extractAllImages:', error);
   }
   
   console.log(`✅ Extracted ${images.length} images total (metadata only)`);
@@ -861,10 +886,16 @@ async function extractNodeFonts(node) {
 function getAllNodes(node) {
   const nodes = [node];
   
-  if ('children' in node && node.children) {
-    for (const child of node.children) {
-      nodes.push(...getAllNodes(child));
+  try {
+    if (node && 'children' in node && node.children && Array.isArray(node.children)) {
+      for (const child of node.children) {
+        if (child) {
+          nodes.push(...getAllNodes(child));
+        }
+      }
     }
+  } catch (error) {
+    console.warn('Error getting all nodes:', error);
   }
   
   return nodes;
