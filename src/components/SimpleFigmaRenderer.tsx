@@ -319,7 +319,6 @@ const FigmaText: React.FC<{
            'inherit',
     
     // Enhanced text wrapping for better fidelity
-    whiteSpace: 'pre-wrap',
     overflowWrap: 'break-word',
     wordBreak: 'break-word',
     display: 'flex',
@@ -328,12 +327,23 @@ const FigmaText: React.FC<{
     alignItems: style?.textAlignHorizontal === 'CENTER' ? 'center' : 
               style?.textAlignHorizontal === 'RIGHT' ? 'flex-end' : 'flex-start',
     
-    // Prevent word breaking for titles and headings
+    // Enhanced text fitting with buffer space
     ...(style?.fontSize && style.fontSize > 24 ? {
       whiteSpace: 'nowrap',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis'
-    } : {}),
+      overflow: 'visible', // Allow overflow instead of truncating
+      textOverflow: 'clip', // Remove ellipsis
+      width: 'auto', // Let text determine width
+      minWidth: 'fit-content', // Ensure minimum width fits content
+      paddingRight: '10px', // Add buffer space
+      paddingLeft: '10px', // Add buffer space
+    } : {
+      // For smaller text, allow wrapping but add buffer
+      whiteSpace: 'pre-wrap',
+      paddingRight: '5px',
+      paddingLeft: '5px',
+      width: 'auto',
+      minWidth: 'fit-content',
+    }),
   };
   
   // Enhanced rich text processing with character style overrides
@@ -511,9 +521,23 @@ const FigmaText: React.FC<{
     }
 
     // White space handling for better text wrapping
-    styles.push('white-space: pre-wrap');
-    styles.push('overflow-wrap: break-word');
-    styles.push('word-break: break-word');
+    if (textStyle?.fontSize && textStyle.fontSize > 24) {
+      styles.push('white-space: nowrap');
+      styles.push('overflow: visible');
+      styles.push('text-overflow: clip');
+      styles.push('width: auto');
+      styles.push('min-width: fit-content');
+      styles.push('padding-right: 10px');
+      styles.push('padding-left: 10px');
+    } else {
+      styles.push('white-space: pre-wrap');
+      styles.push('overflow-wrap: break-word');
+      styles.push('word-break: break-word');
+      styles.push('padding-right: 5px');
+      styles.push('padding-left: 5px');
+      styles.push('width: auto');
+      styles.push('min-width: fit-content');
+    }
 
     return styles.join('; ');
   };
@@ -662,17 +686,25 @@ const FigmaText: React.FC<{
         </div>
       )}
       <span 
-        className="block w-full h-full leading-none"
+        className="block leading-none"
         style={{
-          whiteSpace: 'pre-wrap',
-          overflowWrap: 'break-word',
-          wordBreak: 'break-word',
-          // Prevent word breaking for titles and headings
+          width: 'auto',
+          minWidth: 'fit-content',
+          height: 'auto',
+          // Enhanced text fitting with buffer space
           ...(style?.fontSize && style.fontSize > 24 ? {
             whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis'
-          } : {}),
+            overflow: 'visible',
+            textOverflow: 'clip',
+            paddingRight: '10px',
+            paddingLeft: '10px',
+          } : {
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'break-word',
+            wordBreak: 'break-word',
+            paddingRight: '5px',
+            paddingLeft: '5px',
+          }),
         }}
         dangerouslySetInnerHTML={{ __html: processedText }}
       />
@@ -1552,7 +1584,7 @@ const renderSimpleRectangle = (node: any, baseStyles: React.CSSProperties, showD
         height: `${height}px`,
         border: borderStyle,
         borderRadius: borderRadius,
-        boxSizing: 'border-box',
+    boxSizing: 'border-box',
         mixBlendMode: blendMode?.toLowerCase().replace('_', '-') || 'normal',
         transform: transform,
         clipPath: clipPath || undefined,
@@ -1630,7 +1662,7 @@ const FigmaShape: React.FC<{
     ...shapeStyles,
   };
 
-  return (
+    return (
     <div 
       style={combinedStyles}
       title={`${node.name} (${node.type})`}
@@ -1646,8 +1678,8 @@ const FigmaShape: React.FC<{
           <div>Effects: {effects?.length || 0}</div>
         </div>
       )}
-    </div>
-  );
+      </div>
+    );
 };
 
 // Main SimpleFigmaRenderer component
@@ -1697,18 +1729,31 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   if (absoluteBoundingBox) {
     const { x, y, width, height } = absoluteBoundingBox;
     
+    // Add buffer for text nodes to prevent truncation
+    const isTextNode = type === 'TEXT';
+    const bufferWidth = isTextNode ? 40 : 0; // Add 40px buffer for text nodes
+    const adjustedWidth = width + bufferWidth;
+    
     if (parentBoundingBox) {
       // Calculate relative positioning for children
       positionStyles.position = 'absolute';
       positionStyles.left = `${x - parentBoundingBox.x}px`;
       positionStyles.top = `${y - parentBoundingBox.y}px`;
-      positionStyles.width = `${width}px`;
+      positionStyles.width = `${adjustedWidth}px`;
       positionStyles.height = `${height}px`;
+      // Allow text to overflow for better visibility
+      if (isTextNode) {
+        positionStyles.overflow = 'visible';
+      }
     } else {
       // Root node positioning
       positionStyles.position = 'relative';
-      positionStyles.width = `${width}px`;
+      positionStyles.width = `${adjustedWidth}px`;
       positionStyles.height = `${height}px`;
+      // Allow text to overflow for better visibility
+      if (isTextNode) {
+        positionStyles.overflow = 'visible';
+      }
     }
   }
   
@@ -1874,8 +1919,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   switch (type) {
     case 'CANVAS':
     case 'PAGE':
-      return (
-        <div 
+  return (
+    <div 
           className="relative"
           style={{
             width: `${node.absoluteBoundingBox?.width || 0}px`,
@@ -1953,7 +1998,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
           className="relative"
           style={layoutStyles}
           title={`${name} (${type})`}
-          data-figma-node-id={node.id}
+      data-figma-node-id={node.id}
           data-figma-node-type={type}
           data-figma-node-name={name}
         >
@@ -2069,8 +2114,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                       // Fallback to regular SimpleFigmaRenderer for other types
                       return (
                         <g key={child.id || index} mask={childMaskMode}>
-                          <SimpleFigmaRenderer
-                            node={child}
+            <SimpleFigmaRenderer 
+              node={child} 
                             showDebug={false}
                             parentBoundingBox={node.absoluteBoundingBox}
                             imageMap={imageMap}
