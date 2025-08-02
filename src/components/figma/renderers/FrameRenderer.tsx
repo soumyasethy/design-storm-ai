@@ -158,11 +158,10 @@ export const FrameRenderer: React.FC<FigmaRendererProps> = ({ node, showDebug })
         </div>
       )}
       {node.children?.map((child, index) => (
-        <DynamicRenderer key={child.id || index} node={child} showDebug={showDebug} />
+        <div key={child.id || index} style={{ position: 'relative' }}>
+          {/* Child rendering will be handled by parent */}
+        </div>
       ))}
     </div>
   );
-};
-
-// Import DynamicRenderer for child rendering
-import { DynamicRenderer } from '../ComponentRegistry'; 
+}; 

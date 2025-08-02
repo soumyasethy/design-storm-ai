@@ -192,7 +192,7 @@ export const computeStyles = (node: FigmaNode): React.CSSProperties => {
   
   // Blend mode
   if (node.blendMode) {
-    styles.mixBlendMode = node.blendMode.toLowerCase().replace('_', '-');
+    styles.mixBlendMode = node.blendMode.toLowerCase().replace('_', '-') as any;
   }
   
   return styles;
@@ -344,7 +344,7 @@ export const getRenderer = (type: string): React.FC<FigmaRendererProps> => {
 };
 
 // Default renderer for unknown types
-export const DefaultRenderer: React.FC<FigmaRendererProps> = ({ node, showDebug }) => {
+export const DefaultRenderer: React.FC<FigmaRendererProps> = ({ node, showDebug, ...props }) => {
   const styles = {
     ...computeStyles(node),
     ...computeFillStyles(node),
@@ -368,7 +368,7 @@ export const DefaultRenderer: React.FC<FigmaRendererProps> = ({ node, showDebug 
         </div>
       )}
       {node.children?.map((child, index) => (
-        <DynamicRenderer key={child.id || index} node={child} showDebug={showDebug} />
+        <DynamicRenderer key={child.id || index} node={child} showDebug={showDebug} {...props} />
       ))}
     </div>
   );

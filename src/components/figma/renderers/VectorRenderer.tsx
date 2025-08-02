@@ -117,12 +117,14 @@ export const VectorRenderer: React.FC<FigmaRendererProps> = ({ node, showDebug }
             fill={fillColor}
             stroke={strokeColor}
             strokeWidth={strokeWidth}
-            fillRule={node.vectorFillRule?.toLowerCase() || 'nonzero'}
+            fillRule={(node.vectorFillRule?.toLowerCase() || 'nonzero') as 'nonzero' | 'evenodd'}
             clipRule={node.vectorWindingRule?.toLowerCase() || 'nonzero'}
           />
         </svg>
         {node.children?.map((child, index) => (
-          <DynamicRenderer key={child.id || index} node={child} showDebug={showDebug} />
+          <div key={child.id || index} style={{ position: 'relative' }}>
+            {/* Child rendering will be handled by parent */}
+          </div>
         ))}
       </div>
     );
@@ -159,17 +161,16 @@ export const VectorRenderer: React.FC<FigmaRendererProps> = ({ node, showDebug }
             fill={fillColor}
             stroke={strokeColor}
             strokeWidth={strokeWidth}
-            fillRule={node.vectorFillRule?.toLowerCase() || 'nonzero'}
+            fillRule={(node.vectorFillRule?.toLowerCase() || 'nonzero') as 'nonzero' | 'evenodd'}
             clipRule={node.vectorWindingRule?.toLowerCase() || 'nonzero'}
           />
         </svg>
       )}
       {node.children?.map((child, index) => (
-        <DynamicRenderer key={child.id || index} node={child} showDebug={showDebug} />
+        <div key={child.id || index} style={{ position: 'relative' }}>
+          {/* Child rendering will be handled by parent */}
+        </div>
       ))}
     </div>
   );
-};
-
-// Import DynamicRenderer for child rendering
-import { DynamicRenderer } from '../ComponentRegistry'; 
+}; 

@@ -121,7 +121,7 @@ export const TextRenderer: React.FC<FigmaRendererProps> = ({ node, showDebug, de
   // Process text content - use rich text rendering if character overrides exist
   let processedText = characters;
   if (characterStyleOverrides && styleOverrideTable) {
-    processedText = renderStyledText(characters, characterStyleOverrides, styleOverrideTable, node.fills);
+    processedText = renderStyledText(characters, characterStyleOverrides, styleOverrideTable, node.fills || []);
   }
 
   return (

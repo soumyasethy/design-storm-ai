@@ -29,4 +29,4 @@ registerComponent('BOOLEAN_OPERATION', VectorRenderer); // Boolean operations ar
 
 // Export the main DynamicRenderer
 export { DynamicRenderer } from '../ComponentRegistry';
-export { FigmaRendererProps } from '../ComponentRegistry'; 
+export type { FigmaRendererProps } from '../ComponentRegistry'; 
