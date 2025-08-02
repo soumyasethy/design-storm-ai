@@ -68,55 +68,6 @@ const getVectorRotationTransform = (
   return transformStyle;
 };
 
-// SVG gradient support for vector fills
-const getSvgGradientDefs = (fills: any[], width: number, height: number) => {
-  let defsContent = '';
-  let fillAttribute = 'none';
-
-  // Find the first visible gradient fill
-  const gradientFill = fills?.find(f => f.visible !== false && f.type?.startsWith('GRADIENT'));
-
-  if (gradientFill) {
-    const gradientId = `gradient-${gradientFill.type.toLowerCase()}-${Math.random().toString(36).substring(2, 9)}`;
-    fillAttribute = `url(#${gradientId})`;
-
-    if (gradientFill.type === 'GRADIENT_LINEAR') {
-      const { gradientHandlePositions, gradientStops } = gradientFill;
-      const x1 = gradientHandlePositions?.[0]?.x || 0;
-      const y1 = gradientHandlePositions?.[0]?.y || 0;
-      const x2 = gradientHandlePositions?.[1]?.x || 1;
-      const y2 = gradientHandlePositions?.[1]?.y || 0;
-
-      defsContent += `<linearGradient id="${gradientId}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" gradientUnits="objectBoundingBox">`;
-      gradientStops?.forEach((stop: any) => {
-        const color = rgbaToCss(stop.color.r, stop.color.g, stop.color.b, stop.color.a);
-        defsContent += `<stop offset="${stop.position}" stop-color="${color}" />`;
-      });
-      defsContent += `</linearGradient>`;
-    } else if (gradientFill.type === 'GRADIENT_RADIAL') {
-      const { gradientHandlePositions, gradientStops } = gradientFill;
-      const cx = gradientHandlePositions?.[0]?.x || 0.5;
-      const cy = gradientHandlePositions?.[0]?.y || 0.5;
-      const fx = gradientHandlePositions?.[2]?.x || cx;
-      const fy = gradientHandlePositions?.[2]?.y || cy;
-      
-      const r = Math.sqrt(
-        Math.pow((gradientHandlePositions?.[1]?.x || 1) - cx, 2) +
-        Math.pow((gradientHandlePositions?.[1]?.y || 1) - cy, 2)
-      );
-
-      defsContent += `<radialGradient id="${gradientId}" cx="${cx}" cy="${cy}" r="${r}" fx="${fx}" fy="${fy}" gradientUnits="objectBoundingBox">`;
-      gradientStops?.forEach((stop: any) => {
-        const color = rgbaToCss(stop.color.r, stop.color.g, stop.color.b, stop.color.a);
-        defsContent += `<stop offset="${stop.position}" stop-color="${color}" />`;
-      });
-      defsContent += `</radialGradient>`;
-    }
-  }
-
-  return { defsContent, fillAttribute };
-};
-
 // Enhanced fill styles with comprehensive gradient support
 const getFillStyles = (fills: any[], nodeId?: string, imageMap?: Record<string, string>): React.CSSProperties => {
   if (!fills || fills.length === 0) {
@@ -972,8 +923,6 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
     strokeWeight, 
     transform, 
     rotation,
-    fills,
-    windingRule,
     // Enhanced vector properties
     vectorStroke,
     vectorType,
@@ -996,19 +945,12 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
     scale,
     skew,
     isMirrored,
-    mirrorAxis,
-    // Additional vector properties for complex shapes
-    vectorPaths,
-    vectorSegments,
-    vectorCurves,
-    vectorHandles,
-    vectorClosed,
-    vectorFillRule
+    mirrorAxis
   } = node;
   
   // Get stroke properties with enhanced vector stroke support
-  let strokeColor = 'none';
-  let strokeWidth = 0;
+  let strokeColor = '#FF004F'; // Default red from your example
+  let strokeWidth = 2;
   let strokeCapStyle: 'inherit' | 'round' | 'butt' | 'square' = 'butt';
   let strokeJoinStyle: 'inherit' | 'round' | 'bevel' | 'miter' = 'miter';
   let strokeDashArray = 'none';
@@ -1016,17 +958,17 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
   if (vectorStroke) {
     strokeColor = vectorStroke.color ? 
       rgbaToCss(vectorStroke.color.r, vectorStroke.color.g, vectorStroke.color.b, vectorStroke.color.a) : 
-      'none';
-    strokeWidth = vectorStroke.weight || 0;
+      '#FF004F';
+    strokeWidth = vectorStroke.weight || 2;
     strokeCapStyle = (vectorStroke.cap?.toLowerCase() as any) || 'butt';
     strokeJoinStyle = (vectorStroke.join?.toLowerCase() as any) || 'miter';
     strokeDashArray = vectorStroke.dashPattern?.join(', ') || 'none';
-  } else if (strokes && strokes.length > 0) {
-    const stroke = strokes[0];
+  } else {
+    const stroke = strokes?.[0];
     strokeColor = stroke?.type === 'SOLID' && stroke.color ? 
       rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a) : 
-      'none';
-    strokeWidth = strokeWeight || stroke?.strokeWeight || 0;
+      '#FF004F';
+    strokeWidth = strokeWeight || stroke?.strokeWeight || 2;
   }
   
   // Get dimensions
@@ -1112,34 +1054,8 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
   // Combine all transforms
   const combinedTransform = `${mirrorTransform}${transformStyle}`.trim();
   
-
-  
-  // Create proper vector path based on rotation and dimensions
+  // Create SVG path for vector stroke with enhanced support
   const createVectorPath = () => {
-    // Handle complex vector paths if provided
-    if (vectorPaths && vectorPaths.length > 0) {
-      return vectorPaths[0].path || vectorPaths[0];
-    }
-    
-    // Handle vector segments if provided
-    if (vectorSegments && vectorSegments.length > 0) {
-      let path = '';
-      vectorSegments.forEach((segment: any, index: number) => {
-        if (index === 0) {
-          path += `M ${segment.start.x} ${segment.start.y}`;
-        }
-        if (segment.type === 'LINE') {
-          path += ` L ${segment.end.x} ${segment.end.y}`;
-        } else if (segment.type === 'CURVE') {
-          path += ` Q ${segment.handle1.x} ${segment.handle1.y} ${segment.end.x} ${segment.end.y}`;
-        }
-      });
-      if (vectorClosed) {
-        path += ' Z';
-      }
-      return path;
-    }
-    
     // Handle vector points if provided
     if (vectorPoints && vectorPoints.length >= 2) {
       const start = vectorPoints[0];
@@ -1147,100 +1063,61 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
       return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
     }
     
-    // Enhanced vector path detection based on dimensions and rotation
-    // Check if it's a vertical line (tall and narrow)
-    if (height > width * 3) {
-      return `M ${width/2} 0 L ${width/2} ${height}`;
-    }
-    
-    // Check if it's a horizontal line (wide and short)
-    if (width > height * 3) {
-      return `M 0 ${height/2} L ${width} ${height/2}`;
-    }
-    
-    // Check if it's a diagonal line (similar width and height)
-    if (Math.abs(width - height) < Math.max(width, height) * 0.3) {
+    // Handle vector type
+    if (vectorType === 'LINE') {
+      // For vertical lines (like your example)
+      if (width < 10 && height > width * 2) {
+        return `M ${width/2} 0 L ${width/2} ${height}`;
+      }
+      // For horizontal lines
+      if (height < 10 && width > height * 2) {
+        return `M 0 ${height/2} L ${width} ${height/2}`;
+      }
+      // For diagonal lines
       return `M 0 0 L ${width} ${height}`;
     }
     
-    // Check if it's a curved line (based on name or properties)
-    if (name?.toLowerCase().includes('curve') || 
-        name?.toLowerCase().includes('arc') ||
-        name?.toLowerCase().includes('circle')) {
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const radius = Math.min(width, height) / 2;
-      return `M ${centerX - radius} ${centerY} A ${radius} ${radius} 0 1 1 ${centerX + radius} ${centerY}`;
+    // Handle decorative angled lines (pink/red lines)
+    if (name?.toLowerCase().includes('decorative') || 
+        name?.toLowerCase().includes('accent') || 
+        strokeColor.includes('ff004f') || 
+        strokeColor.includes('ff0a54')) {
+      // Create angled decorative line
+      const angle = 45; // 45 degree angle
+      const startX = 0;
+      const startY = height * 0.2;
+      const endX = width * 0.8;
+      const endY = height * 0.8;
+      return `M ${startX} ${startY} L ${endX} ${endY}`;
     }
     
-    // Default vertical line for unknown vector types
+    // Default vertical line
     return `M ${width/2} 0 L ${width/2} ${height}`;
   };
-
+  
   const pathData = createVectorPath();
   
-  // Handle SVG fills and gradients
-  let svgFillAttribute = 'none';
-  let svgDefs = '';
-
-  if (fills && fills.length > 0) {
-    const firstFill = fills[0];
-    if (firstFill.visible !== false) {
-      if (firstFill.type === 'SOLID' && firstFill.color) {
-        svgFillAttribute = rgbaToCss(firstFill.color.r, firstFill.color.g, firstFill.color.b, firstFill.color.a);
-      } else if (firstFill.type?.startsWith('GRADIENT')) {
-        const { defsContent, fillAttribute } = getSvgGradientDefs(fills, width, height);
-        svgDefs = defsContent;
-        svgFillAttribute = fillAttribute;
-      }
-    }
-  }
-
-  // Map Figma windingRule to SVG fill-rule
-  const svgFillRule = windingRule === 'EVENODD' ? 'evenodd' : 'nonzero';
-  
-  // Calculate proper rotation for SVG
-  let svgRotation = 0;
-  if (rotation !== undefined && rotation !== 0) {
-    // Convert radians to degrees and fix Figma's coordinate system
-    svgRotation = -(rotation * 180) / Math.PI;
-  }
-  
   return (
-    <div
+    <svg
+      width={width}
+      height={height}
       style={{
-        ...baseStyles,
         position: 'absolute',
-        overflow: 'visible',
+        top: 0,
+        left: 0,
+        transform: combinedTransform || undefined,
       }}
     >
-      <svg
-        width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        xmlns="http://www.w3.org/2000/svg"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          transform: svgRotation !== 0 ? `rotate(${svgRotation}deg)` : undefined,
-          transformOrigin: 'center center',
-        }}
-      >
-        {/* Add SVG definitions for gradients */}
-        {svgDefs && <defs dangerouslySetInnerHTML={{ __html: svgDefs }} />}
-        <path
-          d={pathData}
-          stroke={strokeColor}
-          strokeWidth={strokeWidth}
-          fill={svgFillAttribute}
-          fillRule={svgFillRule}
-          strokeLinecap={strokeCapStyle}
-          strokeLinejoin={strokeJoinStyle}
-          strokeDasharray={strokeDashArray}
-        />
-      </svg>
-    </div>
+      <path
+        d={pathData}
+        fill="none"
+        stroke={strokeColor}
+        strokeWidth={strokeWidth}
+        strokeLinecap={strokeCapStyle}
+        strokeLinejoin={strokeJoinStyle}
+        strokeDasharray={strokeDashArray}
+      />
+    </svg>
   );
 };
 
@@ -1562,115 +1439,6 @@ const renderSimpleRectangle = (node: any, baseStyles: React.CSSProperties, showD
   );
 };
 
-// SVG-based rectangle renderer for better gradient and fill support
-const renderSvgRectangle = (node: any, baseStyles: React.CSSProperties) => {
-  const { 
-    name, 
-    absoluteBoundingBox, 
-    fills, 
-    strokes, 
-    strokeWeight, 
-    cornerRadius,
-    cornerRadiusTopLeft,
-    cornerRadiusTopRight,
-    cornerRadiusBottomLeft,
-    cornerRadiusBottomRight,
-    strokeAlign,
-    effects,
-    rotation,
-    isMirrored,
-    mirrorAxis,
-    blendMode,
-    isVisible,
-    isHidden
-  } = node;
-  
-  // Skip hidden elements
-  if (isHidden || isVisible === false) {
-    return null;
-  }
-  
-  // Get dimensions
-  const width = absoluteBoundingBox?.width || 100;
-  const height = absoluteBoundingBox?.height || 100;
-  
-  // Handle SVG fills and gradients
-  let svgFillAttribute = 'none';
-  let svgDefs = '';
-
-  if (fills && fills.length > 0) {
-    const firstFill = fills[0];
-    if (firstFill.visible !== false) {
-      if (firstFill.type === 'SOLID' && firstFill.color) {
-        svgFillAttribute = rgbaToCss(firstFill.color.r, firstFill.color.g, firstFill.color.b, firstFill.color.a);
-      } else if (firstFill.type?.startsWith('GRADIENT')) {
-        const { defsContent, fillAttribute } = getSvgGradientDefs(fills, width, height);
-        svgDefs = defsContent;
-        svgFillAttribute = fillAttribute;
-      }
-    }
-  }
-
-  // Handle stroke
-  let strokeColor = 'none';
-  let strokeWidth = 0;
-  if (strokes && strokes.length > 0) {
-    const stroke = strokes[0];
-    strokeColor = stroke?.type === 'SOLID' && stroke.color ? 
-      rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a) : 
-      'none';
-    strokeWidth = strokeWeight || stroke?.strokeWeight || 0;
-  }
-
-  // Calculate corner radius
-  const rx = cornerRadius || cornerRadiusTopLeft || 0;
-  const ry = cornerRadius || cornerRadiusTopLeft || 0;
-  
-  // Calculate rotation
-  let svgRotation = 0;
-  if (rotation !== undefined && rotation !== 0) {
-    svgRotation = -(rotation * 180) / Math.PI;
-  }
-  
-  return (
-    <div
-      style={{
-        ...baseStyles,
-        position: 'absolute',
-        overflow: 'visible',
-      }}
-    >
-      <svg
-        width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        xmlns="http://www.w3.org/2000/svg"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          transform: svgRotation !== 0 ? `rotate(${svgRotation}deg)` : undefined,
-          transformOrigin: 'center center',
-        }}
-      >
-        {/* Add SVG definitions for gradients */}
-        {svgDefs && <defs dangerouslySetInnerHTML={{ __html: svgDefs }} />}
-        <rect
-          x={strokeAlign === 'INSIDE' ? strokeWidth/2 : 0}
-          y={strokeAlign === 'INSIDE' ? strokeWidth/2 : 0}
-          width={strokeAlign === 'INSIDE' ? width - strokeWidth : width}
-          height={strokeAlign === 'INSIDE' ? height - strokeWidth : height}
-          fill={svgFillAttribute}
-          stroke={strokeColor}
-          strokeWidth={strokeWidth}
-          rx={rx}
-          ry={ry}
-        />
-      </svg>
-    </div>
-  );
-};
-
 const FigmaShape: React.FC<{ 
   node: any; 
   baseStyles: React.CSSProperties; 
@@ -1687,9 +1455,7 @@ const FigmaShape: React.FC<{
   if (node.type === 'ELLIPSE') {
     return renderSimpleEllipse(node, baseStyles);
   } else if (node.type === 'RECTANGLE') {
-    return renderSvgRectangle(node, baseStyles);
-  } else if (node.type === 'VECTOR') {
-    return renderSimpleVectorStroke(node, baseStyles);
+    return renderSimpleRectangle(node, baseStyles, showDebug, devMode);
   }
   
   // Default shape rendering for other types
@@ -2238,6 +2004,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
 
     case 'RECTANGLE':
     case 'ELLIPSE':
+    case 'VECTOR':
       // Handle image fills
       if (imageUrl) {
         return (
