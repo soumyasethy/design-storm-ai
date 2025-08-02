@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-// import FigmaImageRenderer from './FigmaImageRenderer';
-import DynamicFigmaRenderer from './figma/DynamicFigmaRenderer';
+import FigmaImageRenderer from './FigmaImageRenderer';
 import { loadFigmaImages } from '@/lib/utils';
 
 interface FigmaRenderProps {
@@ -224,15 +223,15 @@ const FigmaRender: React.FC<FigmaRenderProps> = ({
         </div>
       )}
       
-      {/* Render the Figma content with dynamic renderer */}
-      <DynamicFigmaRenderer
+      {/* Render the Figma content with image support */}
+      <FigmaImageRenderer
         node={frameNode}
         fileKey={fileKey}
         figmaToken={figmaToken}
         showDebug={showDebug}
         isRoot={true}
-        imageMap={imageMap}
-        devMode={false}
+        onImageMapUpdate={setImageMap}
+        onLoadingStatusUpdate={setImageLoadingStatus}
       />
       
       {/* Debug overlay */}

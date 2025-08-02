@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import SimpleFigmaRenderer from '@/components/SimpleFigmaRenderer';
 import FigmaLayout from '@/components/FigmaLayout';
-import DynamicFigmaRenderer from '@/components/figma/DynamicFigmaRenderer';
 import { extractFileKeyFromUrl } from '@/lib/utils';
 import { isPluginExport, parsePluginData, figmaPlugin } from '@/lib/figma-plugin';
 
@@ -941,11 +940,9 @@ export default function OutputPage() {
               value={renderMode}
               onChange={(e) => setRenderMode(e.target.value as 'simple' | 'enhanced')}
               className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
-              disabled
-              title="Dynamic renderer is now the default - no switching needed"
             >
-              <option value="enhanced">🚀 Dynamic</option>
-              <option value="simple" disabled>Legacy</option>
+              <option value="enhanced">Enhanced</option>
+              <option value="simple">Simple</option>
             </select>
             
             {/* Dev Mode */}
@@ -1204,21 +1201,36 @@ export default function OutputPage() {
             </div>
           )}
           
-          {/* Render the Figma content with dynamic renderer */}
-          {frameNode && (
-            <DynamicFigmaRenderer
-              key={`dynamic-renderer-${frameNode.id}-${dataSource}-${dataVersion}`}
+          {/* Render the Figma content with enhanced renderer */}
+          {frameNode && (renderMode === 'enhanced' ? (
+            <FigmaLayout
+              key={`layout-${frameNode.id}-${dataSource}-${dataVersion}`}
+              node={frameNode}
+              showDebug={showLayoutDebug}
+              imageMap={imageMap}
+            >
+              <SimpleFigmaRenderer
+                key={`renderer-${frameNode.id}-${dataSource}-${dataVersion}`}
+                node={frameNode}
+                fileKey={fileKey}
+                figmaToken={figmaToken}
+                showDebug={showDebug}
+                isRoot={true}
+                imageMap={imageMap}
+                devMode={devMode}
+              />
+            </FigmaLayout>
+          ) : (
+            <SimpleFigmaRenderer
+              key={`renderer-${frameNode.id}-${dataSource}-${dataVersion}`}
               node={frameNode}
               fileKey={fileKey}
               figmaToken={figmaToken}
               showDebug={showDebug}
               isRoot={true}
               imageMap={imageMap}
-              devMode={devMode}
-              showCoordinateOverlay={showDebug && !devMode}
-              showBoundingBoxes={showDebug}
             />
-          )}
+          ))}
           
           {/* Coordinate overlay for debugging */}
           {/*showDebug && !devMode && (
