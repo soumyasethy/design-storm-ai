@@ -495,12 +495,15 @@ const FigmaText: React.FC<{
   // Get proper text alignment with visual design override
   let textAlignment = getTextAlign(style?.textAlignHorizontal || 'LEFT');
   
-  // Override alignment for specific cases where Figma JSON doesn't match visual design
-  // "Brand Spotlight" should be left-aligned despite JSON saying CENTER
-  if (characters?.includes('Brand Spotlight') || 
-      characters?.includes('Manufacturing that moves') ||
-      characters?.includes('Brands that Define Movement') ||
-      characters?.includes('Retail that Energizes')) {
+  // Smart alignment override based on design patterns
+  // Main headings and content labels should be left-aligned despite JSON conflicts
+  const isMainHeading = style?.fontSize && style.fontSize >= 32; // Large font size indicates heading
+  const isContentLabel = style?.fontSize && style.fontSize >= 16 && style.fontSize <= 24; // Medium font size
+  const hasCenterConstraint = node.constraints?.horizontal === 'CENTER';
+  const hasCenterAlign = style?.textAlignHorizontal === 'CENTER';
+  
+  // Override CENTER alignment for headings and content labels to match visual design
+  if ((isMainHeading || isContentLabel) && (hasCenterConstraint || hasCenterAlign)) {
     textAlignment = 'left';
   }
   
@@ -537,7 +540,10 @@ const FigmaText: React.FC<{
           <div>Font: {style?.fontFamily} {style?.fontSize}px</div>
           <div>Align: {style?.textAlignHorizontal} → {textAlignment}</div>
           {textAlignment !== getTextAlign(style?.textAlignHorizontal || 'LEFT') && (
-            <div className="text-yellow-300">⚠️ Override applied</div>
+            <div className="text-yellow-300">
+              ⚠️ Override: {isMainHeading ? 'Heading' : isContentLabel ? 'Content' : 'Other'} 
+              (CENTER→LEFT)
+            </div>
           )}
         </div>
       )}
