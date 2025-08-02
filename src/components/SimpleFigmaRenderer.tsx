@@ -492,17 +492,22 @@ const FigmaText: React.FC<{
     return html;
   };
 
+  // Get proper text alignment
+  const textAlignment = getTextAlign(style?.textAlignHorizontal || 'LEFT');
+  
   const combinedStyles = {
     ...baseStyles,
     ...textStyles,
     display: 'flex',
     alignItems: getVerticalAlign(style?.textAlignVertical || 'TOP'),
-    justifyContent: getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'center' ? 'center' : 
-                  getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'right' ? 'flex-end' : 'flex-start',
+    // Only use justifyContent for center alignment, let text-align handle left/right
+    justifyContent: textAlignment === 'center' ? 'center' : 'flex-start',
     gap: '4px', // Add gap for inline elements
     overflow: 'hidden',
     // Add 5% buffer to container width for font family differences
     width: baseStyles.width ? `calc(${baseStyles.width} + 5%)` : '105%',
+    // Ensure text alignment is properly applied
+    textAlign: textAlignment as any,
   };
   
   const processedText = processRichText(characters);
@@ -521,6 +526,7 @@ const FigmaText: React.FC<{
           <div>{node.type} - {baseStyles.width}×{baseStyles.height}</div>
           <div className="text-xs">{characters.substring(0, 20)}{characters.length > 20 ? '...' : ''}</div>
           <div>Font: {style?.fontFamily} {style?.fontSize}px</div>
+          <div>Align: {style?.textAlignHorizontal} → {textAlignment}</div>
         </div>
       )}
       <span 
@@ -533,6 +539,7 @@ const FigmaText: React.FC<{
           fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
           fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
           fontWeight: style?.fontWeight || 'normal',
+          textAlign: textAlignment as any,
         }}
         dangerouslySetInnerHTML={{ __html: processedText }}
       />
