@@ -17,6 +17,9 @@ export default function Home() {
               <Link href="/upload" className="text-gray-600 hover:text-gray-900 transition-colors">
                 Upload
               </Link>
+              <Link href="/test-plugin" className="text-gray-600 hover:text-gray-900 transition-colors">
+                Test Plugin
+              </Link>
               <Link href="/docs" className="text-gray-600 hover:text-gray-900 transition-colors">
                 Docs
               </Link>
@@ -190,7 +193,7 @@ export default function Home() {
                 <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
                   <span className="text-white font-bold text-sm">DS</span>
                 </div>
-                <h3 className="text-xl font-bold">DesignStorm</h3>
+                <h3 className="text-xl font-bold">DesignStorm.ai</h3>
               </div>
               <p className="text-gray-400">
                 The ultimate Figma-to-code platform for modern web development.
@@ -222,7 +225,7 @@ export default function Home() {
             </div>
           </div>
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2024 DesignStorm. All rights reserved.</p>
+            <p>&copy; 2025 DesignStorm. All rights reserved.</p>
           </div>
         </div>
       </footer>

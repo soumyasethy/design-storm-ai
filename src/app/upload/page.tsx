@@ -364,6 +364,28 @@ export default function UploadPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Figma to Code</h1>
           <p className="text-gray-600">Upload your Figma JSON and preview the layout structure</p>
         </div>
+        
+        {/* Plugin Information Banner */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
+          <div className="flex items-start space-x-3">
+            <div className="text-blue-600 text-xl">🚀</div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-blue-900 mb-2">
+                Use the Figma Plugin for Complete Data Export
+              </h3>
+              <p className="text-blue-700 text-sm mb-3">
+                The DesignStorm Figma Plugin exports all images, assets, and design data directly from Figma, 
+                eliminating API limitations and providing pixel-perfect rendering.
+              </p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">✅ All Images Included</span>
+                <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">✅ No API Limits</span>
+                <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">✅ Design Tokens</span>
+                <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">✅ Components & Assets</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Upload Area */}
         <div className="mb-8">

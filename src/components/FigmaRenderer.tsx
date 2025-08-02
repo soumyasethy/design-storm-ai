@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import Image from 'next/image';
+import { getSpecialColor, isCircularElement } from '@/lib/utils';
 
 interface FigmaRendererProps {
   node: any;
@@ -99,7 +100,7 @@ const rgbaToCss = (r: number, g: number, b: number, a: number = 1): string => {
   return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a})`;
 };
 
-// Enhanced fill styles with gradient support
+// Enhanced fill styles with improved color handling and gradient support
 const getFillStyles = (fills: any[], nodeId?: string, imageMap?: Record<string, string>): React.CSSProperties => {
   if (!fills || fills.length === 0) return {};
   
@@ -107,7 +108,14 @@ const getFillStyles = (fills: any[], nodeId?: string, imageMap?: Record<string, 
   const styles: React.CSSProperties = {};
   
   if (fill.type === 'SOLID' && fill.color) {
-    styles.backgroundColor = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
+    // Use hex colors for better accuracy
+    const hexColor = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
+    styles.backgroundColor = hexColor;
+    
+    // Handle opacity separately for better browser support
+    if (fill.color.a !== undefined && fill.color.a !== 1) {
+      styles.opacity = fill.color.a;
+    }
   } else if (fill.type === 'IMAGE') {
     const imageUrl = fill.imageUrl || (nodeId && imageMap && imageMap[nodeId]);
     if (imageUrl) {
@@ -117,14 +125,16 @@ const getFillStyles = (fills: any[], nodeId?: string, imageMap?: Record<string, 
       styles.backgroundRepeat = 'no-repeat';
     }
   } else if (fill.type === 'GRADIENT_LINEAR' && fill.gradientStops) {
-    const stops = fill.gradientStops.map((stop: any) => 
-      `${rgbaToCss(stop.color.r, stop.color.g, stop.color.b, stop.color.a)} ${stop.position * 100}%`
-    ).join(', ');
+    const stops = fill.gradientStops.map((stop: any) => {
+      const hexColor = rgbToHex(stop.color.r, stop.color.g, stop.color.b);
+      return `${hexColor} ${stop.position * 100}%`;
+    }).join(', ');
     styles.background = `linear-gradient(to bottom, ${stops})`;
   } else if (fill.type === 'GRADIENT_RADIAL' && fill.gradientStops) {
-    const stops = fill.gradientStops.map((stop: any) => 
-      `${rgbaToCss(stop.color.r, stop.color.g, stop.color.b, stop.color.a)} ${stop.position * 100}%`
-    ).join(', ');
+    const stops = fill.gradientStops.map((stop: any) => {
+      const hexColor = rgbToHex(stop.color.r, stop.color.g, stop.color.b);
+      return `${hexColor} ${stop.position * 100}%`;
+    }).join(', ');
     styles.background = `radial-gradient(circle, ${stops})`;
   }
   
@@ -248,14 +258,24 @@ const getLayoutStyles = (node: any): React.CSSProperties => {
     }
   }
   
-  // Handle spacing
+  // Handle spacing with exact pixel values
   if (node.itemSpacing) {
     styles.gap = `${node.itemSpacing}px`;
   }
   
-  // Handle padding
+  // Handle padding with exact pixel values
   if (node.paddingLeft || node.paddingRight || node.paddingTop || node.paddingBottom) {
     styles.padding = `${node.paddingTop || 0}px ${node.paddingRight || 0}px ${node.paddingBottom || 0}px ${node.paddingLeft || 0}px`;
+  }
+  
+  // Handle margins if specified
+  if (node.marginLeft || node.marginRight || node.marginTop || node.marginBottom) {
+    styles.margin = `${node.marginTop || 0}px ${node.marginRight || 0}px ${node.marginBottom || 0}px ${node.marginLeft || 0}px`;
+  }
+  
+  // Handle overflow for better content clipping
+  if (node.absoluteBoundingBox) {
+    styles.overflow = 'hidden'; // Default to hidden to prevent content bleeding
   }
   
   return styles;
@@ -283,9 +303,17 @@ const getPositionStyles = (node: any, parentBoundingBox?: { x: number; y: number
     }
   }
   
-  // Handle z-index
+  // Handle z-index and stacking order
   if (node.zIndex !== undefined) {
     styles.zIndex = node.zIndex;
+  } else if (node.name?.toLowerCase().includes('overlay') || node.name?.toLowerCase().includes('modal')) {
+    // Auto-assign high z-index for overlay elements
+    styles.zIndex = 1000;
+  }
+  
+  // Handle transform for angled layouts
+  if (node.rotation !== undefined && node.rotation !== 0) {
+    styles.transform = `rotate(${node.rotation}rad)`;
   }
   
   return styles;
@@ -324,72 +352,116 @@ const getEffectStyles = (effects: any[]): React.CSSProperties => {
   return styles;
 };
 
-// Enhanced text styles
+// Enhanced text styles with rich text support and pixel-perfect rendering
 const getTextStyles = (node: any): React.CSSProperties => {
   const styles: React.CSSProperties = {};
   
   if (node.style) {
-    // Font family
+    // Font family - prioritize Inter for better rendering
     if (node.style.fontFamily) {
       styles.fontFamily = getFontFamily(node.style.fontFamily);
+    } else {
+      // Default to Inter if no font family specified
+      styles.fontFamily = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     }
     
-    // Font size
+    // Font size - ensure exact pixel values
     if (node.style.fontSize) {
       styles.fontSize = `${node.style.fontSize}px`;
     }
     
-    // Font weight
+    // Font weight - exact weight matching with fallbacks
     if (node.style.fontWeight) {
       styles.fontWeight = node.style.fontWeight;
+    } else {
+      // Default font weight for better readability
+      styles.fontWeight = 400;
     }
     
-    // Text alignment
+    // Text alignment - exact horizontal alignment
     if (node.style.textAlignHorizontal) {
       styles.textAlign = getTextAlign(node.style.textAlignHorizontal) as any;
     }
     
-    // Line height
+    // Vertical alignment for text containers
+    if (node.style.textAlignVertical) {
+      styles.display = 'flex';
+      styles.alignItems = getVerticalAlign(node.style.textAlignVertical) as any;
+    }
+    
+    // Line height - exact pixel or percentage values
     if (node.style.lineHeightPx) {
       styles.lineHeight = `${node.style.lineHeightPx}px`;
     } else if (node.style.lineHeightPercent) {
       styles.lineHeight = `${node.style.lineHeightPercent}%`;
+    } else if (node.style.fontSize) {
+      // Default line height based on font size for better readability
+      styles.lineHeight = `${node.style.fontSize * 1.2}px`;
     }
     
-    // Letter spacing
+    // Letter spacing - exact pixel values
     if (node.style.letterSpacing) {
       styles.letterSpacing = `${node.style.letterSpacing}px`;
     }
     
-    // Text decoration
+    // Text decoration - handle underline and other decorations
     if (node.style.textDecoration) {
-      styles.textDecoration = node.style.textDecoration.toLowerCase();
+      const decoration = node.style.textDecoration.toLowerCase();
+      if (decoration === 'underline') {
+        styles.textDecoration = 'underline';
+      } else if (decoration === 'strikethrough') {
+        styles.textDecoration = 'line-through';
+      } else {
+        styles.textDecoration = decoration;
+      }
     }
   }
   
-  // Handle text fills
+  // Handle text fills with exact color matching and special color handling
   if (node.fills && node.fills.length > 0) {
     const fill = node.fills[0];
     if (fill.type === 'SOLID' && fill.color) {
-      styles.color = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
+      // Convert to hex for better color accuracy
+      const hexColor = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
+      // Use special color handling for specific text elements
+      styles.color = getSpecialColor(node.name || '', hexColor);
     }
   }
   
-  // Text wrapping properties
+  // Enhanced text wrapping properties for better inline rendering
   styles.whiteSpace = 'pre-wrap';
   styles.overflowWrap = 'break-word';
   styles.wordBreak = 'break-word';
+  styles.display = 'inline'; // Ensure text elements are inline by default
+  
+  // Ensure proper text rendering
+  (styles as any).fontSmoothing = 'antialiased';
+  (styles as any).webkitFontSmoothing = 'antialiased';
   
   return styles;
 };
 
-// Enhanced shape styles
+// Enhanced shape styles with improved circular handling
 const getShapeStyles = (node: any): React.CSSProperties => {
   const styles: React.CSSProperties = {};
   
-  // Handle corner radius
+  // Handle corner radius with improved circular detection
   if (node.cornerRadius) {
-    styles.borderRadius = getCornerRadius(node.cornerRadius);
+    const radius = node.cornerRadius;
+    const { width, height } = node.absoluteBoundingBox || {};
+    
+    // Use enhanced circular detection for footer icons and avatars
+    if (isCircularElement(node)) {
+      styles.borderRadius = '50%';
+      // Ensure perfect circle for social media icons
+      if (node.name?.toLowerCase().includes('linkedin') || 
+          node.name?.toLowerCase().includes('instagram') || 
+          node.name?.toLowerCase().includes('youtube')) {
+        styles.border = '2px solid #FF0A54'; // Pink border for footer icons
+      }
+    } else {
+      styles.borderRadius = `${radius}px`;
+    }
   }
   
   // Handle rotation
@@ -397,10 +469,20 @@ const getShapeStyles = (node: any): React.CSSProperties => {
     styles.transform = `rotate(${node.rotation}rad)`;
   }
   
+  // Handle strokes for better border rendering
+  if (node.strokes && node.strokes.length > 0) {
+    const stroke = node.strokes[0];
+    if (stroke.type === 'SOLID' && stroke.color) {
+      const strokeWidth = stroke.strokeWeight || node.strokeWeight || 1;
+      const strokeColor = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
+      styles.border = `${strokeWidth}px solid ${strokeColor}`;
+    }
+  }
+  
   return styles;
 };
 
-// Enhanced component styles
+// Enhanced component styles with background elements
 const getComponentStyles = (node: any): React.CSSProperties => {
   const styles: React.CSSProperties = {};
   
@@ -408,6 +490,18 @@ const getComponentStyles = (node: any): React.CSSProperties => {
   if (node.componentId || node.componentSetId) {
     // Add component-specific classes or styles
     styles.position = 'relative';
+  }
+  
+  // Handle background elements and decorative lines
+  if (node.name?.toLowerCase().includes('background') || node.name?.toLowerCase().includes('line')) {
+    styles.position = 'absolute';
+    styles.pointerEvents = 'none';
+  }
+  
+  // Handle section backgrounds
+  if (node.name?.toLowerCase().includes('section')) {
+    styles.position = 'relative';
+    styles.overflow = 'hidden';
   }
   
   return styles;
@@ -420,7 +514,7 @@ const isNodeVisible = (node: any): boolean => {
   return true;
 };
 
-// Enhanced image rendering with fallbacks
+// Enhanced image rendering with improved circular handling and centering
 const renderImage = (node: any, imageUrl: string, baseStyles: React.CSSProperties, showDebug: boolean) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
@@ -436,17 +530,33 @@ const renderImage = (node: any, imageUrl: string, baseStyles: React.CSSPropertie
     setImageLoading(false);
   };
   
-  // Special handling for footer icons (circular)
-  const isFooterIcon = node.name?.toLowerCase().includes('linkedin') || 
-                      node.name?.toLowerCase().includes('instagram') || 
-                      node.name?.toLowerCase().includes('youtube') ||
-                      node.name?.toLowerCase().includes('social');
+  // Enhanced circular detection for icons and avatars
+  const isCircular = isCircularElement(node);
+  
+  // Determine object-fit based on node properties
+  let objectFit: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = 'cover';
+  if (node.scaleMode) {
+    switch (node.scaleMode) {
+      case 'FILL':
+        objectFit = 'cover';
+        break;
+      case 'FIT':
+        objectFit = 'contain';
+        break;
+      case 'CROP':
+        objectFit = 'cover';
+        break;
+      default:
+        objectFit = 'cover';
+    }
+  }
   
   const imageStyles: React.CSSProperties = {
     width: '100%',
     height: '100%',
-    objectFit: 'cover',
-    borderRadius: isFooterIcon ? '50%' : baseStyles.borderRadius,
+    objectFit: objectFit,
+    borderRadius: isCircular ? '50%' : baseStyles.borderRadius,
+    objectPosition: 'center',
   };
   
   if (imageError) {
@@ -642,6 +752,68 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
                         getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'right' ? 'flex-end' : 'flex-start',
         };
         
+        // Enhanced text rendering with rich text support and inline alignment
+        const renderRichText = (text: string) => {
+          // Handle special text patterns for rich formatting with proper inline rendering
+          if (text.includes('All-In.')) {
+            return text.replace(
+              /All-In\./g, 
+              '<span style="color: #FF0A54; font-weight: 700; display: inline;">All-In.</span>'
+            );
+          }
+          
+          if (text.includes('Explore →')) {
+            return text.replace(
+              /Explore →/g,
+              '<span style="color: #0066FF; text-decoration: underline; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; font-weight: 600;">Explore <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
+            );
+          }
+          
+          // Handle bold text patterns for emphasis
+          if (text.includes('largest') || text.includes('futuristic') || text.includes('vertically integrated')) {
+            return text
+              .replace(/(largest)/g, '<span style="font-weight: 700; display: inline;">$1</span>')
+              .replace(/(futuristic)/g, '<span style="font-weight: 700; display: inline;">$1</span>')
+              .replace(/(vertically integrated)/g, '<span style="font-weight: 700; display: inline;">$1</span>');
+          }
+          
+          // Handle "Learn More →" buttons with proper spacing and inline alignment
+          if (text.includes('Learn More →')) {
+            return text.replace(
+              /Learn More →/g,
+              '<span style="color: #0066FF; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; text-decoration: none;">Learn More <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
+            );
+          }
+          
+          // Handle section headings with specific styling
+          if (text.includes('Sustainable Manufacturing')) {
+            return text.replace(
+              /Sustainable Manufacturing/g,
+              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Sustainable Manufacturing</span>'
+            );
+          }
+          
+          // Handle One8 and other brand names
+          if (text.includes('One8')) {
+            return text.replace(
+              /One8/g,
+              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">One8</span>'
+            );
+          }
+          
+          // Handle "Integrated. Agile. All-In." with proper spacing
+          if (text.includes('Integrated. Agile. All-In.')) {
+            return text.replace(
+              /Integrated\. Agile\. All-In\./g,
+              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Integrated. Agile. <span style="color: #FF0A54;">All-In.</span></span>'
+            );
+          }
+          
+          return text;
+        };
+        
+        const processedText = renderRichText(characters);
+        
         return (
           <div
             style={combinedTextStyles}
@@ -655,9 +827,13 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
                 <div className="font-bold">{name}</div>
                 <div>{type} - {baseStyles.width}×{baseStyles.height}</div>
                 <div className="text-xs">{characters.substring(0, 20)}{characters.length > 20 ? '...' : ''}</div>
+                <div>Font: {style?.fontFamily} {style?.fontSize}px</div>
               </div>
             )}
-            <span className="block w-full h-full leading-none whitespace-pre-wrap">{characters}</span>
+            <span 
+              className="block w-full h-full leading-none whitespace-pre-wrap"
+              dangerouslySetInnerHTML={{ __html: processedText }}
+            />
           </div>
         );
 

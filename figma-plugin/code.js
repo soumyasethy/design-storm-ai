@@ -36,7 +36,7 @@ figma.ui.onmessage = async (msg) => {
   }
 };
 
-// Export complete design with all assets
+// Export complete design with all assets and images
 async function exportCompleteDesign() {
   const designData = {
     document: figma.root,
@@ -45,11 +45,13 @@ async function exportCompleteDesign() {
     fonts: [],
     styles: [],
     components: [],
+    imageMap: {},
     metadata: {
       name: figma.root.name,
       version: figma.root.version,
       lastModified: new Date().toISOString(),
-      pluginVersion: '1.0.0'
+      pluginVersion: '1.0.0',
+      exportedBy: 'DesignStorm Plugin'
     }
   };
 
@@ -59,8 +61,11 @@ async function exportCompleteDesign() {
   // Extract all assets
   designData.assets = await extractAllAssets();
   
-  // Extract all images
+  // Extract all images with actual image data
   designData.images = await extractAllImages();
+  
+  // Build image map for easy access
+  designData.imageMap = await buildImageMap(designData.images);
   
   // Extract all fonts
   designData.fonts = await extractAllFonts();
@@ -331,6 +336,21 @@ async function extractAllImages() {
   }
   
   return images;
+}
+
+// Build image map for easy access
+async function buildImageMap(images) {
+  const imageMap = {};
+  
+  for (const image of images) {
+    if (image.nodeId && image.bytes) {
+      // Convert bytes to base64 for easy transfer
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(image.bytes)));
+      imageMap[image.nodeId] = `data:image/png;base64,${base64}`;
+    }
+  }
+  
+  return imageMap;
 }
 
 // Extract all fonts used in the document

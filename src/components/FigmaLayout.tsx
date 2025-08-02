@@ -16,6 +16,11 @@ const FooterLayout: React.FC<{ node: any; children: React.ReactNode; showDebug?:
   children, 
   showDebug 
 }) => {
+  // Add null check to prevent runtime errors
+  if (!node || typeof node !== 'object') {
+    console.warn('FooterLayout: Invalid node provided', node);
+    return <div>{children}</div>;
+  }
   // Extract footer-specific layout properties
   const hasLogo = node.children?.some((child: any) => 
     child.name?.toLowerCase().includes('logo') || 
@@ -84,6 +89,11 @@ const SocialIconsLayout: React.FC<{ node: any; children: React.ReactNode; showDe
   children, 
   showDebug 
 }) => {
+  // Add null check to prevent runtime errors
+  if (!node || typeof node !== 'object') {
+    console.warn('SocialIconsLayout: Invalid node provided', node);
+    return <div>{children}</div>;
+  }
   const socialIcons = node.children?.filter((child: any) => 
     child.name?.toLowerCase().includes('linkedin') || 
     child.name?.toLowerCase().includes('instagram') ||
@@ -119,6 +129,11 @@ const NavigationLinksLayout: React.FC<{ node: any; children: React.ReactNode; sh
   children, 
   showDebug 
 }) => {
+  // Add null check to prevent runtime errors
+  if (!node || typeof node !== 'object') {
+    console.warn('NavigationLinksLayout: Invalid node provided', node);
+    return <div>{children}</div>;
+  }
   const links = node.children?.filter((child: any) => 
     child.type === 'TEXT' || 
     child.name?.toLowerCase().includes('link') ||
@@ -159,6 +174,12 @@ const FigmaLayout: React.FC<FigmaLayoutProps> = ({
   showDebug = false,
   imageMap = {}
 }) => {
+  // Add null check to prevent runtime errors
+  if (!node || typeof node !== 'object') {
+    console.warn('FigmaLayout: Invalid node provided', node);
+    return <div>{children}</div>;
+  }
+  
   // Check if this is a footer component
   if (isFooterComponent(node)) {
     return (

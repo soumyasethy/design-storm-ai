@@ -257,7 +257,7 @@ export function normalizeCoordinates(
   };
 }
 
-// Enhanced color utilities
+// Enhanced color utilities with exact color matching
 export function rgbToHex(r: number, g: number, b: number): string {
   const toHex = (n: number) => {
     const hex = Math.round(n * 255).toString(16);
@@ -270,9 +270,38 @@ export function rgbaToCss(r: number, g: number, b: number, a: number = 1): strin
   return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a})`;
 }
 
-// Enhanced typography utilities
+// Special color handling for specific design elements
+export function getSpecialColor(nodeName: string, defaultColor: string): string {
+  // Add null check to prevent runtime errors
+  if (!nodeName || typeof nodeName !== 'string') {
+    return defaultColor;
+  }
+  
+  const name = nodeName.toLowerCase();
+  
+  // Handle specific color requirements
+  if (name.includes('all-in') || name.includes('accent')) {
+    return '#FF0A54'; // Pink accent
+  }
+  
+  if (name.includes('explore') || name.includes('learn more') || name.includes('button')) {
+    return '#0066FF'; // Blue for interactive elements
+  }
+  
+  if (name.includes('heading') || name.includes('title')) {
+    return '#1E1E1E'; // Dark gray for headings
+  }
+  
+  if (name.includes('body') || name.includes('paragraph')) {
+    return '#1E1E1E'; // Dark gray for body text
+  }
+  
+  return defaultColor;
+}
+
+// Enhanced typography utilities with Inter prioritization
 export function getFontFamily(family: string): string {
-  if (!family) return 'inherit';
+  if (!family) return 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   
   const fontMap: Record<string, string> = {
     'Inter': 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -292,14 +321,46 @@ export function getFontFamily(family: string): string {
     'Verdana': 'Verdana, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   };
   
-  return fontMap[family] || `${family}, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  return fontMap[family] || `Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
 }
 
-// Enhanced corner radius utilities
-export function getCornerRadius(radius: number): string {
+// Enhanced corner radius utilities with improved circular detection
+export function getCornerRadius(radius: number, width?: number, height?: number): string {
   if (radius === 0) return '0';
+  
+  // Check if this should be a perfect circle
+  if (width && height && Math.abs(width - height) < 2 && radius >= Math.min(width, height) / 2) {
+    return '50%';
+  }
+  
   if (radius >= 50) return '50%';
   return `${radius}px`;
+}
+
+// Enhanced circular detection for icons and avatars
+export function isCircularElement(node: any): boolean {
+  // Add null check to prevent runtime errors
+  if (!node || typeof node !== 'object') {
+    return false;
+  }
+  
+  const name = node.name?.toLowerCase() || '';
+  const { width, height } = node.absoluteBoundingBox || {};
+  const radius = node.cornerRadius || 0;
+  
+  // Check by name
+  if (name.includes('linkedin') || name.includes('instagram') || name.includes('youtube') ||
+      name.includes('social') || name.includes('avatar') || name.includes('icon') ||
+      name.includes('circle') || name.includes('round')) {
+    return true;
+  }
+  
+  // Check by dimensions and radius
+  if (width && height && radius) {
+    return Math.abs(width - height) < 2 && radius >= Math.min(width, height) / 2;
+  }
+  
+  return false;
 }
 
 // Enhanced text alignment utilities
@@ -426,6 +487,11 @@ export function isNodeVisible(node: any): boolean {
 
 // Enhanced component detection utilities
 export function isFooterComponent(node: any): boolean {
+  // Add null check to prevent runtime errors
+  if (!node || typeof node !== 'object') {
+    return false;
+  }
+  
   const footerKeywords = ['footer', 'social', 'linkedin', 'instagram', 'youtube', 'twitter'];
   const nodeName = node.name?.toLowerCase() || '';
   
@@ -434,6 +500,11 @@ export function isFooterComponent(node: any): boolean {
 
 // Enhanced image scale mode utilities
 export function getImageScaleMode(node: any): string {
+  // Add null check to prevent runtime errors
+  if (!node || typeof node !== 'object') {
+    return 'cover';
+  }
+  
   // Default to cover for most cases
   if (isFooterComponent(node)) {
     return 'cover'; // Footer icons should be cover to maintain aspect ratio

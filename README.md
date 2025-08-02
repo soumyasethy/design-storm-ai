@@ -65,8 +65,8 @@ A comprehensive Next.js application that renders Figma designs with pixel-perfec
    ```
 
 4. **Run the development server**
-   ```bash
-   npm run dev
+```bash
+npm run dev
    ```
 
 5. **Open your browser**

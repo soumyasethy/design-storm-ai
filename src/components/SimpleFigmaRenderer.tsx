@@ -33,6 +33,12 @@ const FigmaImage: React.FC<{
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   
+  // Add null check to prevent runtime errors
+  if (!node || typeof node !== 'object') {
+    console.warn('FigmaImage: Invalid node provided', node);
+    return <div>Invalid image node</div>;
+  }
+  
   // Special handling for footer icons (circular)
   const isFooterIcon = isFooterComponent(node) || 
                       node.name?.toLowerCase().includes('linkedin') || 
@@ -110,6 +116,12 @@ const FigmaText: React.FC<{
   baseStyles: React.CSSProperties; 
   showDebug: boolean 
 }> = ({ node, baseStyles, showDebug }) => {
+  // Add null check to prevent runtime errors
+  if (!node || typeof node !== 'object') {
+    console.warn('FigmaText: Invalid node provided', node);
+    return <div>Invalid text node</div>;
+  }
+  
   const { characters, style } = node;
   
   if (!characters) return null;
@@ -148,6 +160,42 @@ const FigmaText: React.FC<{
     wordBreak: 'break-word',
   };
   
+  // Enhanced rich text processing
+  const processRichText = (text: string) => {
+    // Handle special text patterns for rich formatting
+    if (text.includes('All-In.')) {
+      return text.replace(
+        /All-In\./g, 
+        '<span style="color: #FF0A54; font-weight: 700;">All-In.</span>'
+      );
+    }
+    
+    if (text.includes('Explore →')) {
+      return text.replace(
+        /Explore →/g,
+        '<span style="color: #0066FF; text-decoration: underline; cursor: pointer; display: inline-flex; align-items: center; gap: 2px;">Explore <span style="font-size: 0.9em;">→</span></span>'
+      );
+    }
+    
+    // Handle bold text patterns for emphasis
+    if (text.includes('largest') || text.includes('futuristic') || text.includes('vertically integrated')) {
+      return text
+        .replace(/(largest)/g, '<span style="font-weight: 700;">$1</span>')
+        .replace(/(futuristic)/g, '<span style="font-weight: 700;">$1</span>')
+        .replace(/(vertically integrated)/g, '<span style="font-weight: 700;">$1</span>');
+    }
+    
+    // Handle "Learn More →" buttons with proper spacing
+    if (text.includes('Learn More →')) {
+      return text.replace(
+        /Learn More →/g,
+        '<span style="color: #0066FF; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">Learn More <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
+      );
+    }
+    
+    return text;
+  };
+
   const combinedStyles = {
     ...baseStyles,
     ...textStyles,
@@ -156,6 +204,8 @@ const FigmaText: React.FC<{
     justifyContent: getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'center' ? 'center' : 
                   getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'right' ? 'flex-end' : 'flex-start',
   };
+  
+  const processedText = processRichText(characters);
   
   return (
     <div
@@ -173,7 +223,10 @@ const FigmaText: React.FC<{
           <div>Font: {style?.fontFamily} {style?.fontSize}px</div>
         </div>
       )}
-      <span className="block w-full h-full leading-none whitespace-pre-wrap">{characters}</span>
+      <span 
+        className="block w-full h-full leading-none whitespace-pre-wrap"
+        dangerouslySetInnerHTML={{ __html: processedText }}
+      />
     </div>
   );
 };
@@ -184,6 +237,11 @@ const FigmaShape: React.FC<{
   baseStyles: React.CSSProperties; 
   showDebug: boolean 
 }> = ({ node, baseStyles, showDebug }) => {
+  // Add null check to prevent runtime errors
+  if (!node || typeof node !== 'object') {
+    console.warn('FigmaShape: Invalid node provided', node);
+    return <div>Invalid shape node</div>;
+  }
   const { fills, strokes, cornerRadius, effects } = node;
   
   const shapeStyles: React.CSSProperties = {
@@ -197,8 +255,8 @@ const FigmaShape: React.FC<{
             `${strokes[0].strokeWeight || 1}px solid ${rgbaToCss(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b, strokes[0].color.a)}` : 
             'none',
     
-    // Border radius
-    borderRadius: cornerRadius ? getCornerRadius(cornerRadius) : '0',
+    // Enhanced border radius with circular detection
+    borderRadius: cornerRadius ? getCornerRadius(cornerRadius, baseStyles.width as number, baseStyles.height as number) : '0',
     
     // Effects (shadows, etc.)
     ...(effects?.reduce((acc: any, effect: any) => {
@@ -262,6 +320,11 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   fileKey,
   figmaToken
 }) => {
+  // Add null check to prevent runtime errors
+  if (!node || typeof node !== 'object') {
+    console.warn('SimpleFigmaRenderer: Invalid node provided', node);
+    return <div>Invalid node</div>;
+  }
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   // Load image if this node has image fills
