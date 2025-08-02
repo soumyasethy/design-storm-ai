@@ -438,22 +438,32 @@ async function extractImageData(fill) {
 async function extractAllAssets() {
   const assets = [];
   
-  // Get all image assets
-  const imageAssets = figma.getLocalImageAssets();
-  for (const asset of imageAssets) {
-    try {
-      const imageBytes = await asset.getBytesAsync();
-      assets.push({
-        id: asset.id,
-        name: asset.name,
-        type: 'IMAGE',
-        bytes: imageBytes,
-        width: asset.width,
-        height: asset.height
-      });
-    } catch (error) {
-      console.warn('Could not extract asset:', asset.name, error);
+  try {
+    // Get all image assets
+    const imageAssets = figma.getLocalImageAssets();
+    
+    // Check if imageAssets is iterable
+    if (imageAssets && Array.isArray(imageAssets)) {
+      for (const asset of imageAssets) {
+        try {
+          // Skip heavy byte extraction to prevent freezing
+          assets.push({
+            id: asset.id,
+            name: asset.name,
+            type: 'IMAGE',
+            width: asset.width,
+            height: asset.height,
+            hasBytes: false // Don't extract bytes to prevent freezing
+          });
+        } catch (error) {
+          console.warn('Could not extract asset:', asset.name, error);
+        }
+      }
+    } else {
+      console.log('No image assets found or assets not iterable');
     }
+  } catch (error) {
+    console.warn('Error extracting assets:', error);
   }
   
   return assets;
@@ -560,26 +570,84 @@ async function buildImageMap(images) {
 async function extractAllFonts() {
   const fonts = new Set();
   
-  // Traverse all nodes to find text nodes
-  const allNodes = getAllNodes(figma.root);
-  
-  for (const node of allNodes) {
-    if (node.type === 'TEXT' && node.fontName) {
-      fonts.add(JSON.stringify(node.fontName));
+  try {
+    // Traverse all nodes to find text nodes
+    const allNodes = getAllNodes(figma.root);
+    
+    if (allNodes && Array.isArray(allNodes)) {
+      for (const node of allNodes) {
+        try {
+          if (node && node.type === 'TEXT' && node.fontName) {
+            fonts.add(JSON.stringify(node.fontName));
+          }
+        } catch (error) {
+          console.warn('Error processing node for fonts:', error);
+        }
+      }
     }
+  } catch (error) {
+    console.warn('Error extracting fonts:', error);
   }
   
-  return Array.from(fonts).map(font => JSON.parse(font));
+  return Array.from(fonts).map(font => {
+    try {
+      return JSON.parse(font);
+    } catch (error) {
+      console.warn('Error parsing font:', error);
+      return null;
+    }
+  }).filter(font => font !== null);
 }
 
 // Extract all styles from the document
 async function extractAllStyles() {
   const styles = {
-    paint: figma.getLocalPaintStyles(),
-    text: figma.getLocalTextStyles(),
-    effect: figma.getLocalEffectStyles(),
-    grid: figma.getLocalGridStyles()
+    paint: [],
+    text: [],
+    effect: [],
+    grid: []
   };
+  
+  try {
+    // Get all style types with proper error handling
+    const paintStyles = figma.getLocalPaintStyles();
+    if (paintStyles && Array.isArray(paintStyles)) {
+      styles.paint = paintStyles.map(style => ({
+        id: style.id,
+        name: style.name,
+        description: style.description
+      }));
+    }
+    
+    const textStyles = figma.getLocalTextStyles();
+    if (textStyles && Array.isArray(textStyles)) {
+      styles.text = textStyles.map(style => ({
+        id: style.id,
+        name: style.name,
+        description: style.description
+      }));
+    }
+    
+    const effectStyles = figma.getLocalEffectStyles();
+    if (effectStyles && Array.isArray(effectStyles)) {
+      styles.effect = effectStyles.map(style => ({
+        id: style.id,
+        name: style.name,
+        description: style.description
+      }));
+    }
+    
+    const gridStyles = figma.getLocalGridStyles();
+    if (gridStyles && Array.isArray(gridStyles)) {
+      styles.grid = gridStyles.map(style => ({
+        id: style.id,
+        name: style.name,
+        description: style.description
+      }));
+    }
+  } catch (error) {
+    console.warn('Error extracting styles:', error);
+  }
   
   return styles;
 }
@@ -588,31 +656,47 @@ async function extractAllStyles() {
 async function extractAllComponents() {
   const components = [];
   
-  // Get all component sets
-  const componentSets = figma.getLocalComponentSets();
-  for (const componentSet of componentSets) {
-    components.push({
-      id: componentSet.id,
-      name: componentSet.name,
-      description: componentSet.description,
-      type: 'COMPONENT_SET',
-      children: componentSet.children.map(child => ({
-        id: child.id,
-        name: child.name,
-        description: child.description
-      }))
-    });
-  }
-  
-  // Get all individual components
-  const individualComponents = figma.getLocalComponents();
-  for (const component of individualComponents) {
-    components.push({
-      id: component.id,
-      name: component.name,
-      description: component.description,
-      type: 'COMPONENT'
-    });
+  try {
+    // Get all component sets
+    const componentSets = figma.getLocalComponentSets();
+    if (componentSets && Array.isArray(componentSets)) {
+      for (const componentSet of componentSets) {
+        try {
+          components.push({
+            id: componentSet.id,
+            name: componentSet.name,
+            description: componentSet.description,
+            type: 'COMPONENT_SET',
+            children: componentSet.children ? componentSet.children.map(child => ({
+              id: child.id,
+              name: child.name,
+              description: child.description
+            })) : []
+          });
+        } catch (error) {
+          console.warn('Could not extract component set:', componentSet.name, error);
+        }
+      }
+    }
+    
+    // Get all individual components
+    const individualComponents = figma.getLocalComponents();
+    if (individualComponents && Array.isArray(individualComponents)) {
+      for (const component of individualComponents) {
+        try {
+          components.push({
+            id: component.id,
+            name: component.name,
+            description: component.description,
+            type: 'COMPONENT'
+          });
+        } catch (error) {
+          console.warn('Could not extract component:', component.name, error);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('Error extracting components:', error);
   }
   
   return components;
