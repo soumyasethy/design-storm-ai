@@ -1906,6 +1906,11 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
       // Enhanced frame background color support
       const frameStyles = { ...positionStyles };
       
+      // Add z-index for mask groups to ensure they appear on top
+      if (isMaskGroupNode(node)) {
+        frameStyles.zIndex = 5;
+      }
+      
       // Add background color support for frames and groups
       if (node.backgroundColor) {
         frameStyles.backgroundColor = rgbaToCss(
@@ -1961,7 +1966,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 position: 'absolute', 
                 top: 0, 
                 left: 0,
-                borderRadius: `${Math.min(absoluteBoundingBox?.width || 100, absoluteBoundingBox?.height || 100) / 2}px`
+                borderRadius: `${Math.min(absoluteBoundingBox?.width || 100, absoluteBoundingBox?.height || 100) / 2}px`,
+                zIndex: 10
               }}
             >
               <defs>
