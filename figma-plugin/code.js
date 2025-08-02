@@ -66,6 +66,14 @@ async function exportCompleteDesign() {
       message: 'Starting export...'
     });
 
+    // Load all pages first to prevent the error
+    figma.ui.postMessage({
+      type: 'export-progress',
+      progress: 10,
+      message: 'Loading pages...'
+    });
+    await figma.loadAllPagesAsync();
+
     const designData = {
       document: figma.root,
       assets: [],
@@ -86,7 +94,7 @@ async function exportCompleteDesign() {
     // Extract all pages and their content (lightweight)
     figma.ui.postMessage({
       type: 'export-progress',
-      progress: 15,
+      progress: 20,
       message: 'Extracting pages...'
     });
     designData.pages = await extractPages(figma.root.children);
@@ -94,7 +102,7 @@ async function exportCompleteDesign() {
     // Extract all assets (lightweight)
     figma.ui.postMessage({
       type: 'export-progress',
-      progress: 25,
+      progress: 30,
       message: 'Extracting assets...'
     });
     designData.assets = await extractAllAssets();
@@ -102,7 +110,7 @@ async function exportCompleteDesign() {
     // Extract all images with actual image data (heavy operation)
     figma.ui.postMessage({
       type: 'export-progress',
-      progress: 40,
+      progress: 50,
       message: 'Extracting images...'
     });
     designData.images = await extractAllImages();
@@ -110,7 +118,7 @@ async function exportCompleteDesign() {
     // Build image map for easy access (heavy operation)
     figma.ui.postMessage({
       type: 'export-progress',
-      progress: 60,
+      progress: 70,
       message: 'Building image map...'
     });
     designData.imageMap = await buildImageMap(designData.images);
@@ -118,7 +126,7 @@ async function exportCompleteDesign() {
     // Extract all fonts (lightweight)
     figma.ui.postMessage({
       type: 'export-progress',
-      progress: 75,
+      progress: 80,
       message: 'Extracting fonts...'
     });
     designData.fonts = await extractAllFonts();
@@ -134,14 +142,14 @@ async function exportCompleteDesign() {
     // Extract all components (lightweight)
     figma.ui.postMessage({
       type: 'export-progress',
-      progress: 95,
+      progress: 90,
       message: 'Extracting components...'
     });
     designData.components = await extractAllComponents();
     
     figma.ui.postMessage({
       type: 'export-progress',
-      progress: 98,
+      progress: 95,
       message: 'Finalizing export...'
     });
     
@@ -168,6 +176,14 @@ async function exportSelectedNodes() {
     progress: 10,
     message: 'Starting selection export...'
   });
+  
+  // Load current page to prevent errors
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 15,
+    message: 'Loading page data...'
+  });
+  await figma.currentPage.loadAsync();
   
   const exportData = {
     selection: [],
@@ -231,7 +247,7 @@ async function exportSelectedNodes() {
   return exportData;
 }
 
-// Extract pages and their content
+// Extract pages and their content (simplified)
 async function extractPages(pages) {
   const extractedPages = [];
   
@@ -243,8 +259,18 @@ async function extractPages(pages) {
       children: []
     };
     
-    // Extract all children recursively
-    pageData.children = await extractNodeChildren(page.children);
+    // Only extract basic page info to prevent freezing
+    // Skip deep children extraction for now
+    if (page.children && page.children.length > 0) {
+      pageData.children = page.children.map(child => ({
+        id: child.id,
+        name: child.name,
+        type: child.type,
+        // Don't extract deep children to prevent freezing
+        hasChildren: child.children && child.children.length > 0
+      }));
+    }
+    
     extractedPages.push(pageData);
   }
   
@@ -263,7 +289,7 @@ async function extractNodeChildren(children) {
   return extractedChildren;
 }
 
-// Extract complete node data
+// Extract complete node data (simplified to prevent freezing)
 async function extractNodeData(node) {
   const nodeData = {
     id: node.id,
@@ -306,7 +332,7 @@ async function extractNodeData(node) {
     children: []
   };
   
-  // Extract effects (shadows, blurs, etc.)
+  // Extract effects (shadows, blurs, etc.) - lightweight
   if (node.effects) {
     nodeData.effects = node.effects.map(effect => ({
       type: effect.type,
@@ -319,12 +345,12 @@ async function extractNodeData(node) {
     }));
   }
   
-  // Extract fills (colors, gradients, images)
+  // Extract fills (colors, gradients, images) - lightweight
   if (node.fills) {
     nodeData.fills = await extractFills(node.fills);
   }
   
-  // Extract strokes
+  // Extract strokes - lightweight
   if (node.strokes) {
     nodeData.strokes = node.strokes.map(stroke => ({
       type: stroke.type,
@@ -334,9 +360,15 @@ async function extractNodeData(node) {
     }));
   }
   
-  // Extract children if node has them
-  if ('children' in node && node.children) {
-    nodeData.children = await extractNodeChildren(node.children);
+  // Extract children if node has them (limited depth to prevent freezing)
+  if ('children' in node && node.children && node.children.length > 0) {
+    // Only extract first level children to prevent deep recursion
+    nodeData.children = node.children.slice(0, 10).map(child => ({
+      id: child.id,
+      name: child.name,
+      type: child.type,
+      hasChildren: child.children && child.children.length > 0
+    }));
   }
   
   return nodeData;
