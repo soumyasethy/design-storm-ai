@@ -235,10 +235,7 @@ const FigmaImage: React.FC<{
       <div 
         style={{
           ...imageStyles,
-          backgroundImage: 'url(/placeholder.svg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
+          backgroundColor: 'rgba(200, 200, 200, 0.3)',
           border: showDebug ? '1px solid #ef4444' : 'none',
         }}
       >
@@ -258,10 +255,7 @@ const FigmaImage: React.FC<{
         <div 
           style={{
             ...imageStyles,
-            backgroundImage: 'url(/placeholder.svg)',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat',
+            backgroundColor: 'rgba(200, 200, 200, 0.3)',
             opacity: '0.7',
           }}
         />
@@ -2145,10 +2139,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               style={{
                 width: '100%',
                 height: '100%',
-                backgroundImage: 'url(/placeholder.svg)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
+                backgroundColor: 'rgba(200, 200, 200, 0.3)',
                 borderRadius: positionStyles.borderRadius,
               }}
             />
