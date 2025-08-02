@@ -1908,7 +1908,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
       
       // Add z-index for mask groups to ensure they appear on top
       if (isMaskGroupNode(node)) {
-        frameStyles.zIndex = 5;
+        frameStyles.zIndex = 999;
       }
       
       // Add background color support for frames and groups
@@ -1967,7 +1967,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 top: 0, 
                 left: 0,
                 borderRadius: `${Math.min(absoluteBoundingBox?.width || 100, absoluteBoundingBox?.height || 100) / 2}px`,
-                zIndex: 10
+                zIndex: 1000,
+                backgroundColor: 'rgba(255, 0, 0, 0.3)' // Debug: red background to see if SVG is visible
               }}
             >
               <defs>
