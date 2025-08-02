@@ -3,6 +3,26 @@
 
 figma.showUI(__html__, { width: 400, height: 600 });
 
+// Custom base64 encoder for Figma plugin environment
+function bytesToBase64(bytes) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let result = '';
+  let i;
+  const len = bytes.length;
+  for (i = 0; i < len; i += 3) {
+    result += chars[bytes[i] >> 2];
+    result += chars[((bytes[i] & 3) << 4) | (bytes[i + 1] >> 4)];
+    result += chars[((bytes[i + 1] & 15) << 2) | (bytes[i + 2] >> 6)];
+    result += chars[bytes[i + 2] & 63];
+  }
+  if ((len % 3) === 2) {
+    result = result.substring(0, result.length - 1) + '=';
+  } else if (len % 3 === 1) {
+    result = result.substring(0, result.length - 2) + '==';
+  }
+  return result;
+}
+
 // Main plugin functionality
 figma.ui.onmessage = async (msg) => {
   if (msg.type === 'export-design') {
@@ -256,9 +276,9 @@ async function extractFills(fills) {
       extractedFill.image = imageData;
       
       // Also add imageRef for compatibility with existing renderer
-      if (imageData.hash) {
+      if (imageData.hash && imageData.imageBytes) {
         extractedFill.imageRef = imageData.hash;
-        extractedFill.imageUrl = `data:image/png;base64,${btoa(String.fromCharCode(...new Uint8Array(imageData.imageBytes)))}`;
+        extractedFill.imageUrl = `data:image/png;base64,${bytesToBase64(new Uint8Array(imageData.imageBytes))}`;
       }
     }
     
@@ -388,8 +408,8 @@ async function buildImageMap(images) {
   for (const image of images) {
     if (image.nodeId && image.bytes) {
       try {
-        // Convert bytes to base64 for easy transfer
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(image.bytes)));
+        // Convert bytes to base64 using our custom encoder
+        const base64 = bytesToBase64(new Uint8Array(image.bytes));
         imageMap[image.nodeId] = `data:image/png;base64,${base64}`;
         
         // Also store image metadata for debugging
