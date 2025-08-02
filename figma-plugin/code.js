@@ -245,6 +245,12 @@ async function extractFills(fills) {
       // Extract image data
       const imageData = await extractImageData(fill);
       extractedFill.image = imageData;
+      
+      // Also add imageRef for compatibility with existing renderer
+      if (imageData.hash) {
+        extractedFill.imageRef = imageData.hash;
+        extractedFill.imageUrl = `data:image/png;base64,${btoa(String.fromCharCode(...new Uint8Array(imageData.imageBytes)))}`;
+      }
     }
     
     extractedFills.push(extractedFill);
@@ -344,9 +350,22 @@ async function buildImageMap(images) {
   
   for (const image of images) {
     if (image.nodeId && image.bytes) {
-      // Convert bytes to base64 for easy transfer
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(image.bytes)));
-      imageMap[image.nodeId] = `data:image/png;base64,${base64}`;
+      try {
+        // Convert bytes to base64 for easy transfer
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(image.bytes)));
+        imageMap[image.nodeId] = `data:image/png;base64,${base64}`;
+        
+        // Also store image metadata for debugging
+        imageMap[`${image.nodeId}_meta`] = {
+          hash: image.hash,
+          nodeName: image.nodeName,
+          width: image.width,
+          height: image.height,
+          size: image.bytes.length
+        };
+      } catch (error) {
+        console.warn('Failed to convert image to base64:', image.nodeId, error);
+      }
     }
   }
   

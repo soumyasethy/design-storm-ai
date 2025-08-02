@@ -24,6 +24,25 @@ export default function TestPluginPage() {
         const jsonData = JSON.parse(e.target?.result as string);
         setUploadedData(jsonData);
         console.log('📁 Test file uploaded:', jsonData);
+        
+        // Log image information for debugging
+        if (jsonData.imageMap) {
+          console.log('🖼️ Image Map Keys:', Object.keys(jsonData.imageMap));
+          console.log('📊 Total Images:', Object.keys(jsonData.imageMap).filter(key => !key.endsWith('_meta')).length);
+        }
+        
+        if (jsonData.images) {
+          console.log('🖼️ Images Array:', jsonData.images.length);
+          jsonData.images.forEach((img: any, index: number) => {
+            console.log(`🖼️ Image ${index}:`, {
+              nodeId: img.nodeId,
+              nodeName: img.nodeName,
+              width: img.width,
+              height: img.height,
+              size: img.bytes?.length || 0
+            });
+          });
+        }
       } catch (error) {
         console.error('❌ Error parsing JSON file:', error);
         setUploadError('Invalid JSON file. Please check the file format.');
@@ -138,11 +157,36 @@ export default function TestPluginPage() {
                     <div className="text-sm text-gray-700 space-y-1">
                       <div><strong>Name:</strong> {uploadedData.name || 'N/A'}</div>
                       <div><strong>Type:</strong> {uploadedData.metadata?.exportedBy || 'Regular JSON'}</div>
-                      <div><strong>Images:</strong> {uploadedData.imageMap ? Object.keys(uploadedData.imageMap).length : 0}</div>
-                      <div><strong>Components:</strong> {uploadedData.components ? Object.keys(uploadedData.components).length : 0}</div>
-                      <div><strong>Styles:</strong> {uploadedData.styles ? Object.keys(uploadedData.styles).length : 0}</div>
+                      <div><strong>Images:</strong> {uploadedData.imageMap ? Object.keys(uploadedData.imageMap).filter(key => !key.endsWith('_meta')).length : 0}</div>
+                      <div><strong>Image Array:</strong> {uploadedData.images ? uploadedData.images.length : 0}</div>
+                      <div><strong>Assets:</strong> {uploadedData.assets ? uploadedData.assets.length : 0}</div>
+                      <div><strong>Components:</strong> {uploadedData.components ? uploadedData.components.length : 0}</div>
+                      <div><strong>Fonts:</strong> {uploadedData.fonts ? uploadedData.fonts.length : 0}</div>
+                      <div><strong>Pages:</strong> {uploadedData.pages ? uploadedData.pages.length : 0}</div>
                     </div>
                   </div>
+
+                  {uploadedData.imageMap && Object.keys(uploadedData.imageMap).filter(key => !key.endsWith('_meta')).length > 0 && (
+                    <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                      <h4 className="font-semibold text-blue-900 mb-2">🖼️ Image Details</h4>
+                      <div className="text-sm text-blue-700 space-y-1">
+                        <div><strong>Total Images:</strong> {Object.keys(uploadedData.imageMap).filter(key => !key.endsWith('_meta')).length}</div>
+                        <div><strong>Image Format:</strong> Base64 embedded</div>
+                        <div><strong>Status:</strong> Ready for rendering</div>
+                      </div>
+                      <div className="mt-2 text-xs text-blue-600">
+                        {Object.keys(uploadedData.imageMap)
+                          .filter(key => !key.endsWith('_meta'))
+                          .slice(0, 3)
+                          .map(key => (
+                            <div key={key}>• {key}: {uploadedData.imageMap[key].substring(0, 50)}...</div>
+                          ))}
+                        {Object.keys(uploadedData.imageMap).filter(key => !key.endsWith('_meta')).length > 3 && (
+                          <div>... and {Object.keys(uploadedData.imageMap).filter(key => !key.endsWith('_meta')).length - 3} more</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {isPluginData && (
                     <div className="bg-green-50 p-3 rounded border border-green-200">

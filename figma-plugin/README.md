@@ -1,269 +1,234 @@
 # DesignStorm Figma Plugin
 
-A powerful Figma plugin that exports complete design data including all assets, images, fonts, and styles for better code generation.
+A powerful Figma plugin that exports complete design data including all images, assets, and design tokens for seamless integration with the DesignStorm rendering system.
 
-## 🚀 **Why Use This Plugin?**
+## 🚀 Features
 
-### **Current Limitations of JSON Export:**
-- ❌ **No actual image files** - Only image references
-- ❌ **Missing font files** - Only font names
-- ❌ **No vector assets** - Limited SVG data
-- ❌ **Incomplete effects** - Missing shadow/blur data
-- ❌ **No component variants** - Limited component data
+- **Complete Design Export**: Export entire Figma documents with all pages and content
+- **Image Extraction**: All images embedded as base64 data (no API limits)
+- **Asset Collection**: Comprehensive asset extraction including fonts, styles, and components
+- **Selection Export**: Export only selected elements for focused workflows
+- **Offline Support**: Works without Figma API tokens or internet connection
+- **Rich Metadata**: Includes design tokens, styles, and component information
 
-### **Plugin Benefits:**
-- ✅ **Complete image assets** - Actual image bytes included
-- ✅ **Full font information** - Font families, weights, styles
-- ✅ **Complete effects data** - Shadows, blurs, overlays
-- ✅ **Component variants** - All component states and variants
-- ✅ **Design tokens** - Colors, typography, spacing systems
-- ✅ **Layout data** - Auto-layout, constraints, positioning
+## 📦 Installation
 
-## 📦 **Installation**
+### Method 1: Development Plugin (Recommended)
 
-### **Method 1: Development Installation**
+1. **Clone or download** the `figma-plugin` folder to your local machine
+2. **Open Figma** and go to Plugins → Development → New Plugin
+3. **Choose "Import plugin from manifest"**
+4. **Select** the `manifest.json` file from the `figma-plugin` folder
+5. **Install** the plugin
 
-1. **Clone or download** this plugin folder
-2. **Open Figma Desktop App**
-3. **Go to Plugins** → **Development** → **New Plugin**
-4. **Click "Import plugin from manifest"**
-5. **Select the `manifest.json` file** from this folder
-6. **The plugin will appear** in your development plugins list
+### Method 2: Manual Installation
 
-### **Method 2: Manual Installation**
+1. **Copy** all files from the `figma-plugin` folder
+2. **Create** a new plugin in Figma
+3. **Replace** the default files with the plugin files
+4. **Update** the manifest.json with the plugin details
 
-1. **Create a new folder** in your Figma plugins directory:
-   ```
-   ~/Library/Application Support/Figma/plugins/designstorm-exporter/
-   ```
-2. **Copy all files** from this folder to the new directory
-3. **Restart Figma**
-4. **Go to Plugins** → **Development** → **DesignStorm Exporter**
+## 🎯 Usage
 
-## 🎯 **How to Use**
+### Step 1: Prepare Your Design
 
-### **1. Export Complete Design**
-1. **Open your Figma design**
-2. **Go to Plugins** → **DesignStorm Exporter**
-3. **Click "Export Complete Design"**
-4. **Wait for processing** (progress bar will show status)
-5. **Download the JSON file** with all assets
+1. **Open** your Figma design file
+2. **Ensure** all images are properly placed and visible
+3. **Select** the elements you want to export (optional)
 
-### **2. Export Selected Elements**
-1. **Select specific elements** in your Figma design
-2. **Open the plugin**
-3. **Click "Export Selected Elements"**
-4. **Download the focused export**
+### Step 2: Run the Plugin
 
-### **3. Download Options**
-- **Download JSON** - Complete design data
-- **Download Assets** - Images and assets only
-- **Download All (ZIP)** - Complete package
+1. **Go to** Plugins → DesignStorm Exporter
+2. **Choose** export option:
+   - **Export Complete Design**: Exports entire document
+   - **Export Selected Elements**: Exports only selected items
 
-## 📊 **What Gets Exported**
+### Step 3: Configure Export Options
 
-### **Complete Design Data:**
+The plugin will automatically include:
+- ✅ All image assets (embedded as base64)
+- ✅ Font information
+- ✅ Design styles
+- ✅ Component data
+- ✅ Layout and positioning data
+
+### Step 4: Download Export
+
+1. **Wait** for the export to complete
+2. **Download** the JSON file
+3. **Use** the exported data in DesignStorm
+
+## 📊 Export Data Structure
+
+The plugin exports a comprehensive JSON structure:
+
 ```json
 {
-  "pages": [
-    {
-      "id": "page-id",
-      "name": "Page Name",
-      "children": [...]
+  "metadata": {
+    "exportedBy": "DesignStorm Plugin",
+    "version": "1.0.0",
+    "lastModified": "2024-01-01T00:00:00.000Z"
+  },
+  "document": {
+    // Complete Figma document structure
+  },
+  "imageMap": {
+    "nodeId1": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+    "nodeId1_meta": {
+      "hash": "imageHash",
+      "nodeName": "Image Name",
+      "width": 800,
+      "height": 600,
+      "size": 12345
     }
-  ],
-  "assets": [
-    {
-      "id": "asset-id",
-      "name": "hero-image.png",
-      "type": "IMAGE",
-      "bytes": "base64-encoded-image-data",
-      "width": 1920,
-      "height": 1080
-    }
-  ],
+  },
   "images": [
     {
-      "hash": "image-hash",
-      "nodeId": "node-id",
-      "nodeName": "Hero Section",
-      "bytes": "base64-encoded-image-data",
-      "width": 1920,
-      "height": 1080
+      "hash": "imageHash",
+      "nodeId": "nodeId1",
+      "nodeName": "Image Name",
+      "bytes": [137, 80, 78, 71, ...],
+      "width": 800,
+      "height": 600
     }
   ],
-  "fonts": [
-    {
-      "family": "Inter",
-      "style": "Regular"
-    }
-  ],
-  "styles": {
-    "paint": [...],
-    "text": [...],
-    "effect": [...],
-    "grid": [...]
-  },
-  "components": [
-    {
-      "id": "component-id",
-      "name": "Button",
-      "type": "COMPONENT",
-      "variants": [...]
-    }
-  ],
-  "metadata": {
-    "name": "Design Name",
-    "version": "1.0.0",
-    "lastModified": "2024-01-01T00:00:00.000Z",
-    "pluginVersion": "1.0.0"
-  }
+  "assets": [...],
+  "fonts": [...],
+  "styles": {...},
+  "components": [...]
 }
 ```
 
-### **Enhanced Node Data:**
-```json
-{
-  "id": "node-id",
-  "name": "Hero Section",
-  "type": "FRAME",
-  "x": 0,
-  "y": 0,
-  "width": 1920,
-  "height": 1080,
-  "fills": [
-    {
-      "type": "IMAGE",
-      "image": {
-        "hash": "image-hash",
-        "bytes": "base64-encoded-image-data",
-        "width": 1920,
-        "height": 1080
-      }
-    }
-  ],
-  "effects": [
-    {
-      "type": "DROP_SHADOW",
-      "color": {"r": 0, "g": 0, "b": 0, "a": 0.1},
-      "offset": {"x": 0, "y": 4},
-      "radius": 8,
-      "spread": 0
-    }
-  ],
-  "children": [...]
-}
-```
+## 🖼️ Image Support
 
-## 🔧 **Integration with DesignStorm**
+### Embedded Images
+- All images are **embedded as base64** data
+- **No API limits** or external dependencies
+- **Offline rendering** support
+- **Complete image metadata** included
 
-### **1. Upload Plugin Export**
-1. **Export your design** using the Figma plugin
-2. **Go to DesignStorm** → **Upload**
-3. **Upload the plugin JSON file**
-4. **Get enhanced code generation** with all assets
+### Image Types Supported
+- ✅ PNG images
+- ✅ JPEG images
+- ✅ SVG graphics
+- ✅ Image fills in shapes
+- ✅ Background images
+- ✅ Component images
 
-### **2. Enhanced Code Output**
-The plugin export enables:
-- ✅ **Real image assets** in your code
-- ✅ **Proper font loading** with fallbacks
-- ✅ **Complete CSS effects** (shadows, blurs)
-- ✅ **Component variants** and states
-- ✅ **Design token system** for consistency
+### Image Processing
+- **Automatic extraction** from all node types
+- **Recursive scanning** of nested components
+- **Metadata preservation** (dimensions, names, etc.)
+- **Error handling** for corrupted images
 
-### **3. Example Output**
-```jsx
-// With plugin export - Real assets included
-const HeroSection = () => (
-  <section 
-    style={{
-      backgroundImage: `url(data:image/png;base64,${imageBytes})`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)'
-    }}
-  >
-    <h1 style={{ fontFamily: 'Inter, sans-serif' }}>
-      Welcome to DesignStorm
-    </h1>
-  </section>
-);
-```
+## 🔧 Technical Details
 
-## 🛠 **Development**
+### Plugin Architecture
+- **Main Code**: `code.js` - Core export functionality
+- **UI Interface**: `ui.html` - User interface
+- **Configuration**: `manifest.json` - Plugin metadata
 
-### **File Structure:**
+### Export Process
+1. **Scan** all nodes in the document/selection
+2. **Extract** image data using Figma API
+3. **Convert** images to base64 format
+4. **Build** comprehensive data structure
+5. **Generate** downloadable JSON
+
+### Performance Considerations
+- **Large files**: May take time for documents with many images
+- **Memory usage**: Base64 encoding increases file size
+- **Browser limits**: Very large exports may need chunking
+
+## 🛠️ Development
+
+### Local Development
+1. **Edit** plugin files in the `figma-plugin` folder
+2. **Reload** plugin in Figma (Plugins → Development → Reload)
+3. **Test** changes immediately
+
+### File Structure
 ```
 figma-plugin/
 ├── manifest.json      # Plugin configuration
 ├── code.js           # Main plugin logic
-├── ui.html           # Plugin UI
+├── ui.html           # User interface
 └── README.md         # This file
 ```
 
-### **Key Features:**
-- **Asset Extraction** - Gets actual image bytes
-- **Font Analysis** - Extracts all font information
-- **Style Collection** - Gathers design tokens
-- **Component Data** - Exports component variants
-- **Progress Tracking** - Shows export progress
-- **Error Handling** - Graceful error management
+### Key Functions
+- `exportCompleteDesign()` - Export entire document
+- `exportSelectedNodes()` - Export selection only
+- `extractAllImages()` - Extract all images
+- `buildImageMap()` - Create image mapping
+- `extractNodeData()` - Extract node information
 
-### **API Methods Used:**
-- `figma.getImageByHash()` - Get image data
-- `figma.getLocalImageAssets()` - Get all assets
-- `figma.getLocalPaintStyles()` - Get color styles
-- `figma.getLocalTextStyles()` - Get typography styles
-- `figma.getLocalEffectStyles()` - Get effect styles
-- `figma.getLocalComponents()` - Get components
+## 🚨 Troubleshooting
 
-## 🚨 **Limitations**
+### Common Issues
 
-### **Figma API Restrictions:**
-- **File size limits** - Large exports may be truncated
-- **Memory constraints** - Very large designs may fail
-- **Network timeouts** - Slow connections may timeout
-- **Permission scope** - Some data requires specific permissions
+**Plugin not loading**
+- Check manifest.json syntax
+- Ensure all files are in the correct location
+- Reload the plugin in Figma
 
-### **Browser Limitations:**
-- **Download size** - Large files may not download properly
-- **Memory usage** - Large exports may cause browser issues
-- **Processing time** - Complex designs take longer to export
+**Export fails**
+- Check console for error messages
+- Ensure images are not corrupted
+- Try exporting smaller selections
 
-## 🔄 **Updates & Maintenance**
+**Large file issues**
+- Export in smaller chunks
+- Check browser memory limits
+- Use selection export for large documents
 
-### **Version History:**
-- **v1.0.0** - Initial release with basic export functionality
-- **v1.1.0** - Added progress tracking and error handling
-- **v1.2.0** - Enhanced asset extraction and UI improvements
+**Images not appearing**
+- Verify images are properly placed in Figma
+- Check image visibility settings
+- Ensure images are not in hidden layers
 
-### **Future Features:**
-- **Batch export** - Export multiple designs at once
-- **Custom formats** - Export to different file formats
-- **Cloud storage** - Direct upload to cloud services
-- **Real-time sync** - Live design updates
-- **Team collaboration** - Shared export settings
+### Debug Information
+- **Console logs** provide detailed export information
+- **Progress indicators** show export status
+- **Error messages** help identify issues
+- **Export summary** shows what was exported
 
-## 📞 **Support**
+## 📈 Integration with DesignStorm
 
-### **Common Issues:**
-1. **Plugin not loading** - Check manifest.json syntax
-2. **Export fails** - Try with smaller selection
-3. **Download issues** - Check browser download settings
-4. **Memory errors** - Close other Figma tabs
+### Using Exported Data
+1. **Upload** the exported JSON to DesignStorm
+2. **Images** will automatically load from base64 data
+3. **No API tokens** required
+4. **Full offline** rendering support
 
-### **Getting Help:**
-- **Check the console** for error messages
-- **Try with a simple design** first
-- **Restart Figma** if issues persist
-- **Update the plugin** to latest version
+### Benefits
+- **Complete fidelity** - All images and assets included
+- **No dependencies** - Works without external APIs
+- **Fast rendering** - No image loading delays
+- **Reliable** - No network or API issues
 
-## 📄 **License**
+## 🔄 Updates and Maintenance
 
-This plugin is part of the DesignStorm project and follows the same licensing terms.
+### Version History
+- **v1.0.0** - Initial release with complete export functionality
+- **v1.1.0** - Enhanced image extraction and error handling
+- **v1.2.0** - Added selection export and improved UI
+
+### Future Enhancements
+- [ ] Batch export capabilities
+- [ ] Custom export formats
+- [ ] Advanced filtering options
+- [ ] Export templates
+- [ ] Cloud storage integration
+
+## 📞 Support
+
+For issues or questions:
+1. **Check** this README and troubleshooting section
+2. **Review** console logs for error details
+3. **Test** with smaller selections first
+4. **Contact** the development team
 
 ---
 
-**Happy exporting! 🎉**
-
-The DesignStorm Figma Plugin will revolutionize your design-to-code workflow by providing complete access to all your design assets and data. 
+**DesignStorm Plugin** - Making Figma exports seamless and complete! 🎨 
