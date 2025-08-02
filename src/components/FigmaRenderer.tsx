@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import Image from 'next/image';
-import { getSpecialColor, isCircularElement } from '@/lib/utils';
+import { getSpecialColor, isCircularElement, getLineStyles } from '@/lib/utils';
 
 interface FigmaRendererProps {
   node: any;
@@ -599,7 +599,11 @@ const renderGeometricLine = (node: any, baseStyles: React.CSSProperties) => {
     if (nodeName.includes('red')) {
       return '#ff0055'; // Red
     }
-    return '#FF0A54'; // Default pink
+    // Check for specific color from strokes
+    if (node.strokes?.[0]?.type === 'SOLID' && node.strokes[0].color) {
+      return rgbaToCss(node.strokes[0].color.r, node.strokes[0].color.g, node.strokes[0].color.b, node.strokes[0].color.a);
+    }
+    return '#FF004F'; // Default pink from your example
   };
 
   const lineColor = getLineColor();
@@ -1137,10 +1141,13 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
           );
         }
         
-        // Handle regular lines
+        // Handle regular lines with border styling
         return (
           <div
-            style={baseStyles}
+            style={{
+              ...baseStyles,
+              ...getLineStyles(node),
+            }}
             title={`${name} (${type})`}
             data-figma-node-id={node.id}
             data-figma-node-type={type}
@@ -1150,6 +1157,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
               <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
                 <div className="font-bold">{name}</div>
                 <div>{type} - {baseStyles.width}×{baseStyles.height}</div>
+                <div className="text-pink-300">📏 Line Element</div>
               </div>
             )}
             

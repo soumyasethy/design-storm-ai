@@ -665,6 +665,43 @@ export function getGeometricLineProperties(node: any): {
   return {
     geometricType: 'vertical',
     angleDegrees: 0,
-    lineColor: '#FF0A54'
+    lineColor: '#FF004F'
+  };
+}
+
+// Get line-specific styling properties
+export function getLineStyles(node: any): React.CSSProperties {
+  if (!node || typeof node !== 'object') {
+    return {
+      border: '2px solid #FF004F',
+      backgroundColor: 'transparent',
+      borderRadius: '0',
+    };
+  }
+  
+  const { strokes, strokeWeight, name } = node;
+  
+  // Determine border color and width
+  let borderColor = '#FF004F'; // Default pink
+  let borderWidth = strokeWeight || 2;
+  
+  if (strokes?.[0]?.type === 'SOLID' && strokes[0].color) {
+    borderColor = rgbaToCss(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b, strokes[0].color.a);
+  }
+  
+  // Check for specific color names in node name
+  const nodeName = name?.toLowerCase() || '';
+  if (nodeName.includes('pink') || nodeName.includes('accent')) {
+    borderColor = '#FF004F';
+  } else if (nodeName.includes('blue')) {
+    borderColor = '#0066FF';
+  } else if (nodeName.includes('red')) {
+    borderColor = '#ff0055';
+  }
+  
+  return {
+    border: `${borderWidth}px solid ${borderColor}`,
+    backgroundColor: 'transparent',
+    borderRadius: '0',
   };
 }

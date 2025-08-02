@@ -10,7 +10,8 @@ import {
   getVerticalAlign,
   isFooterComponent,
   getImageScaleMode,
-  isNodeVisible
+  isNodeVisible,
+  getLineStyles
 } from '@/lib/utils';
 
 interface SimpleFigmaRendererProps {
@@ -466,7 +467,6 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     case 'RECTANGLE':
     case 'ELLIPSE':
     case 'VECTOR':
-    case 'LINE':
       // Handle image fills
       if (imageUrl) {
         return (
@@ -492,6 +492,29 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
       
       // Handle regular shapes
       return <FigmaShape node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />;
+
+    case 'LINE':
+      // Handle lines with specific styling
+      return (
+        <div
+          style={{
+            ...positionStyles,
+            ...getLineStyles(node),
+          }}
+          title={`${name} (${type})`}
+          data-figma-node-id={node.id}
+          data-figma-node-type={type}
+          data-figma-node-name={name}
+        >
+          {showDebug && devMode && (
+            <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+              <div className="font-bold">{name}</div>
+              <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
+              <div className="text-pink-300">📏 Line Element</div>
+            </div>
+          )}
+        </div>
+      );
 
     case 'INSTANCE':
     case 'COMPONENT':
