@@ -915,6 +915,55 @@ const createMaskElement = (node: any, children: any[], imageMap: Record<string, 
 };
 
 // Enhanced vector stroke rendering with comprehensive support for SimpleFigmaRenderer
+// Add SVG gradient support helper function
+const getSvgGradientDefs = (fills: any[], width: number, height: number) => {
+  let defsContent = '';
+  let fillAttribute = 'none';
+
+  // Find the first visible gradient fill
+  const gradientFill = fills.find(f => f.visible !== false && f.type.startsWith('GRADIENT'));
+
+  if (gradientFill) {
+    const gradientId = `gradient-${gradientFill.type.toLowerCase()}-${Math.random().toString(36).substring(2, 9)}`;
+    fillAttribute = `url(#${gradientId})`;
+
+    if (gradientFill.type === 'GRADIENT_LINEAR') {
+      const { gradientHandlePositions, gradientStops } = gradientFill;
+      const x1 = gradientHandlePositions[0].x;
+      const y1 = gradientHandlePositions[0].y;
+      const x2 = gradientHandlePositions[1].x;
+      const y2 = gradientHandlePositions[1].y;
+
+      defsContent += `<linearGradient id="${gradientId}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" gradientUnits="objectBoundingBox">`;
+      gradientStops.forEach((stop: any) => {
+        const color = rgbaToCss(stop.color.r, stop.color.g, stop.color.b, stop.color.a);
+        defsContent += `<stop offset="${stop.position}" stop-color="${color}" />`;
+      });
+      defsContent += `</linearGradient>`;
+    } else if (gradientFill.type === 'GRADIENT_RADIAL') {
+      const { gradientHandlePositions, gradientStops } = gradientFill;
+      const cx = gradientHandlePositions[0].x;
+      const cy = gradientHandlePositions[0].y;
+      const fx = gradientHandlePositions[2] ? gradientHandlePositions[2].x : cx;
+      const fy = gradientHandlePositions[2] ? gradientHandlePositions[2].y : cy;
+      
+      const r = Math.sqrt(
+        Math.pow(gradientHandlePositions[1].x - gradientHandlePositions[0].x, 2) +
+        Math.pow(gradientHandlePositions[1].y - gradientHandlePositions[0].y, 2)
+      );
+
+      defsContent += `<radialGradient id="${gradientId}" cx="${cx}" cy="${cy}" r="${r}" fx="${fx}" fy="${fy}" gradientUnits="objectBoundingBox">`;
+      gradientStops.forEach((stop: any) => {
+        const color = rgbaToCss(stop.color.r, stop.color.g, stop.color.b, stop.color.a);
+        defsContent += `<stop offset="${stop.position}" stop-color="${color}" />`;
+      });
+      defsContent += `</radialGradient>`;
+    }
+  }
+
+  return { defsContent, fillAttribute };
+};
+
 const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) => {
   const { 
     name, 
@@ -1152,29 +1201,143 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
     return `M ${width/2} 0 L ${width/2} ${height}`;
   };
   
-  const pathData = createVectorPath();
-  
+  // Get proper SVG fill and stroke attributes
+  let svgFillAttribute = 'none';
+  let svgDefs = '';
+
+  if (node.fills && node.fills.length > 0) {
+    const firstFill = node.fills[0];
+    if (firstFill.visible !== false) {
+      if (firstFill.type === 'SOLID' && firstFill.color) {
+        svgFillAttribute = rgbaToCss(firstFill.color.r, firstFill.color.g, firstFill.color.b, firstFill.color.a);
+      } else if (firstFill.type.startsWith('GRADIENT')) {
+        const { defsContent, fillAttribute } = getSvgGradientDefs(node.fills, width, height);
+        svgDefs = defsContent;
+        svgFillAttribute = fillAttribute;
+      }
+    }
+  }
+
+  // Create proper SVG path based on vector properties
+  const createSvgPath = () => {
+    // Check for actual vector path data first
+    if (node.vectorPaths && node.vectorPaths.length > 0) {
+      return node.vectorPaths[0].path || node.vectorPaths[0];
+    }
+
+    // Check for vector segments
+    if (node.vectorSegments && node.vectorSegments.length > 0) {
+      let path = '';
+      node.vectorSegments.forEach((segment: any, index: number) => {
+        if (index === 0) {
+          path += `M ${segment.start.x} ${segment.start.y}`;
+        }
+        if (segment.type === 'LINE') {
+          path += ` L ${segment.end.x} ${segment.end.y}`;
+        } else if (segment.type === 'CURVE') {
+          path += ` Q ${segment.handle1.x} ${segment.handle1.y} ${segment.end.x} ${segment.end.y}`;
+        }
+      });
+      if (node.vectorClosed) {
+        path += ' Z';
+      }
+      return path;
+    }
+
+    // Check for vector points
+    if (vectorPoints && vectorPoints.length >= 2) {
+      const start = vectorPoints[0];
+      const end = vectorPoints[1];
+      return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+    }
+
+    // Handle specific vector types based on dimensions and rotation
+    const rotationRadians = node.rotation || 0;
+    const rotationDegrees = (rotationRadians * 180) / Math.PI;
+
+    // For angled lines (like Vector 24 with rotation -0.15281047072969914)
+    if (Math.abs(rotationRadians) > 0.01) {
+      // Create diagonal line that matches the rotation
+      const angle = Math.atan2(height, width);
+      const adjustedAngle = angle + rotationRadians;
+      const startX = 0;
+      const startY = 0;
+      const endX = width * Math.cos(adjustedAngle);
+      const endY = height * Math.sin(adjustedAngle);
+      return `M ${startX} ${startY} L ${endX} ${endY}`;
+    }
+
+    // Handle decorative angled lines (pink/red lines)
+    if (name?.toLowerCase().includes('decorative') || 
+        name?.toLowerCase().includes('accent') || 
+        strokeColor.includes('ff004f') || 
+        strokeColor.includes('ff0a54')) {
+      const startX = 0;
+      const startY = height * 0.2;
+      const endX = width * 0.8;
+      const endY = height * 0.8;
+      return `M ${startX} ${startY} L ${endX} ${endY}`;
+    }
+
+    // Enhanced dimension-based vector detection
+    if (height > width * 3) {
+      // Vertical line
+      return `M ${width/2} 0 L ${width/2} ${height}`;
+    }
+    
+    if (width > height * 3) {
+      // Horizontal line
+      return `M 0 ${height/2} L ${width} ${height/2}`;
+    }
+    
+    if (Math.abs(width - height) < Math.max(width, height) * 0.3) {
+      // Diagonal line
+      return `M 0 0 L ${width} ${height}`;
+    }
+
+    // Default diagonal line for unknown vectors
+    return `M 0 0 L ${width} ${height}`;
+  };
+
+  const pathData = createSvgPath();
+
+  // Map Figma windingRule to SVG fill-rule
+  const svgFillRule = node.windingRule === 'EVENODD' ? 'evenodd' : 'nonzero';
+
   return (
-    <svg
-      width={width}
-      height={height}
+    <div
       style={{
         position: 'absolute',
-        top: 0,
-        left: 0,
+        top: baseStyles.top,
+        left: baseStyles.left,
+        width: baseStyles.width,
+        height: baseStyles.height,
         transform: combinedTransform || undefined,
+        overflow: 'visible',
       }}
+      title={`${name} (Vector)`}
     >
-      <path
-        d={pathData}
-        fill="none"
-        stroke={strokeColor}
-        strokeWidth={strokeWidth}
-        strokeLinecap={strokeCapStyle}
-        strokeLinejoin={strokeJoinStyle}
-        strokeDasharray={strokeDashArray}
-      />
-    </svg>
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ overflow: 'visible' }}
+      >
+        {/* Add SVG definitions for gradients */}
+        {svgDefs && <defs dangerouslySetInnerHTML={{ __html: svgDefs }} />}
+        <path
+          d={pathData}
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+          fill={svgFillAttribute}
+          fillRule={svgFillRule}
+          strokeLinecap={strokeCapStyle}
+          strokeLinejoin={strokeJoinStyle}
+          strokeDasharray={strokeDashArray}
+        />
+      </svg>
+    </div>
   );
 };
 
