@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import { Upload, FileText, X, Eye, Code, ArrowRight } from 'lucide-react';
-import FigmaLayout from '@/components/FigmaLayout';
+
 import { useRouter } from 'next/navigation';
 
 interface FigmaNode {
@@ -331,11 +331,9 @@ export default function UploadPage() {
                 </p>
               </div>
             )}
-            <FigmaLayout 
-              document={figmaData.document}
-              maxWidth={800}
-              maxHeight={600}
-            />
+            <div className="max-w-4xl mx-auto">
+              {renderNode(figmaData.document)}
+            </div>
           </div>
         ) : viewMode === 'preview' ? (
           <div className="max-h-96 overflow-y-auto">

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import SimpleFigmaRenderer from '@/components/SimpleFigmaRenderer';
-import FigmaLayout from '@/components/FigmaLayout';
+
 import { extractFileKeyFromUrl } from '@/lib/utils';
 import { isPluginExport, parsePluginData, figmaPlugin } from '@/lib/figma-plugin';
 
@@ -1201,26 +1201,8 @@ export default function OutputPage() {
             </div>
           )}
           
-          {/* Render the Figma content with enhanced renderer */}
-          {frameNode && (renderMode === 'enhanced' ? (
-            <FigmaLayout
-              key={`layout-${frameNode.id}-${dataSource}-${dataVersion}`}
-              node={frameNode}
-              showDebug={showLayoutDebug}
-              imageMap={imageMap}
-            >
-              <SimpleFigmaRenderer
-                key={`renderer-${frameNode.id}-${dataSource}-${dataVersion}`}
-                node={frameNode}
-                fileKey={fileKey}
-                figmaToken={figmaToken}
-                showDebug={showDebug}
-                isRoot={true}
-                imageMap={imageMap}
-                devMode={devMode}
-              />
-            </FigmaLayout>
-          ) : (
+          {/* Render the Figma content */}
+          {frameNode && (
             <SimpleFigmaRenderer
               key={`renderer-${frameNode.id}-${dataSource}-${dataVersion}`}
               node={frameNode}
@@ -1229,8 +1211,9 @@ export default function OutputPage() {
               showDebug={showDebug}
               isRoot={true}
               imageMap={imageMap}
+              devMode={devMode}
             />
-          ))}
+          )}
           
           {/* Coordinate overlay for debugging */}
           {/*showDebug && !devMode && (
