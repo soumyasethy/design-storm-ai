@@ -194,12 +194,18 @@ const FigmaImage: React.FC<{
     return <div>Invalid image node</div>;
   }
   
-  // Special handling for footer icons (circular)
+  // Special handling for footer icons and avatars (circular)
   const isFooterIcon = isFooterComponent(node) || 
                       node.name?.toLowerCase().includes('linkedin') || 
                       node.name?.toLowerCase().includes('instagram') || 
                       node.name?.toLowerCase().includes('youtube') ||
                       node.name?.toLowerCase().includes('social');
+  
+  const isAvatar = node.name?.toLowerCase().includes('avatar') || 
+                   node.name?.toLowerCase().includes('profile') ||
+                   node.name?.toLowerCase().includes('user') ||
+                   (node.absoluteBoundingBox && 
+                    node.absoluteBoundingBox.width === node.absoluteBoundingBox.height);
   
   const scaleMode = getImageScaleMode(node);
   
@@ -207,7 +213,7 @@ const FigmaImage: React.FC<{
     width: '100%',
     height: '100%',
     objectFit: scaleMode as any,
-    borderRadius: isFooterIcon ? '50%' : baseStyles.borderRadius,
+    borderRadius: (isFooterIcon || isAvatar) ? '50%' : baseStyles.borderRadius,
   };
   
   const handleImageError = () => {
@@ -492,6 +498,8 @@ const FigmaText: React.FC<{
     alignItems: getVerticalAlign(style?.textAlignVertical || 'TOP'),
     justifyContent: getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'center' ? 'center' : 
                   getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'right' ? 'flex-end' : 'flex-start',
+    gap: '4px', // Add gap for inline elements
+    overflow: 'hidden',
   };
   
   const processedText = processRichText(characters);
@@ -1036,6 +1044,20 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
       }
       // For diagonal lines
       return `M 0 0 L ${width} ${height}`;
+    }
+    
+    // Handle decorative angled lines (pink/red lines)
+    if (name?.toLowerCase().includes('decorative') || 
+        name?.toLowerCase().includes('accent') || 
+        strokeColor.includes('ff004f') || 
+        strokeColor.includes('ff0a54')) {
+      // Create angled decorative line
+      const angle = 45; // 45 degree angle
+      const startX = 0;
+      const startY = height * 0.2;
+      const endX = width * 0.8;
+      const endY = height * 0.8;
+      return `M ${startX} ${startY} L ${endX} ${endY}`;
     }
     
     // Default vertical line
@@ -1687,6 +1709,57 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   // Handle clip content property
   if (node.clipContent === true) {
     positionStyles.overflow = 'hidden';
+  }
+  
+  // Handle angled sections with clip-path
+  if (node.name?.toLowerCase().includes('angled') || node.name?.toLowerCase().includes('section')) {
+    // Create angled clip-path for section transitions
+    const angle = 15; // 15 degree angle
+    const clipPath = `polygon(0 0, 100% ${angle}%, 100% 100%, 0 ${100 - angle}%)`;
+    positionStyles.clipPath = clipPath;
+    positionStyles.transformOrigin = 'center center';
+  }
+  
+  // Handle effects for background blur and shadows
+  if (node.effects && node.effects.length > 0) {
+    const effectStyles: string[] = [];
+    
+    node.effects.forEach((effect: any) => {
+      if (effect.visible !== false) {
+        switch (effect.type) {
+          case 'DROP_SHADOW':
+            const shadow = effect;
+            const color = shadow.color ? rgbaToCss(shadow.color.r, shadow.color.g, shadow.color.b, shadow.color.a) : 'rgba(0,0,0,0.3)';
+            const offsetX = shadow.offset?.x || 0;
+            const offsetY = shadow.offset?.y || 0;
+            const radius = shadow.radius || 0;
+            effectStyles.push(`${offsetX}px ${offsetY}px ${radius}px ${color}`);
+            break;
+          case 'INNER_SHADOW':
+            const innerShadow = effect;
+            const innerColor = innerShadow.color ? rgbaToCss(innerShadow.color.r, innerShadow.color.g, innerShadow.color.b, innerShadow.color.a) : 'rgba(0,0,0,0.3)';
+            const innerOffsetX = innerShadow.offset?.x || 0;
+            const innerOffsetY = innerShadow.offset?.y || 0;
+            const innerRadius = innerShadow.radius || 0;
+            effectStyles.push(`inset ${innerOffsetX}px ${innerOffsetY}px ${innerRadius}px ${innerColor}`);
+            break;
+          case 'LAYER_BLUR':
+            const blur = effect;
+            const blurRadius = blur.radius || 0;
+            effectStyles.push(`blur(${blurRadius}px)`);
+            break;
+          case 'BACKGROUND_BLUR':
+            const bgBlur = effect;
+            const bgBlurRadius = bgBlur.radius || 0;
+            positionStyles.backdropFilter = `blur(${bgBlurRadius}px)`;
+            break;
+        }
+      }
+    });
+    
+    if (effectStyles.length > 0) {
+      positionStyles.filter = effectStyles.join(' ');
+    }
   }
 
   // Render based on node type
