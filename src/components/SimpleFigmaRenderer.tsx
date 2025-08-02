@@ -234,9 +234,12 @@ const FigmaImage: React.FC<{
     return (
       <div 
         style={{
-          ...imageStyles,
-          backgroundColor: 'rgba(200, 200, 200, 0.3)',
-          border: showDebug ? '1px solid #ef4444' : 'none',
+          width: '100%',
+          height: '100%',
+          backgroundImage: 'url(/placeholder.svg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
         }}
       >
         {showDebug && (
@@ -254,9 +257,12 @@ const FigmaImage: React.FC<{
       {imageLoading && (
         <div 
           style={{
-            ...imageStyles,
-            backgroundColor: 'rgba(200, 200, 200, 0.3)',
-            opacity: '0.7',
+            width: '100%',
+            height: '100%',
+            backgroundImage: 'url(/placeholder.svg)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
           }}
         />
       )}
@@ -1144,7 +1150,7 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
       if (width > height) {
         // Horizontal dashed line
         return `M 0 ${height/2} L ${width} ${height/2}`;
-      } else {
+    } else {
         // Vertical dashed line
         return `M ${width/2} 0 L ${width/2} ${height}`;
       }
@@ -1161,7 +1167,7 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
       width={width}
       height={height}
       style={{
-        position: 'absolute',
+    position: 'absolute',
         top: 0,
         left: 0,
         transform: combinedTransform || undefined,
@@ -1366,7 +1372,7 @@ const renderSimpleEllipse = (node: any, baseStyles: React.CSSProperties) => {
     ...outlineStyle,
   };
   
-  return (
+    return (
     <div
       style={ellipseStyles}
       title={`${name} - Ellipse (${width}×${height})`}
@@ -1476,9 +1482,9 @@ const renderSimpleRectangle = (node: any, baseStyles: React.CSSProperties, showD
   if (aspectRatio && aspectRatio > 0) {
     aspectRatioStyle = { aspectRatio: aspectRatio.toString() };
   }
-  
+
   return (
-    <div
+    <div 
       style={{
         ...baseStyles,
         width: `${width}px`,
@@ -1877,9 +1883,9 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
           )}
           
           {children?.map((child: any, index: number) => (
-            <SimpleFigmaRenderer
+            <SimpleFigmaRenderer 
               key={child.id || index}
-              node={child}
+              node={child} 
               showDebug={showDebug}
               parentBoundingBox={node.absoluteBoundingBox}
               imageMap={imageMap}
@@ -1939,7 +1945,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                   {node.itemSpacing && <div className="text-cyan-300">📏 {node.itemSpacing}px</div>}
                   {(node.backgroundColor || (node.fills && node.fills.some((fill: any) => fill.type === 'SOLID'))) && 
                     <div className="text-orange-300">🎨 Background color</div>}
-                </div>
+        </div>
               )}
           
           {/* Handle mask group children with enhanced image + rectangle support */}
@@ -2080,9 +2086,9 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 devMode={devMode}
               />
             ))
-          )}
-        </div>
-      );
+      )}
+    </div>
+  );
 
     case 'TEXT':
       return <FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />;
@@ -2139,8 +2145,10 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               style={{
                 width: '100%',
                 height: '100%',
-                backgroundColor: 'rgba(200, 200, 200, 0.3)',
-                borderRadius: positionStyles.borderRadius,
+                backgroundImage: 'url(/placeholder.svg)',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
               }}
             />
           </div>
