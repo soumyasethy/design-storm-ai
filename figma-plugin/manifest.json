@@ -13,8 +13,7 @@
     "activeusers"
   ],
   "capabilities": [
-    "inspect",
-    "codegen"
+    "inspect"
   ],
   "enableProposedApi": false,
   "enablePrivatePluginApi": false,
