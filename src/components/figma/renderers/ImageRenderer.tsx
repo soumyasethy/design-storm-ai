@@ -24,6 +24,11 @@ export const ImageRenderer: React.FC<FigmaRendererProps> = ({ node, showDebug, i
     imageUrl = imageMap[node.id];
   }
 
+  // If no valid image URL found, use placeholder
+  if (!imageUrl) {
+    imageUrl = '/placeholder.svg';
+  }
+
   // Compute all styles dynamically from JSON properties
   const styles = {
     ...computeStyles(node),
@@ -155,26 +160,25 @@ export const ImageRenderer: React.FC<FigmaRendererProps> = ({ node, showDebug, i
         </div>
       )}
       
-      {imageUrl && !imageError ? (
-        <Image
-          src={imageUrl}
-          alt={node.name || 'Figma image'}
-          width={node.absoluteBoundingBox?.width || 100}
-          height={node.absoluteBoundingBox?.height || 100}
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            borderRadius: 'inherit',
-          }}
-          onError={handleImageError}
-          onLoad={handleImageLoad}
-        />
-      ) : (
+      <Image
+        src={imageUrl}
+        alt={node.name || 'Figma image'}
+        width={node.absoluteBoundingBox?.width || 100}
+        height={node.absoluteBoundingBox?.height || 100}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          borderRadius: 'inherit',
+        }}
+        onError={handleImageError}
+        onLoad={handleImageLoad}
+      />
+      {imageError && (
         <PlaceholderImage 
-          message={imageError ? 'Failed to load' : 'No image data'} 
-          icon={imageError ? '❌' : '🖼️'}
-          type={imageError ? 'error' : 'missing'}
+          message="Failed to load" 
+          icon="❌"
+          type="error"
         />
       )}
       

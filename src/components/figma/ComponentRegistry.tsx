@@ -235,7 +235,15 @@ export const computeFillStyles = (node: FigmaNode): React.CSSProperties => {
       
     case 'IMAGE':
       if (fill.imageRef) {
-        styles.backgroundImage = `url(${fill.imageRef})`;
+        // Use placeholder for broken image refs
+        const imageUrl = fill.imageRef.startsWith('http') ? fill.imageRef : '/placeholder.svg';
+        styles.backgroundImage = `url(${imageUrl})`;
+        styles.backgroundSize = 'cover';
+        styles.backgroundPosition = 'center';
+        styles.backgroundRepeat = 'no-repeat';
+      } else {
+        // Fallback to placeholder if no imageRef
+        styles.backgroundImage = 'url(/placeholder.svg)';
         styles.backgroundSize = 'cover';
         styles.backgroundPosition = 'center';
         styles.backgroundRepeat = 'no-repeat';
