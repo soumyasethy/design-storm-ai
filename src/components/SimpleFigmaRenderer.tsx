@@ -1906,11 +1906,6 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
       // Enhanced frame background color support
       const frameStyles = { ...positionStyles };
       
-      // Add z-index for mask groups to ensure they appear on top
-      if (isMaskGroupNode(node)) {
-        frameStyles.zIndex = 999;
-      }
-      
       // Add background color support for frames and groups
       if (node.backgroundColor) {
         frameStyles.backgroundColor = rgbaToCss(
@@ -1967,8 +1962,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 top: 0, 
                 left: 0,
                 borderRadius: `${Math.min(absoluteBoundingBox?.width || 100, absoluteBoundingBox?.height || 100) / 2}px`,
-                zIndex: 1000,
-                backgroundColor: 'rgba(255, 0, 0, 0.3)' // Debug: red background to see if SVG is visible
+                zIndex: 1
               }}
             >
               <defs>
@@ -2087,34 +2081,42 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                   const imageFill = child.fills?.find((fill: any) => fill.type === 'IMAGE');
                   const imageUrl = imageFill?.imageUrl || imageMap[child.id];
                   
-                  if (imageUrl) {
-                    return (
-                      <image
-                        key={child.id || index}
-                        href={imageUrl}
-                        x="0"
-                        y="0"
-                        width="100%"
-                        height="100%"
-                        preserveAspectRatio="xMidYMid slice"
-                        mask={`url(#mask-group-${node.id})`}
-                      />
-                    );
-                  } else {
-                    // Use placeholder if no image URL
-                    return (
-                      <image
-                        key={child.id || index}
-                        href="/placeholder.svg"
-                        x="0"
-                        y="0"
-                        width="100%"
-                        height="100%"
-                        preserveAspectRatio="xMidYMid slice"
-                        mask={`url(#mask-group-${node.id})`}
-                      />
-                    );
-                  }
+                                     if (imageUrl) {
+                     return (
+                       <image
+                         key={child.id || index}
+                         href={imageUrl}
+                         x="0"
+                         y="0"
+                         width="100%"
+                         height="100%"
+                         preserveAspectRatio="xMidYMid slice"
+                         mask={`url(#mask-group-${node.id})`}
+                         style={{
+                           zIndex: 1,
+                           position: 'relative'
+                         }}
+                       />
+                     );
+                                     } else {
+                     // Use placeholder if no image URL
+                     return (
+                       <image
+                         key={child.id || index}
+                         href="/placeholder.svg"
+                         x="0"
+                         y="0"
+                         width="100%"
+                         height="100%"
+                         preserveAspectRatio="xMidYMid slice"
+                         mask={`url(#mask-group-${node.id})`}
+                         style={{
+                           zIndex: 1,
+                           position: 'relative'
+                         }}
+                       />
+                     );
+                   }
                 }
                 return null;
               })}

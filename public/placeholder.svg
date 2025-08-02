@@ -1,5 +1,7 @@
 <svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' viewBox='0 0 800 800'>
-  <!-- Simple placeholder for debugging -->
-  <rect width='100%' height='100%' fill='#cccccc' stroke='#999999' stroke-width='2'/>
-  <text x='50%' y='50%' text-anchor='middle' dy='.3em' font-family='Arial' font-size='24' fill='#666666'>PLACEHOLDER</text>
+  <!-- Simple visible placeholder with clear background -->
+  <rect width='100%' height='100%' fill='#f0f0f0' stroke='#ccc' stroke-width='2'/>
+  <text x='50%' y='50%' text-anchor='middle' dominant-baseline='middle' font-family='Arial, sans-serif' font-size='24' fill='#666'>
+    Image Placeholder
+  </text>
 </svg>
