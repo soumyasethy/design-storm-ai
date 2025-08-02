@@ -279,29 +279,63 @@ export function getSpecialColor(nodeName: string, defaultColor: string): string 
   
   const name = nodeName.toLowerCase();
   
-  // Handle specific color requirements for the Agilitas design
+  // Agilitas brand colors
   if (name.includes('all-in') || name.includes('accent') || name.includes('pink')) {
     return '#FF0A54'; // Pink accent
   }
   
-  if (name.includes('explore') || name.includes('learn more') || name.includes('button') || name.includes('cta')) {
+  if (name.includes('explore') || name.includes('learn more') || name.includes('button') || name.includes('cta') || name.includes('lets talk')) {
     return '#0066FF'; // Blue for interactive elements
   }
   
-  if (name.includes('heading') || name.includes('title') || name.includes('manufacturing') || name.includes('brands') || name.includes('stores')) {
-    return '#FFFFFF'; // White for section headings on dark backgrounds
+  // Section-specific colors
+  if (name.includes('hero') || name.includes('built to move')) {
+    return '#FFFFFF'; // White for hero text
   }
   
-  if (name.includes('body') || name.includes('paragraph') || name.includes('description')) {
-    return '#FFFFFF'; // White for body text on dark backgrounds
+  if (name.includes('integrated') || name.includes('agile') || name.includes('brand spotlight') || name.includes('fresh off the field')) {
+    return '#1E1E1E'; // Dark for main content
   }
   
-  if (name.includes('vertically integrated') || name.includes('integrated')) {
-    return '#1E1E1E'; // Dark gray for main headings on light backgrounds
+  if (name.includes('vision') || name.includes('mission')) {
+    return '#FFFFFF'; // White for vision/mission text
   }
   
+  if (name.includes('get in touch')) {
+    return '#FFFFFF'; // White for contact section
+  }
+  
+  if (name.includes('footer') || name.includes('agilitas logo')) {
+    return '#FFFFFF'; // White for footer
+  }
+  
+  // Text hierarchy colors
+  if (name.includes('heading') || name.includes('title')) { 
+    if (name.includes('vision') || name.includes('mission') || name.includes('get in touch')) {
+      return '#FFFFFF'; // White for dark backgrounds
+    }
+    return '#1E1E1E'; // Dark for light backgrounds
+  }
+  
+  if (name.includes('body') || name.includes('paragraph') || name.includes('description')) { 
+    if (name.includes('vision') || name.includes('mission') || name.includes('get in touch')) {
+      return '#FFFFFF'; // White for dark backgrounds
+    }
+    return '#1E1E1E'; // Dark for light backgrounds
+  }
+  
+  // Brand names
+  if (name.includes('lotto') || name.includes('one8') || name.includes('whats coming')) {
+    return '#1E1E1E'; // Dark for brand names
+  }
+  
+  if (name.includes('virat kohli')) {
+    return '#1E1E1E'; // Dark for names
+  }
+  
+  // Geometric elements
   if (name.includes('geometric') || name.includes('line') || name.includes('accent-line')) {
-    return '#FF0A54'; // Pink for geometric accent lines
+    return '#FF004F'; // Pink for geometric lines
   }
   
   return defaultColor;
@@ -360,7 +394,9 @@ export function isCircularElement(node: any): boolean {
   if (name.includes('linkedin') || name.includes('instagram') || name.includes('youtube') ||
       name.includes('social') || name.includes('avatar') || name.includes('icon') ||
       name.includes('circle') || name.includes('round') || name.includes('logo') ||
-      name.includes('manufacturing') || name.includes('brands') || name.includes('stores')) {
+      name.includes('manufacturing') || name.includes('brands') || name.includes('stores') ||
+      name.includes('retail') || name.includes('integrated') || name.includes('agile') ||
+      name.includes('circular') || name.includes('dot') || name.includes('top button')) {
     return true;
   }
   
@@ -704,149 +740,4 @@ export function getLineStyles(node: any): React.CSSProperties {
     backgroundColor: 'transparent',
     borderRadius: '0',
   };
-}
-
-// Parse Figma CSS and extract styles for specific elements
-export function parseFigmaCSS(cssContent: string): Record<string, React.CSSProperties> {
-  const styles: Record<string, React.CSSProperties> = {};
-  
-  // Split CSS into rules
-  const rules = cssContent.split('/*').filter(rule => rule.trim());
-  
-  rules.forEach(rule => {
-    const lines = rule.split('\n');
-    const selector = lines[0]?.trim();
-    
-    if (!selector) return;
-    
-    const cssProperties: React.CSSProperties = {};
-    
-    lines.slice(1).forEach(line => {
-      const trimmedLine = line.trim();
-      if (!trimmedLine || trimmedLine.startsWith('/*')) return;
-      
-      const colonIndex = trimmedLine.indexOf(':');
-      if (colonIndex === -1) return;
-      
-      const property = trimmedLine.substring(0, colonIndex).trim();
-      const value = trimmedLine.substring(colonIndex + 1).trim().replace(';', '');
-      
-      switch (property) {
-        case 'position':
-          cssProperties.position = value as any;
-          break;
-        case 'width':
-          cssProperties.width = value;
-          break;
-        case 'height':
-          cssProperties.height = value;
-          break;
-        case 'left':
-          cssProperties.left = value;
-          break;
-        case 'top':
-          cssProperties.top = value;
-          break;
-        case 'right':
-          cssProperties.right = value;
-          break;
-        case 'bottom':
-          cssProperties.bottom = value;
-          break;
-        case 'background':
-          if (value.startsWith('#')) {
-            cssProperties.backgroundColor = value;
-          } else if (value.includes('url(')) {
-            cssProperties.backgroundImage = value;
-          }
-          break;
-        case 'border':
-          cssProperties.border = value;
-          break;
-        case 'font-family':
-          cssProperties.fontFamily = value.replace(/'/g, '');
-          break;
-        case 'font-size':
-          cssProperties.fontSize = value;
-          break;
-        case 'font-weight':
-          cssProperties.fontWeight = parseInt(value) || value;
-          break;
-        case 'color':
-          cssProperties.color = value;
-          break;
-        case 'line-height':
-          cssProperties.lineHeight = value;
-          break;
-        case 'text-align':
-          cssProperties.textAlign = value as any;
-          break;
-        case 'z-index':
-          cssProperties.zIndex = parseInt(value);
-          break;
-        case 'opacity':
-          cssProperties.opacity = parseFloat(value);
-          break;
-        case 'transform':
-          cssProperties.transform = value;
-          break;
-        case 'border-radius':
-          cssProperties.borderRadius = value;
-          break;
-      }
-    });
-    
-    if (Object.keys(cssProperties).length > 0) {
-      styles[selector] = cssProperties;
-    }
-  });
-  
-  return styles;
-}
-
-// Get exact styles from Figma CSS for a specific element
-export function getExactFigmaStyles(nodeName: string, cssStyles: Record<string, React.CSSProperties>): React.CSSProperties {
-  // Try exact match first
-  if (cssStyles[nodeName]) {
-    return cssStyles[nodeName];
-  }
-  
-  // Try partial matches
-  const partialMatches = Object.keys(cssStyles).filter(key => 
-    key.toLowerCase().includes(nodeName.toLowerCase()) ||
-    nodeName.toLowerCase().includes(key.toLowerCase())
-  );
-  
-  if (partialMatches.length > 0) {
-    return cssStyles[partialMatches[0]];
-  }
-  
-  return {};
-}
-
-// Enhanced font family mapping based on Figma CSS
-export function getFigmaFontFamily(family: string): string {
-  if (!family) return 'inherit';
-  
-  const fontMap: Record<string, string> = {
-    'IBM Plex Sans': '"IBM Plex Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Space Grotesk': '"Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Inter': 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    'Roboto': 'Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Open Sans': '"Open Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Lato': 'Lato, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Poppins': 'Poppins, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Montserrat': 'Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Source Sans Pro': '"Source Sans Pro", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Raleway': 'Raleway, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Ubuntu': 'Ubuntu, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Nunito': 'Nunito, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Arial': 'Arial, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Helvetica': 'Helvetica, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Times New Roman': '"Times New Roman", Times, serif',
-    'Georgia': 'Georgia, serif',
-    'Verdana': 'Verdana, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  };
-  
-  return fontMap[family] || `${family}, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
 }

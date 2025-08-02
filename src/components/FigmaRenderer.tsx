@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import Image from 'next/image';
-import { getSpecialColor, isCircularElement, getLineStyles, parseFigmaCSS, getExactFigmaStyles, getFigmaFontFamily } from '@/lib/utils';
+import { getSpecialColor, isCircularElement, getLineStyles } from '@/lib/utils';
 
 interface FigmaRendererProps {
   node: any;
@@ -16,7 +16,6 @@ interface FigmaRendererProps {
   fileKey?: string;
   figmaToken?: string;
   devMode?: boolean;
-  figmaCSS?: Record<string, React.CSSProperties>;
 }
 
 interface FigmaNode {
@@ -306,6 +305,37 @@ const getLayoutStyles = (node: any): React.CSSProperties => {
     }
   }
   
+  // Auto-detect section transitions based on node names
+  if (node.name?.toLowerCase().includes('hero') || 
+      node.name?.toLowerCase().includes('integrated') ||
+      node.name?.toLowerCase().includes('brand spotlight') ||
+      node.name?.toLowerCase().includes('vision mission') ||
+      node.name?.toLowerCase().includes('fresh off the field') ||
+      node.name?.toLowerCase().includes('get in touch')) {
+    // Apply angled transition for major sections
+    if (!styles.clipPath) {
+      styles.clipPath = 'polygon(0 0, 100% 0, 100% 90%, 0 100%)';
+    }
+  }
+  
+  // Handle specific section backgrounds
+  if (node.name?.toLowerCase().includes('hero')) {
+    styles.backgroundSize = 'cover';
+    styles.backgroundPosition = 'center';
+    styles.backgroundRepeat = 'no-repeat';
+  }
+  
+  if (node.name?.toLowerCase().includes('vision') || 
+      node.name?.toLowerCase().includes('mission')) {
+    styles.backgroundColor = '#1E1E1E';
+    styles.color = '#FFFFFF';
+  }
+  
+  if (node.name?.toLowerCase().includes('get in touch')) {
+    styles.backgroundColor = '#0F766E';
+    styles.color = '#FFFFFF';
+  }
+  
   return styles;
 };
 
@@ -381,67 +411,59 @@ const getEffectStyles = (effects: any[]): React.CSSProperties => {
 };
 
 // Enhanced text styles with rich text support and pixel-perfect rendering
-const getTextStyles = (node: any, figmaCSS?: Record<string, React.CSSProperties>): React.CSSProperties => {
+const getTextStyles = (node: any): React.CSSProperties => {
     const styles: React.CSSProperties = {};
     
-    // First, try to get exact styles from Figma CSS
-    if (figmaCSS && node.name) {
-      const exactStyles = getExactFigmaStyles(node.name, figmaCSS);
-      if (Object.keys(exactStyles).length > 0) {
-        Object.assign(styles, exactStyles);
-      }
-    }
-    
     if (node.style) {
-    // Font family - prioritize Figma CSS fonts
-      if (node.style.fontFamily && !styles.fontFamily) {
-        styles.fontFamily = getFigmaFontFamily(node.style.fontFamily);
-    } else if (!styles.fontFamily) {
+    // Font family - prioritize Inter for better rendering
+      if (node.style.fontFamily) {
+        styles.fontFamily = getFontFamily(node.style.fontFamily);
+    } else {
       // Default to Inter if no font family specified
       styles.fontFamily = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       }
       
     // Font size - ensure exact pixel values
-      if (node.style.fontSize && !styles.fontSize) {
+      if (node.style.fontSize) {
         styles.fontSize = `${node.style.fontSize}px`;
       }
       
     // Font weight - exact weight matching with fallbacks
-      if (node.style.fontWeight && !styles.fontWeight) {
+      if (node.style.fontWeight) {
         styles.fontWeight = node.style.fontWeight;
-    } else if (!styles.fontWeight) {
+    } else {
       // Default font weight for better readability
       styles.fontWeight = 400;
       }
       
     // Text alignment - exact horizontal alignment
-      if (node.style.textAlignHorizontal && !styles.textAlign) {
+      if (node.style.textAlignHorizontal) {
         styles.textAlign = getTextAlign(node.style.textAlignHorizontal) as any;
       }
       
     // Vertical alignment for text containers
-    if (node.style.textAlignVertical && !styles.alignItems) {
+    if (node.style.textAlignVertical) {
       styles.display = 'flex';
       styles.alignItems = getVerticalAlign(node.style.textAlignVertical) as any;
     }
     
     // Line height - exact pixel or percentage values
-      if (node.style.lineHeightPx && !styles.lineHeight) {
+      if (node.style.lineHeightPx) {
         styles.lineHeight = `${node.style.lineHeightPx}px`;
-      } else if (node.style.lineHeightPercent && !styles.lineHeight) {
+      } else if (node.style.lineHeightPercent) {
         styles.lineHeight = `${node.style.lineHeightPercent}%`;
-    } else if (node.style.fontSize && !styles.lineHeight) {
+    } else if (node.style.fontSize) {
       // Default line height based on font size for better readability
       styles.lineHeight = `${node.style.fontSize * 1.2}px`;
       }
       
     // Letter spacing - exact pixel values
-      if (node.style.letterSpacing && !styles.letterSpacing) {
+      if (node.style.letterSpacing) {
         styles.letterSpacing = `${node.style.letterSpacing}px`;
       }
     
     // Text decoration - handle underline and other decorations
-    if (node.style.textDecoration && !styles.textDecoration) {
+    if (node.style.textDecoration) {
       const decoration = node.style.textDecoration.toLowerCase();
       if (decoration === 'underline') {
         styles.textDecoration = 'underline';
@@ -456,7 +478,7 @@ const getTextStyles = (node: any, figmaCSS?: Record<string, React.CSSProperties>
   // Handle text fills with exact color matching and special color handling
     if (node.fills && node.fills.length > 0) {
       const fill = node.fills[0];
-      if (fill.type === 'SOLID' && fill.color && !styles.color) {
+      if (fill.type === 'SOLID' && fill.color) {
       // Convert to hex for better color accuracy
       const hexColor = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
       // Use special color handling for specific text elements
@@ -465,10 +487,10 @@ const getTextStyles = (node: any, figmaCSS?: Record<string, React.CSSProperties>
   }
   
   // Enhanced text wrapping properties for better inline rendering
-    if (!styles.whiteSpace) styles.whiteSpace = 'pre-wrap';
-    if (!styles.overflowWrap) styles.overflowWrap = 'break-word';
-    if (!styles.wordBreak) styles.wordBreak = 'break-word';
-    if (!styles.display) styles.display = 'inline'; // Ensure text elements are inline by default
+    styles.whiteSpace = 'pre-wrap';
+    styles.overflowWrap = 'break-word';
+  styles.wordBreak = 'break-word';
+  styles.display = 'inline'; // Ensure text elements are inline by default
   
   // Ensure proper text rendering
   (styles as any).fontSmoothing = 'antialiased';
@@ -539,12 +561,37 @@ const getShapeStyles = (node: any): React.CSSProperties => {
     styles.maskPosition = 'center';
   }
   
-  // Add box shadow for cards
+  // Add box shadow for cards and angled elements
   if (node.name?.toLowerCase().includes('card') || 
       node.name?.toLowerCase().includes('manufacturing') ||
       node.name?.toLowerCase().includes('brands') ||
-      node.name?.toLowerCase().includes('stores')) {
+      node.name?.toLowerCase().includes('stores') ||
+      node.name?.toLowerCase().includes('lotto') ||
+      node.name?.toLowerCase().includes('one8') ||
+      node.name?.toLowerCase().includes('news')) {
     styles.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.1)';
+  }
+  
+  // Handle angled cards with specific transforms
+  if (node.name?.toLowerCase().includes('lotto') || 
+      node.name?.toLowerCase().includes('one8') ||
+      node.name?.toLowerCase().includes('whats coming') ||
+      node.name?.toLowerCase().includes('brand spotlight') ||
+      node.name?.toLowerCase().includes('fresh off the field')) {
+    // Apply slight skew for angled card effect
+    if (!transform.includes('skew')) {
+      transform += 'skew(-2deg) ';
+    }
+  }
+  
+  // Handle circular icons in the "Integrated. Agile. All-In." section
+  if (node.name?.toLowerCase().includes('manufacturing') ||
+      node.name?.toLowerCase().includes('brands') ||
+      node.name?.toLowerCase().includes('retail') ||
+      node.name?.toLowerCase().includes('circular') ||
+      node.name?.toLowerCase().includes('icon')) {
+    styles.borderRadius = '50%';
+    styles.overflow = 'hidden';
   }
   
   // Handle strokes for better border rendering
@@ -747,6 +794,25 @@ const renderImage = (node: any, imageUrl: string, baseStyles: React.CSSPropertie
     }
   }
   
+  // Handle specific image types based on node name
+  if (node.name?.toLowerCase().includes('hero') || 
+      node.name?.toLowerCase().includes('background')) {
+    objectFit = 'cover';
+  }
+  
+  if (node.name?.toLowerCase().includes('icon') || 
+      node.name?.toLowerCase().includes('logo') ||
+      node.name?.toLowerCase().includes('avatar')) {
+    objectFit = 'contain';
+  }
+  
+  if (node.name?.toLowerCase().includes('circular') ||
+      node.name?.toLowerCase().includes('manufacturing') ||
+      node.name?.toLowerCase().includes('brands') ||
+      node.name?.toLowerCase().includes('retail')) {
+    objectFit = 'cover';
+  }
+  
   const imageStyles: React.CSSProperties = {
     width: '100%',
     height: '100%',
@@ -811,8 +877,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
   parentMaskType = 'ALPHA',
   fileKey,
   figmaToken,
-  devMode = false,
-  figmaCSS
+  devMode = false
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
@@ -941,7 +1006,7 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
       case 'TEXT':
         if (!characters) return null;
         
-        const textStyles = getTextStyles(node, figmaCSS);
+        const textStyles = getTextStyles(node);
         const combinedTextStyles = {
               ...baseStyles,
               ...textStyles,
@@ -953,7 +1018,23 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
         
         // Enhanced text rendering with rich text support and inline alignment
         const renderRichText = (text: string) => {
-          // Handle special text patterns for rich formatting with proper inline rendering
+          // Handle "Built to Move the World" hero text
+          if (text.includes('Built to Move the World')) {
+            return text.replace(
+              /Built to Move the World/g,
+              '<span style="font-weight: 700; color: #FFFFFF; display: inline;">Built to Move the World</span>'
+            );
+          }
+          
+          // Handle "Integrated. Agile. All-In." with proper spacing and pink accent
+          if (text.includes('Integrated. Agile. All-In.')) {
+            return text.replace(
+              /Integrated\. Agile\. All-In\./g,
+              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Integrated. Agile. <span style="color: #FF0A54;">All-In.</span></span>'
+            );
+          }
+          
+          // Handle "All-In." standalone with pink color
           if (text.includes('All-In.')) {
             return text.replace(
               /All-In\./g, 
@@ -961,19 +1042,12 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
             );
           }
           
+          // Handle "Explore →" with blue color and underline
           if (text.includes('Explore →')) {
             return text.replace(
               /Explore →/g,
               '<span style="color: #0066FF; text-decoration: underline; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; font-weight: 600;">Explore <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
             );
-          }
-          
-          // Handle bold text patterns for emphasis
-          if (text.includes('largest') || text.includes('futuristic') || text.includes('vertically integrated')) {
-            return text
-              .replace(/(largest)/g, '<span style="font-weight: 700; display: inline;">$1</span>')
-              .replace(/(futuristic)/g, '<span style="font-weight: 700; display: inline;">$1</span>')
-              .replace(/(vertically integrated)/g, '<span style="font-weight: 700; display: inline;">$1</span>');
           }
           
           // Handle "Learn More →" buttons with proper spacing and inline alignment
@@ -984,27 +1058,50 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
             );
           }
           
-          // Handle section headings with specific styling
-          if (text.includes('Sustainable Manufacturing')) {
+          // Handle "Let's talk →" button
+          if (text.includes("Let's talk →")) {
             return text.replace(
-              /Sustainable Manufacturing/g,
-              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Sustainable Manufacturing</span>'
+              /Let's talk →/g,
+              '<span style="color: #FFFFFF; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">Let\'s talk <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
             );
           }
           
-          // Handle One8 and other brand names
-          if (text.includes('One8')) {
+          // Handle "Brand Spotlight" section heading
+          if (text.includes('Brand Spotlight')) {
             return text.replace(
-              /One8/g,
-              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">One8</span>'
+              /Brand Spotlight/g,
+              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Brand Spotlight</span>'
             );
           }
           
-          // Handle "Integrated. Agile. All-In." with proper spacing
-          if (text.includes('Integrated. Agile. All-In.')) {
+          // Handle "Fresh Off The Field" section heading
+          if (text.includes('Fresh Off The Field')) {
             return text.replace(
-              /Integrated\. Agile\. All-In\./g,
-              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Integrated. Agile. <span style="color: #FF0A54;">All-In.</span></span>'
+              /Fresh Off The Field/g,
+              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Fresh Off The Field</span>'
+            );
+          }
+          
+          // Handle "Our Vision" and "Our Mission" headings
+          if (text.includes('Our Vision')) {
+            return text.replace(
+              /Our Vision/g,
+              '<span style="font-weight: 700; color: #FFFFFF; display: inline;">Our Vision</span>'
+            );
+          }
+          
+          if (text.includes('Our Mission')) {
+            return text.replace(
+              /Our Mission/g,
+              '<span style="font-weight: 700; color: #FFFFFF; display: inline;">Our Mission</span>'
+            );
+          }
+          
+          // Handle "Get in touch" heading
+          if (text.includes('Get in touch')) {
+            return text.replace(
+              /Get in touch/g,
+              '<span style="font-weight: 700; color: #FFFFFF; display: inline;">Get in touch</span>'
             );
           }
           
@@ -1016,27 +1113,66 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
             );
           }
           
-          // Handle "EXPLORE MANUFACTURING @AGILITAS →" with proper inline alignment
-          if (text.includes('EXPLORE MANUFACTURING @AGILITAS →')) {
+          // Handle "largest" and "futuristic" with bold styling
+          if (text.includes('largest') || text.includes('futuristic')) {
+            return text
+              .replace(/(largest)/g, '<span style="font-weight: 700; display: inline;">$1</span>')
+              .replace(/(futuristic)/g, '<span style="font-weight: 700; display: inline;">$1</span>');
+          }
+          
+          // Handle "LOTTO" brand name
+          if (text.includes('LOTTO')) {
             return text.replace(
-              /EXPLORE MANUFACTURING @AGILITAS →/g,
-              '<span style="color: #FFFFFF; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">EXPLORE MANUFACTURING @AGILITAS <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
+              /LOTTO/g,
+              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">LOTTO</span>'
             );
           }
           
-          // Handle "EXPLORE BRAND @AGILITAS →" with proper inline alignment
-          if (text.includes('EXPLORE BRAND @AGILITAS →')) {
+          // Handle "One8" brand name
+          if (text.includes('One8')) {
             return text.replace(
-              /EXPLORE BRAND @AGILITAS →/g,
-              '<span style="color: #FFFFFF; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">EXPLORE BRAND @AGILITAS <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
+              /One8/g,
+              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">One8</span>'
             );
           }
           
-          // Handle "EXPLORE STORES @AGILITAS →" with proper inline alignment
-          if (text.includes('EXPLORE STORES @AGILITAS →')) {
+          // Handle "WHATS COMING" text
+          if (text.includes('WHATS COMING')) {
             return text.replace(
-              /EXPLORE STORES @AGILITAS →/g,
-              '<span style="color: #FFFFFF; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">EXPLORE STORES @AGILITAS <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
+              /WHATS COMING/g,
+              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">WHATS COMING</span>'
+            );
+          }
+          
+          // Handle "Sustainable Manufacturing" with specific styling
+          if (text.includes('Sustainable Manufacturing')) {
+            return text.replace(
+              /Sustainable Manufacturing/g,
+              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Sustainable Manufacturing</span>'
+            );
+          }
+          
+          // Handle "Made to Move, Built to Care" tagline
+          if (text.includes('Made to Move, Built to Care')) {
+            return text.replace(
+              /Made to Move, Built to Care/g,
+              '<span style="font-weight: 600; color: #1E1E1E; display: inline;">Made to Move, Built to Care</span>'
+            );
+          }
+          
+          // Handle "Virat Kohli" name
+          if (text.includes('Virat Kohli')) {
+            return text.replace(
+              /Virat Kohli/g,
+              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Virat Kohli</span>'
+            );
+          }
+          
+          // Handle "agilitas" logo text
+          if (text.toLowerCase().includes('agilitas')) {
+            return text.replace(
+              /agilitas/gi,
+              '<span style="font-weight: 700; color: #FFFFFF; display: inline;">agilitas</span>'
             );
           }
           

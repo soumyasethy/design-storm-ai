@@ -11,8 +11,7 @@ import {
   isFooterComponent,
   getImageScaleMode,
   isNodeVisible,
-  getLineStyles,
-  getExactFigmaStyles
+  getLineStyles
 } from '@/lib/utils';
 
 interface SimpleFigmaRendererProps {
@@ -24,7 +23,6 @@ interface SimpleFigmaRendererProps {
   fileKey?: string;
   figmaToken?: string;
   devMode?: boolean;
-  figmaCSS?: Record<string, React.CSSProperties>;
 }
 
 // Enhanced image rendering with footer icon support
@@ -121,8 +119,7 @@ const FigmaText: React.FC<{
   baseStyles: React.CSSProperties; 
   showDebug: boolean;
   devMode: boolean;
-  figmaCSS?: Record<string, React.CSSProperties>;
-}> = ({ node, baseStyles, showDebug, devMode, figmaCSS }) => {
+}> = ({ node, baseStyles, showDebug, devMode }) => {
   // Add null check to prevent runtime errors
   if (!node || typeof node !== 'object') {
     console.warn('FigmaText: Invalid node provided', node);
@@ -133,51 +130,39 @@ const FigmaText: React.FC<{
   
   if (!characters) return null;
   
-  // First, try to get exact styles from Figma CSS
-  let textStyles: React.CSSProperties = {};
-  if (figmaCSS && node.name) {
-    const exactStyles = getExactFigmaStyles(node.name, figmaCSS);
-    if (Object.keys(exactStyles).length > 0) {
-      textStyles = { ...exactStyles };
-    }
-  }
-  
-  // Fallback to computed styles if no CSS found
-  if (Object.keys(textStyles).length === 0) {
-    textStyles = {
-      // Font family
-      fontFamily: style?.fontFamily ? getFontFamily(style.fontFamily) : 'inherit',
-      
-      // Font size
-      fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
-      
-      // Font weight
-      fontWeight: style?.fontWeight || 'normal',
-      
-      // Text alignment
-      textAlign: style?.textAlignHorizontal ? getTextAlign(style.textAlignHorizontal) as any : 'left',
-      
-      // Line height
-      lineHeight: style?.lineHeightPx ? `${style.lineHeightPx}px` : 
-                  style?.lineHeightPercent ? `${style.lineHeightPercent}%` : 'normal',
-      
-      // Letter spacing
-      letterSpacing: style?.letterSpacing ? `${style.letterSpacing}px` : 'normal',
-      
-      // Text decoration
-      textDecoration: style?.textDecoration ? style.textDecoration.toLowerCase() : 'none',
-      
-      // Text color from fills
-      color: node.fills?.[0]?.type === 'SOLID' && node.fills[0].color ? 
-             rgbaToCss(node.fills[0].color.r, node.fills[0].color.g, node.fills[0].color.b, node.fills[0].color.a) : 
-             'inherit',
-      
-      // Text wrapping
-      whiteSpace: 'pre-wrap',
-      overflowWrap: 'break-word',
-      wordBreak: 'break-word',
-    };
-  }
+  const textStyles: React.CSSProperties = {
+    // Font family
+    fontFamily: style?.fontFamily ? getFontFamily(style.fontFamily) : 'inherit',
+    
+    // Font size
+    fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
+    
+    // Font weight
+    fontWeight: style?.fontWeight || 'normal',
+    
+    // Text alignment
+    textAlign: style?.textAlignHorizontal ? getTextAlign(style.textAlignHorizontal) as any : 'left',
+    
+    // Line height
+    lineHeight: style?.lineHeightPx ? `${style.lineHeightPx}px` : 
+                style?.lineHeightPercent ? `${style.lineHeightPercent}%` : 'normal',
+    
+    // Letter spacing
+    letterSpacing: style?.letterSpacing ? `${style.letterSpacing}px` : 'normal',
+    
+    // Text decoration
+    textDecoration: style?.textDecoration ? style.textDecoration.toLowerCase() : 'none',
+    
+    // Text color from fills
+    color: node.fills?.[0]?.type === 'SOLID' && node.fills[0].color ? 
+           rgbaToCss(node.fills[0].color.r, node.fills[0].color.g, node.fills[0].color.b, node.fills[0].color.a) : 
+           'inherit',
+    
+    // Text wrapping
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'break-word',
+    wordBreak: 'break-word',
+  };
   
   // Enhanced rich text processing
   const processRichText = (text: string) => {
@@ -339,8 +324,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   imageMap = {},
   fileKey,
   figmaToken,
-  devMode = false,
-  figmaCSS
+  devMode = false
 }) => {
   // Add null check to prevent runtime errors
   if (!node || typeof node !== 'object') {
@@ -439,7 +423,6 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               fileKey={fileKey}
               figmaToken={figmaToken}
               devMode={devMode}
-              figmaCSS={figmaCSS}
             />
           ))}
         </div>
@@ -473,14 +456,13 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               fileKey={fileKey}
               figmaToken={figmaToken}
               devMode={devMode}
-              figmaCSS={figmaCSS}
             />
           ))}
         </div>
       );
 
     case 'TEXT':
-      return <FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} figmaCSS={figmaCSS} />;
+      return <FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />;
 
     case 'RECTANGLE':
     case 'ELLIPSE':
@@ -562,7 +544,6 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               fileKey={fileKey}
               figmaToken={figmaToken}
               devMode={devMode}
-              figmaCSS={figmaCSS}
             />
           ))}
         </div>
@@ -597,7 +578,6 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 fileKey={fileKey}
                 figmaToken={figmaToken}
                 devMode={devMode}
-                figmaCSS={figmaCSS}
               />
             ))}
           </div>
@@ -618,7 +598,6 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 fileKey={fileKey}
                 figmaToken={figmaToken}
                 devMode={devMode}
-                figmaCSS={figmaCSS}
               />
             ))}
           </>
