@@ -199,9 +199,7 @@ const FigmaImage: React.FC<{
                       node.name?.toLowerCase().includes('linkedin') || 
                       node.name?.toLowerCase().includes('instagram') || 
                       node.name?.toLowerCase().includes('youtube') ||
-                      node.name?.toLowerCase().includes('social') ||
-                      node.name?.toLowerCase().includes('avatar') ||
-                      node.name?.toLowerCase().includes('profile');
+                      node.name?.toLowerCase().includes('social');
   
   const scaleMode = getImageScaleMode(node);
   
@@ -210,11 +208,6 @@ const FigmaImage: React.FC<{
     height: '100%',
     objectFit: scaleMode as any,
     borderRadius: isFooterIcon ? '50%' : baseStyles.borderRadius,
-    // Ensure proper sizing and prevent distortion
-    minWidth: '100%',
-    minHeight: '100%',
-    maxWidth: '100%',
-    maxHeight: '100%',
   };
   
   const handleImageError = () => {
@@ -228,7 +221,10 @@ const FigmaImage: React.FC<{
     setImageLoading(false);
   };
   
-  if (imageError) {
+  // Use placeholder SVG for all images initially or on error
+  const shouldUsePlaceholder = imageError || !imageUrl || imageUrl.includes('figma.com') === false;
+  
+  if (shouldUsePlaceholder) {
     return (
       <div 
         style={{
@@ -240,8 +236,19 @@ const FigmaImage: React.FC<{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          color: '#9ca3af',
+          fontSize: '12px',
+          border: showDebug ? '1px solid #ef4444' : 'none',
         }}
-      />
+      >
+        {showDebug && (
+          <div className="absolute -top-8 left-0 bg-red-600 text-white text-xs px-2 py-1 rounded z-20">
+            <div className="font-bold">Image Placeholder</div>
+            <div>{node.name}</div>
+          </div>
+        )}
+        {imageError && <span>Image failed to load</span>}
+      </div>
     );
   }
   
@@ -294,8 +301,8 @@ const FigmaText: React.FC<{
     // Font family
     fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
     
-    // Font size with buffer to prevent truncation
-    fontSize: style?.fontSize ? `${style.fontSize * 0.95}px` : 'inherit',
+    // Font size
+    fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
     
     // Font weight
     fontWeight: style?.fontWeight || 'normal',
@@ -318,37 +325,33 @@ const FigmaText: React.FC<{
            rgbaToCss(node.fills[0].color.r, node.fills[0].color.g, node.fills[0].color.b, node.fills[0].color.a) : 
            'inherit',
     
-    // Enhanced text wrapping for better fidelity
+    // Text wrapping and overflow
     whiteSpace: 'pre-wrap',
     overflowWrap: 'break-word',
     wordBreak: 'break-word',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: style?.textAlignHorizontal === 'CENTER' ? 'center' : 
-              style?.textAlignHorizontal === 'RIGHT' ? 'flex-end' : 'flex-start',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
     
-    // Remove extra spacing and ensure text fits
-    width: '100%',
-    height: '100%',
-    padding: '0',
-    margin: '0',
-    boxSizing: 'border-box',
+    // Ensure text fits within bounding box
+    maxWidth: '100%',
+    maxHeight: '100%',
     
-    // Allow text to wrap naturally without truncation
-    overflow: 'visible',
-    textOverflow: 'clip',
+    // Debug styling
+    ...(showDebug && {
+      border: '1px solid #3b82f6',
+      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    }),
   };
   
   // Enhanced rich text processing with character style overrides
   const processRichText = (text: string) => {
-    // If no character style overrides, use simple styling
-    if (!node.characterStyleOverrides || !node.styleOverrideTable) {
+    // If no character style overrides, return plain text
+    if (!node.characterStyleOverrides || !node.styleOverrideTable || node.characterStyleOverrides.length === 0) {
       return text;
     }
 
     const { characterStyleOverrides, styleOverrideTable } = node;
-    const segments: Array<{ text: string; style: any; inlineStyles: string }> = [];
+    const segments: Array<{ text: string; style: any; classes: string[] }> = [];
     let currentStyle = characterStyleOverrides[0] || 0;
     let currentText = '';
 
@@ -357,24 +360,22 @@ const FigmaText: React.FC<{
       const char = text[i];
       const styleOverride = characterStyleOverrides[i] || 0;
       
-      // Handle line breaks and paragraph structure
+      // Handle line breaks
       if (char === '\n') {
         if (currentText) {
           const styleKey = currentStyle.toString();
           const styleData = styleOverrideTable[styleKey] || style;
-          const inlineStyles = getInlineStyles(styleData, node.fills, styleOverrideTable);
-          
           segments.push({
             text: currentText,
             style: styleData,
-            inlineStyles: inlineStyles
+            classes: []
           });
           currentText = '';
         }
         segments.push({
           text: '<br>',
           style: null,
-          inlineStyles: ''
+          classes: []
         });
         continue;
       }
@@ -383,12 +384,10 @@ const FigmaText: React.FC<{
       if (styleOverride !== currentStyle && currentText) {
         const styleKey = currentStyle.toString();
         const styleData = styleOverrideTable[styleKey] || style;
-        const inlineStyles = getInlineStyles(styleData, node.fills, styleOverrideTable);
-        
         segments.push({
           text: currentText,
           style: styleData,
-          inlineStyles: inlineStyles
+          classes: []
         });
         currentText = '';
         currentStyle = styleOverride;
@@ -401,251 +400,89 @@ const FigmaText: React.FC<{
     if (currentText) {
       const styleKey = currentStyle.toString();
       const styleData = styleOverrideTable[styleKey] || style;
-      const inlineStyles = getInlineStyles(styleData, node.fills, styleOverrideTable);
-      
       segments.push({
         text: currentText,
         style: styleData,
-        inlineStyles: inlineStyles
+        classes: []
       });
     }
 
-    // Generate HTML with inline styles for pixel-perfect rendering
+    // Generate HTML with inline styles
     const html = segments.map(segment => {
       if (segment.text === '<br>') {
         return '<br>';
       }
       
-      return segment.inlineStyles ? 
-        `<span style="${segment.inlineStyles}">${segment.text}</span>` : 
-        segment.text;
+      if (!segment.style) {
+        return segment.text;
+      }
+
+      const spanStyles: string[] = [];
+      
+      // Font family
+      if (segment.style.fontFamily) {
+        const fontFamily = getFontFamilyWithFallback(segment.style.fontFamily);
+        spanStyles.push(`font-family: ${fontFamily}`);
+      }
+      
+      // Font size
+      if (segment.style.fontSize) {
+        spanStyles.push(`font-size: ${segment.style.fontSize}px`);
+      }
+      
+      // Font weight
+      if (segment.style.fontWeight) {
+        spanStyles.push(`font-weight: ${segment.style.fontWeight}`);
+      }
+      
+      // Font style
+      if (segment.style.fontStyle) {
+        spanStyles.push(`font-style: ${segment.style.fontStyle.toLowerCase()}`);
+      }
+      
+      // Letter spacing
+      if (segment.style.letterSpacing) {
+        spanStyles.push(`letter-spacing: ${segment.style.letterSpacing}px`);
+      }
+      
+      // Line height
+      if (segment.style.lineHeightPx) {
+        spanStyles.push(`line-height: ${segment.style.lineHeightPx}px`);
+      } else if (segment.style.lineHeightPercent) {
+        spanStyles.push(`line-height: ${segment.style.lineHeightPercent}%`);
+      }
+      
+      // Text color from fills
+      if (segment.style.fills && segment.style.fills.length > 0) {
+        const fill = segment.style.fills[0];
+        if (fill.type === 'SOLID' && fill.color) {
+          const color = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
+          spanStyles.push(`color: ${color}`);
+        }
+      }
+      
+      // Text decoration
+      if (segment.style.textDecoration) {
+        spanStyles.push(`text-decoration: ${segment.style.textDecoration.toLowerCase()}`);
+      }
+      
+      // Text case
+      if (segment.style.textCase) {
+        if (segment.style.textCase === 'UPPER') {
+          spanStyles.push('text-transform: uppercase');
+        } else if (segment.style.textCase === 'LOWER') {
+          spanStyles.push('text-transform: lowercase');
+        } else if (segment.style.textCase === 'TITLE') {
+          spanStyles.push('text-transform: capitalize');
+        }
+      }
+      
+      return spanStyles.length > 0 
+        ? `<span style="${spanStyles.join('; ')}">${segment.text}</span>`
+        : segment.text;
     }).join('');
 
     return html;
-  };
-
-  // Convert Figma styles to inline CSS for pixel-perfect rendering
-  const getInlineStyles = (textStyle: any, fills: any[], styleOverrideTable?: any): string => {
-    const styles: string[] = [];
-
-    // Font family
-    if (textStyle?.fontFamily) {
-      const fontFamily = getFontFamilyWithFallback(textStyle.fontFamily);
-      styles.push(`font-family: ${fontFamily}`);
-    }
-
-    // Font size with buffer to prevent truncation
-    if (textStyle?.fontSize) {
-      const adjustedSize = textStyle.fontSize * 0.95; // 5% buffer to prevent truncation
-      styles.push(`font-size: ${adjustedSize}px`);
-    }
-
-    // Font weight
-    if (textStyle?.fontWeight) {
-      styles.push(`font-weight: ${textStyle.fontWeight}`);
-    }
-
-    // Line height
-    if (textStyle?.lineHeightPx) {
-      styles.push(`line-height: ${textStyle.lineHeightPx}px`);
-    } else if (textStyle?.lineHeightPercent) {
-      styles.push(`line-height: ${textStyle.lineHeightPercent}%`);
-    }
-
-    // Letter spacing
-    if (textStyle?.letterSpacing !== undefined) {
-      styles.push(`letter-spacing: ${textStyle.letterSpacing}px`);
-    }
-
-    // Text decoration
-    if (textStyle?.textDecoration) {
-      if (textStyle.textDecoration === 'underline') {
-        styles.push('text-decoration: underline');
-        styles.push('text-decoration-color: currentColor');
-        styles.push('text-decoration-thickness: 1px');
-        styles.push('text-underline-offset: 2px');
-      } else if (textStyle.textDecoration === 'line-through') {
-        styles.push('text-decoration: line-through');
-        styles.push('text-decoration-color: currentColor');
-        styles.push('text-decoration-thickness: 1px');
-      }
-    }
-
-    // Text color - prioritize style-specific fills, then fall back to node fills
-    let colorApplied = false;
-    if (textStyle?.fills && textStyle.fills.length > 0) {
-      const fill = textStyle.fills[0];
-      if (fill.type === 'SOLID' && fill.color) {
-        const color = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
-        styles.push(`color: ${color}`);
-        colorApplied = true;
-      }
-    }
-    
-    // Fall back to node fills if no color was applied
-    if (!colorApplied && fills && fills.length > 0) {
-      const fill = fills[0];
-      if (fill.type === 'SOLID' && fill.color) {
-        const color = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
-        styles.push(`color: ${color}`);
-      }
-    }
-
-    // Text alignment
-    if (textStyle?.textAlignHorizontal) {
-      if (textStyle.textAlignHorizontal === 'CENTER') {
-        styles.push('text-align: center');
-      } else if (textStyle.textAlignHorizontal === 'RIGHT') {
-        styles.push('text-align: right');
-      } else if (textStyle.textAlignHorizontal === 'JUSTIFIED') {
-        styles.push('text-align: justify');
-      } else {
-        styles.push('text-align: left');
-      }
-    }
-
-    // Text case
-    if (textStyle?.textCase) {
-      if (textStyle.textCase === 'UPPER') {
-        styles.push('text-transform: uppercase');
-      } else if (textStyle.textCase === 'LOWER') {
-        styles.push('text-transform: lowercase');
-      } else if (textStyle.textCase === 'TITLE') {
-        styles.push('text-transform: capitalize');
-      }
-    }
-
-    // White space handling for better text wrapping
-    styles.push('white-space: pre-wrap');
-    styles.push('overflow-wrap: break-word');
-    styles.push('word-break: break-word');
-    
-    // Remove extra spacing and ensure proper fitting
-    styles.push('padding: 0');
-    styles.push('margin: 0');
-    styles.push('box-sizing: border-box');
-    styles.push('overflow: visible');
-    styles.push('text-overflow: clip');
-    styles.push('display: inline-block');
-    styles.push('vertical-align: top');
-
-    return styles.join('; ');
-  };
-
-  // Convert Figma styles to Tailwind CSS classes
-  const getTailwindClasses = (textStyle: any, fills: any[], styleOverrideTable?: any): string[] => {
-    const classes: string[] = [];
-
-    // Font family
-    if (textStyle?.fontFamily) {
-      const fontFamily = getFontFamilyWithFallback(textStyle.fontFamily);
-      if (fontFamily.includes('Inter')) {
-        classes.push('font-inter');
-      } else if (fontFamily.includes('IBM Plex Sans')) {
-        classes.push('font-ibm-plex-sans');
-      } else if (fontFamily.includes('Space Grotesk')) {
-        classes.push('font-space-grotesk');
-      } else {
-        classes.push('font-sans');
-      }
-    }
-
-    // Font weight
-    if (textStyle?.fontWeight) {
-      const weight = textStyle.fontWeight;
-      if (weight === 400) classes.push('font-normal');
-      else if (weight === 500) classes.push('font-medium');
-      else if (weight === 600) classes.push('font-semibold');
-      else if (weight === 700) classes.push('font-bold');
-      else if (weight === 800) classes.push('font-extrabold');
-      else if (weight === 900) classes.push('font-black');
-      else classes.push(`font-[${weight}]`);
-    }
-
-    // Font size
-    if (textStyle?.fontSize) {
-      const size = textStyle.fontSize;
-      if (size <= 12) classes.push('text-xs');
-      else if (size <= 14) classes.push('text-sm');
-      else if (size <= 16) classes.push('text-base');
-      else if (size <= 18) classes.push('text-lg');
-      else if (size <= 20) classes.push('text-xl');
-      else if (size <= 24) classes.push('text-2xl');
-      else if (size <= 30) classes.push('text-3xl');
-      else if (size <= 36) classes.push('text-4xl');
-      else classes.push(`text-[${size}px]`);
-    }
-
-    // Line height
-    if (textStyle?.lineHeightPx) {
-      const lineHeight = textStyle.lineHeightPx;
-      const fontSize = textStyle.fontSize || 16;
-      const ratio = lineHeight / fontSize;
-      
-      if (ratio <= 1.1) classes.push('leading-tight');
-      else if (ratio <= 1.3) classes.push('leading-snug');
-      else if (ratio <= 1.5) classes.push('leading-normal');
-      else if (ratio <= 1.7) classes.push('leading-relaxed');
-      else if (ratio <= 2.0) classes.push('leading-loose');
-      else classes.push(`leading-[${lineHeight}px]`);
-    }
-
-    // Letter spacing
-    if (textStyle?.letterSpacing) {
-      const spacing = textStyle.letterSpacing;
-      if (spacing === 0) classes.push('tracking-normal');
-      else if (spacing < 0) classes.push('tracking-tighter');
-      else if (spacing <= 0.5) classes.push('tracking-wide');
-      else if (spacing <= 1) classes.push('tracking-wider');
-      else if (spacing <= 2) classes.push('tracking-widest');
-      else classes.push(`tracking-[${spacing}px]`);
-    }
-
-    // Text decoration
-    if (textStyle?.textDecoration) {
-      if (textStyle.textDecoration === 'underline') {
-        classes.push('underline', 'decoration-current', 'decoration-1', 'underline-offset-2');
-      } else if (textStyle.textDecoration === 'line-through') {
-        classes.push('line-through', 'decoration-current', 'decoration-1');
-      }
-    }
-
-    // Text color - prioritize style-specific fills, then fall back to node fills
-    let colorApplied = false;
-    if (textStyle?.fills && textStyle.fills.length > 0) {
-      const fill = textStyle.fills[0];
-      if (fill.type === 'SOLID' && fill.color) {
-        const hexColor = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
-        classes.push(`text-[${hexColor}]`);
-        colorApplied = true;
-      }
-    }
-    
-    // Fall back to node fills if no color was applied
-    if (!colorApplied && fills && fills.length > 0) {
-      const fill = fills[0];
-      if (fill.type === 'SOLID' && fill.color) {
-        const hexColor = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
-        classes.push(`text-[${hexColor}]`);
-      }
-    }
-
-    // Text alignment
-    if (textStyle?.textAlignHorizontal) {
-      if (textStyle.textAlignHorizontal === 'CENTER') classes.push('text-center');
-      else if (textStyle.textAlignHorizontal === 'RIGHT') classes.push('text-right');
-      else if (textStyle.textAlignHorizontal === 'JUSTIFIED') classes.push('text-justify');
-      else classes.push('text-left');
-    }
-
-    // Text case
-    if (textStyle?.textCase) {
-      if (textStyle.textCase === 'UPPER') classes.push('uppercase');
-      else if (textStyle.textCase === 'LOWER') classes.push('lowercase');
-      else if (textStyle.textCase === 'TITLE') classes.push('capitalize');
-    }
-
-    return classes;
   };
 
   const combinedStyles = {
@@ -661,19 +498,7 @@ const FigmaText: React.FC<{
   
     return (
     <div
-      style={{
-        ...combinedStyles,
-        // Remove any extra spacing from the container
-        padding: '0',
-        margin: '0',
-        // Ensure proper text container sizing
-        width: '100%',
-        height: '100%',
-        // Remove any default browser spacing
-        boxSizing: 'border-box',
-        // Ensure text flows naturally
-        overflow: 'visible',
-      }}
+      style={combinedStyles}
       title={`${node.name} (${node.type})`}
       data-figma-node-id={node.id}
       data-figma-node-type={node.type}
@@ -693,16 +518,7 @@ const FigmaText: React.FC<{
           whiteSpace: 'pre-wrap',
           overflowWrap: 'break-word',
           wordBreak: 'break-word',
-          // Remove all extra spacing
-          padding: '0',
-          margin: '0',
-          lineHeight: 'inherit',
-          // Ensure text fits without truncation
-          overflow: 'visible',
-          textOverflow: 'clip',
-          // Remove any default browser spacing
-          display: 'inline-block',
-          verticalAlign: 'top',
+          overflow: 'hidden',
         }}
         dangerouslySetInnerHTML={{ __html: processedText }}
       />
@@ -1422,7 +1238,7 @@ const renderSimpleEllipse = (node: any, baseStyles: React.CSSProperties) => {
     aspectRatioStyle.aspectRatio = aspectRatio.toString();
   }
   
-  // Create ellipse styles with enhanced circular support
+  // Create ellipse styles
   const ellipseStyles: React.CSSProperties = {
     ...baseStyles,
     width: `${width}px`,
@@ -1436,15 +1252,6 @@ const renderSimpleEllipse = (node: any, baseStyles: React.CSSProperties) => {
     ...aspectRatioStyle,
     ...strokeStyles,
     ...outlineStyle,
-    // Enhanced circular styling for dots and avatars
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    // Ensure proper circular rendering
-    minWidth: `${width}px`,
-    minHeight: `${height}px`,
-    maxWidth: `${width}px`,
-    maxHeight: `${height}px`,
   };
   
   return (
@@ -1536,7 +1343,7 @@ const renderSimpleRectangle = (node: any, baseStyles: React.CSSProperties, showD
     }
   }
   
-  // Handle mirroring and rotation for angled backgrounds
+  // Handle mirroring
   let transform = baseStyles.transform || '';
   if (isMirrored && mirrorAxis) {
     switch (mirrorAxis) {
@@ -1550,22 +1357,6 @@ const renderSimpleRectangle = (node: any, baseStyles: React.CSSProperties, showD
         transform += ' scale(-1, -1) ';
         break;
     }
-  }
-  
-  // Handle angled backgrounds and geometric shapes
-  if (node.rotation && Math.abs(node.rotation) > 0.1) {
-    const rotationDegrees = (node.rotation * 180) / Math.PI;
-    // Apply small rotations for angled cards (like "What sets us apart" section)
-    if (Math.abs(rotationDegrees) < 15) {
-      transform += ` rotate(${rotationDegrees}deg)`;
-    }
-  }
-  
-  // Handle angled backgrounds using clip-path for complex shapes
-  let clipPath = '';
-  if (name?.toLowerCase().includes('angled') || name?.toLowerCase().includes('background')) {
-    // Create angled background using clip-path polygon
-    clipPath = 'polygon(0% 0%, 100% 0%, 95% 100%, 5% 100%)';
   }
   
   // Handle aspect ratio
@@ -1582,10 +1373,9 @@ const renderSimpleRectangle = (node: any, baseStyles: React.CSSProperties, showD
         height: `${height}px`,
         border: borderStyle,
         borderRadius: borderRadius,
-    boxSizing: 'border-box',
+        boxSizing: 'border-box',
         mixBlendMode: blendMode?.toLowerCase().replace('_', '-') || 'normal',
         transform: transform,
-        clipPath: clipPath || undefined,
         ...aspectRatioStyle,
         ...fillStyles,
         ...strokeStyles,
@@ -1660,7 +1450,7 @@ const FigmaShape: React.FC<{
     ...shapeStyles,
   };
 
-    return (
+  return (
     <div 
       style={combinedStyles}
       title={`${node.name} (${node.type})`}
@@ -1676,8 +1466,8 @@ const FigmaShape: React.FC<{
           <div>Effects: {effects?.length || 0}</div>
         </div>
       )}
-      </div>
-    );
+    </div>
+  );
 };
 
 // Main SimpleFigmaRenderer component
@@ -1720,9 +1510,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   const { type, name, absoluteBoundingBox, children, fills, strokes, cornerRadius, characters, style, opacity, effects } = node;
 
   // Calculate positioning styles with comprehensive support
-  const positionStyles: React.CSSProperties = {
-    overflow: 'hidden', // Prevent content from leaking outside containers
-  };
+  const positionStyles: React.CSSProperties = {};
   
   if (absoluteBoundingBox) {
     const { x, y, width, height } = absoluteBoundingBox;
@@ -1832,15 +1620,6 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     transformParts.push(`skew(${node.skew}deg)`);
   }
   
-  // Handle angled/geometric cards and elements
-  if (node.rotation && Math.abs(node.rotation) > 0.1) {
-    // Convert radians to degrees for small angles (angled cards)
-    const rotationDegrees = (node.rotation * 180) / Math.PI;
-    if (Math.abs(rotationDegrees) < 15) { // Small angles for angled cards
-      transformParts.push(`rotate(${rotationDegrees}deg)`);
-    }
-  }
-  
   // Handle relative transform (matrix)
   if (node.relativeTransform && Array.isArray(node.relativeTransform)) {
     const matrix = node.relativeTransform.flat();
@@ -1899,13 +1678,23 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     positionStyles.maskMode = parentMaskType === 'LUMINANCE' ? 'luminance' : 'alpha';
     (positionStyles as any).webkitMaskMode = parentMaskType === 'LUMINANCE' ? 'luminance' : 'alpha';
   }
+  
+  // Add overflow handling for containers
+  if (type === 'FRAME' || type === 'GROUP' || type === 'CANVAS' || type === 'PAGE') {
+    positionStyles.overflow = 'hidden';
+  }
+  
+  // Handle clip content property
+  if (node.clipContent === true) {
+    positionStyles.overflow = 'hidden';
+  }
 
   // Render based on node type
   switch (type) {
     case 'CANVAS':
     case 'PAGE':
-  return (
-    <div 
+      return (
+        <div 
           className="relative"
           style={{
             width: `${node.absoluteBoundingBox?.width || 0}px`,
@@ -1941,49 +1730,12 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
 
     case 'FRAME':
     case 'GROUP':
-      // Enhanced layout handling for frames and groups
-      const layoutStyles: React.CSSProperties = {
-        ...positionStyles,
-        // Handle flex layouts
-        ...(node.layoutMode === 'HORIZONTAL' && {
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: node.counterAxisAlignItems === 'CENTER' ? 'center' : 
-                    node.counterAxisAlignItems === 'TOP' ? 'flex-start' : 
-                    node.counterAxisAlignItems === 'BOTTOM' ? 'flex-end' : 'stretch',
-          justifyContent: node.primaryAxisAlignItems === 'CENTER' ? 'center' : 
-                         node.primaryAxisAlignItems === 'SPACE_BETWEEN' ? 'space-between' : 
-                         node.primaryAxisAlignItems === 'SPACE_AROUND' ? 'space-around' : 
-                         node.primaryAxisAlignItems === 'SPACE_EVENLY' ? 'space-evenly' : 'flex-start',
-          gap: node.itemSpacing ? `${node.itemSpacing}px` : '0px',
-        }),
-        ...(node.layoutMode === 'VERTICAL' && {
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: node.counterAxisAlignItems === 'CENTER' ? 'center' : 
-                    node.counterAxisAlignItems === 'LEFT' ? 'flex-start' : 
-                    node.counterAxisAlignItems === 'RIGHT' ? 'flex-end' : 'stretch',
-          justifyContent: node.primaryAxisAlignItems === 'CENTER' ? 'center' : 
-                         node.primaryAxisAlignItems === 'SPACE_BETWEEN' ? 'space-between' : 
-                         node.primaryAxisAlignItems === 'SPACE_AROUND' ? 'space-around' : 
-                         node.primaryAxisAlignItems === 'SPACE_EVENLY' ? 'space-evenly' : 'flex-start',
-          gap: node.itemSpacing ? `${node.itemSpacing}px` : '0px',
-        }),
-        // Handle grid layouts
-        ...(node.layoutMode === 'GRID' && {
-          display: 'grid',
-          gridTemplateColumns: node.layoutGrids?.[0]?.pattern === 'GRID' ? 
-            `repeat(${node.layoutGrids[0].numSections || 1}, 1fr)` : '1fr',
-          gap: node.itemSpacing ? `${node.itemSpacing}px` : '0px',
-        }),
-      };
-
       return (
         <div
           className="relative"
-          style={layoutStyles}
+          style={positionStyles}
           title={`${name} (${type})`}
-      data-figma-node-id={node.id}
+          data-figma-node-id={node.id}
           data-figma-node-type={type}
           data-figma-node-name={name}
         >
@@ -2099,8 +1851,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                       // Fallback to regular SimpleFigmaRenderer for other types
                       return (
                         <g key={child.id || index} mask={childMaskMode}>
-            <SimpleFigmaRenderer 
-              node={child} 
+                          <SimpleFigmaRenderer
+                            node={child}
                             showDebug={false}
                             parentBoundingBox={node.absoluteBoundingBox}
                             imageMap={imageMap}
