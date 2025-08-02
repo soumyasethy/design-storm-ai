@@ -58,93 +58,98 @@ figma.ui.onmessage = async (msg) => {
 
 // Export complete design with all assets and images
 async function exportCompleteDesign() {
-  // Send initial progress
-  figma.ui.postMessage({
-    type: 'export-progress',
-    progress: 10,
-    message: 'Starting export...'
-  });
+  try {
+    // Send initial progress
+    figma.ui.postMessage({
+      type: 'export-progress',
+      progress: 5,
+      message: 'Starting export...'
+    });
 
-  const designData = {
-    document: figma.root,
-    assets: [],
-    images: [],
-    fonts: [],
-    styles: [],
-    components: [],
-    imageMap: {},
-    metadata: {
-      name: figma.root.name,
-      version: figma.root.version,
-      lastModified: new Date().toISOString(),
-      pluginVersion: '1.0.0',
-      exportedBy: 'DesignStorm Plugin'
-    }
-  };
+    const designData = {
+      document: figma.root,
+      assets: [],
+      images: [],
+      fonts: [],
+      styles: [],
+      components: [],
+      imageMap: {},
+      metadata: {
+        name: figma.root.name,
+        version: figma.root.version,
+        lastModified: new Date().toISOString(),
+        pluginVersion: '1.0.0',
+        exportedBy: 'DesignStorm Plugin'
+      }
+    };
 
-  // Extract all pages and their content
-  figma.ui.postMessage({
-    type: 'export-progress',
-    progress: 20,
-    message: 'Extracting pages...'
-  });
-  designData.pages = await extractPages(figma.root.children);
-  
-  // Extract all assets
-  figma.ui.postMessage({
-    type: 'export-progress',
-    progress: 30,
-    message: 'Extracting assets...'
-  });
-  designData.assets = await extractAllAssets();
-  
-  // Extract all images with actual image data
-  figma.ui.postMessage({
-    type: 'export-progress',
-    progress: 50,
-    message: 'Extracting images...'
-  });
-  designData.images = await extractAllImages();
-  
-  // Build image map for easy access
-  figma.ui.postMessage({
-    type: 'export-progress',
-    progress: 70,
-    message: 'Building image map...'
-  });
-  designData.imageMap = await buildImageMap(designData.images);
-  
-  // Extract all fonts
-  figma.ui.postMessage({
-    type: 'export-progress',
-    progress: 80,
-    message: 'Extracting fonts...'
-  });
-  designData.fonts = await extractAllFonts();
-  
-  // Extract all styles
-  figma.ui.postMessage({
-    type: 'export-progress',
-    progress: 85,
-    message: 'Extracting styles...'
-  });
-  designData.styles = await extractAllStyles();
-  
-  // Extract all components
-  figma.ui.postMessage({
-    type: 'export-progress',
-    progress: 90,
-    message: 'Extracting components...'
-  });
-  designData.components = await extractAllComponents();
-  
-  figma.ui.postMessage({
-    type: 'export-progress',
-    progress: 95,
-    message: 'Finalizing export...'
-  });
-  
-  return designData;
+    // Extract all pages and their content (lightweight)
+    figma.ui.postMessage({
+      type: 'export-progress',
+      progress: 15,
+      message: 'Extracting pages...'
+    });
+    designData.pages = await extractPages(figma.root.children);
+    
+    // Extract all assets (lightweight)
+    figma.ui.postMessage({
+      type: 'export-progress',
+      progress: 25,
+      message: 'Extracting assets...'
+    });
+    designData.assets = await extractAllAssets();
+    
+    // Extract all images with actual image data (heavy operation)
+    figma.ui.postMessage({
+      type: 'export-progress',
+      progress: 40,
+      message: 'Extracting images...'
+    });
+    designData.images = await extractAllImages();
+    
+    // Build image map for easy access (heavy operation)
+    figma.ui.postMessage({
+      type: 'export-progress',
+      progress: 60,
+      message: 'Building image map...'
+    });
+    designData.imageMap = await buildImageMap(designData.images);
+    
+    // Extract all fonts (lightweight)
+    figma.ui.postMessage({
+      type: 'export-progress',
+      progress: 75,
+      message: 'Extracting fonts...'
+    });
+    designData.fonts = await extractAllFonts();
+    
+    // Extract all styles (lightweight)
+    figma.ui.postMessage({
+      type: 'export-progress',
+      progress: 85,
+      message: 'Extracting styles...'
+    });
+    designData.styles = await extractAllStyles();
+    
+    // Extract all components (lightweight)
+    figma.ui.postMessage({
+      type: 'export-progress',
+      progress: 95,
+      message: 'Extracting components...'
+    });
+    designData.components = await extractAllComponents();
+    
+    figma.ui.postMessage({
+      type: 'export-progress',
+      progress: 98,
+      message: 'Finalizing export...'
+    });
+    
+    return designData;
+  } catch (error) {
+    console.error('Export failed:', error);
+    throw new Error(`Export failed: ${error.message}`);
+  }
 }
 
 // Export selected nodes
@@ -422,7 +427,7 @@ async function extractAllAssets() {
   return assets;
 }
 
-// Extract all images from the document
+// Extract all images from the document (simplified version)
 async function extractAllImages() {
   const images = [];
   
@@ -431,24 +436,34 @@ async function extractAllImages() {
   
   console.log(`🔍 Scanning ${allNodes.length} nodes for images...`);
   
+  // Limit the number of images to prevent freezing
+  let imageCount = 0;
+  const maxImages = 50; // Limit to prevent UI freezing
+  
   for (const node of allNodes) {
+    if (imageCount >= maxImages) {
+      console.log(`⚠️ Reached maximum image limit (${maxImages}), stopping extraction`);
+      break;
+    }
+    
     // Check fills for images
     if (node.fills) {
       for (const fill of node.fills) {
-        if (fill.type === 'IMAGE' && fill.imageHash) {
+        if (fill.type === 'IMAGE' && fill.imageHash && imageCount < maxImages) {
           try {
             const image = figma.getImageByHash(fill.imageHash);
             if (image) {
-              const imageBytes = await image.getBytesAsync();
+              // For now, just store metadata without bytes to prevent freezing
               images.push({
                 hash: fill.imageHash,
                 nodeId: node.id,
                 nodeName: node.name,
-                bytes: imageBytes,
                 width: image.width,
                 height: image.height,
-                type: 'fill'
+                type: 'fill',
+                hasBytes: false // Flag to indicate we don't have bytes
               });
+              imageCount++;
               console.log(`📸 Found image in fills: ${node.name} (${image.width}x${image.height})`);
             }
           } catch (error) {
@@ -459,20 +474,20 @@ async function extractAllImages() {
     }
     
     // Check if node itself is an image (like imported images)
-    if (node.type === 'RECTANGLE' && node.name.toLowerCase().includes('image')) {
+    if (node.type === 'RECTANGLE' && node.name.toLowerCase().includes('image') && imageCount < maxImages) {
       try {
         const image = figma.getImageByHash(node.id);
         if (image) {
-          const imageBytes = await image.getBytesAsync();
           images.push({
             hash: node.id,
             nodeId: node.id,
             nodeName: node.name,
-            bytes: imageBytes,
             width: image.width,
             height: image.height,
-            type: 'rectangle'
+            type: 'rectangle',
+            hasBytes: false // Flag to indicate we don't have bytes
           });
+          imageCount++;
           console.log(`📸 Found image rectangle: ${node.name} (${image.width}x${image.height})`);
         }
       } catch (error) {
@@ -481,7 +496,7 @@ async function extractAllImages() {
     }
   }
   
-  console.log(`✅ Extracted ${images.length} images total`);
+  console.log(`✅ Extracted ${images.length} images total (metadata only)`);
   return images;
 }
 
@@ -490,23 +505,19 @@ async function buildImageMap(images) {
   const imageMap = {};
   
   for (const image of images) {
-    if (image.nodeId && image.bytes) {
-      try {
-        // Convert bytes to base64 using our custom encoder
-        const base64 = bytesToBase64(new Uint8Array(image.bytes));
-        imageMap[image.nodeId] = `data:image/png;base64,${base64}`;
-        
-        // Also store image metadata for debugging
-        imageMap[`${image.nodeId}_meta`] = {
-          hash: image.hash,
-          nodeName: image.nodeName,
-          width: image.width,
-          height: image.height,
-          size: image.bytes.length
-        };
-      } catch (error) {
-        console.warn('Failed to convert image to base64:', image.nodeId, error);
-      }
+    if (image.nodeId) {
+      // Store image metadata for debugging (without bytes to prevent freezing)
+      imageMap[`${image.nodeId}_meta`] = {
+        hash: image.hash,
+        nodeName: image.nodeName,
+        width: image.width,
+        height: image.height,
+        hasBytes: image.hasBytes || false
+      };
+      
+      // For now, just store a placeholder for the image URL
+      // This will be filled in later when needed
+      imageMap[image.nodeId] = `placeholder:${image.hash}`;
     }
   }
   
@@ -649,7 +660,7 @@ async function extractNodeAssets(node) {
   return assets;
 }
 
-// Extract images from a single node
+// Extract images from a single node (simplified version)
 async function extractNodeImages(node) {
   const images = [];
   
@@ -660,15 +671,15 @@ async function extractNodeImages(node) {
         try {
           const image = figma.getImageByHash(fill.imageHash);
           if (image) {
-            const imageBytes = await image.getBytesAsync();
+            // Store metadata only to prevent freezing
             images.push({
               hash: fill.imageHash,
               nodeId: node.id,
               nodeName: node.name,
-              bytes: imageBytes,
               width: image.width,
               height: image.height,
-              type: 'fill'
+              type: 'fill',
+              hasBytes: false
             });
             console.log(`📸 Found image in node: ${node.name} (${image.width}x${image.height})`);
           }
@@ -684,15 +695,14 @@ async function extractNodeImages(node) {
     try {
       const image = figma.getImageByHash(node.id);
       if (image) {
-        const imageBytes = await image.getBytesAsync();
         images.push({
           hash: node.id,
           nodeId: node.id,
           nodeName: node.name,
-          bytes: imageBytes,
           width: image.width,
           height: image.height,
-          type: 'rectangle'
+          type: 'rectangle',
+          hasBytes: false
         });
         console.log(`📸 Found image rectangle: ${node.name} (${image.width}x${image.height})`);
       }
