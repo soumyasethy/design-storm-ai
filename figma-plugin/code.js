@@ -58,6 +58,13 @@ figma.ui.onmessage = async (msg) => {
 
 // Export complete design with all assets and images
 async function exportCompleteDesign() {
+  // Send initial progress
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 10,
+    message: 'Starting export...'
+  });
+
   const designData = {
     document: figma.root,
     assets: [],
@@ -76,25 +83,66 @@ async function exportCompleteDesign() {
   };
 
   // Extract all pages and their content
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 20,
+    message: 'Extracting pages...'
+  });
   designData.pages = await extractPages(figma.root.children);
   
   // Extract all assets
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 30,
+    message: 'Extracting assets...'
+  });
   designData.assets = await extractAllAssets();
   
   // Extract all images with actual image data
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 50,
+    message: 'Extracting images...'
+  });
   designData.images = await extractAllImages();
   
   // Build image map for easy access
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 70,
+    message: 'Building image map...'
+  });
   designData.imageMap = await buildImageMap(designData.images);
   
   // Extract all fonts
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 80,
+    message: 'Extracting fonts...'
+  });
   designData.fonts = await extractAllFonts();
   
   // Extract all styles
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 85,
+    message: 'Extracting styles...'
+  });
   designData.styles = await extractAllStyles();
   
   // Extract all components
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 90,
+    message: 'Extracting components...'
+  });
   designData.components = await extractAllComponents();
+  
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 95,
+    message: 'Finalizing export...'
+  });
   
   return designData;
 }
@@ -108,6 +156,13 @@ async function exportSelectedNodes() {
   }
   
   console.log(`🎯 Exporting ${selection.length} selected nodes:`, selection.map(n => n.name));
+  
+  // Send initial progress
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 10,
+    message: 'Starting selection export...'
+  });
   
   const exportData = {
     selection: [],
@@ -124,17 +179,46 @@ async function exportSelectedNodes() {
   };
   
   // Extract selected nodes with full hierarchy
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 30,
+    message: 'Extracting selected nodes...'
+  });
   for (const node of selection) {
     const nodeData = await extractNodeData(node);
     exportData.selection.push(nodeData);
   }
   
   // Extract assets from selection
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 50,
+    message: 'Extracting assets...'
+  });
   exportData.assets = await extractAssetsFromNodes(selection);
+  
+  // Extract images from selection
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 70,
+    message: 'Extracting images...'
+  });
   exportData.images = await extractImagesFromNodes(selection);
+  
+  // Extract fonts from selection
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 80,
+    message: 'Extracting fonts...'
+  });
   exportData.fonts = await extractFontsFromNodes(selection);
   
   // Build image map for selected nodes
+  figma.ui.postMessage({
+    type: 'export-progress',
+    progress: 90,
+    message: 'Building image map...'
+  });
   exportData.imageMap = await buildImageMap(exportData.images);
   
   console.log(`✅ Exported ${exportData.images.length} images from selection`);

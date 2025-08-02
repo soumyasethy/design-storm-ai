@@ -414,18 +414,21 @@
       exportAllBtn.disabled = true;
       exportSelectionBtn.disabled = true;
       
-      // Show progress
+      // Show progress immediately
       progressSection.classList.remove('hidden');
       errorMessage.classList.add('hidden');
       successMessage.classList.add('hidden');
       downloadSection.classList.add('hidden');
       statsSection.classList.add('hidden');
       
+      // Clear any previous progress
+      progressBar.style.width = '0%';
+      
       // Update progress with better messaging
       if (type === 'all') {
-        updateProgress(10, 'Starting complete design export...');
+        updateProgress(5, 'Starting complete design export...');
       } else {
-        updateProgress(10, 'Starting selection export...');
+        updateProgress(5, 'Starting selection export...');
       }
       
       try {
@@ -436,11 +439,20 @@
           }
         }, '*');
         
-        updateProgress(30, 'Scanning for images and assets...');
+        // Immediate progress update
+        updateProgress(15, 'Request sent to Figma...');
         
-        // Simulate progress updates
-        setTimeout(() => updateProgress(60, 'Extracting image data...'), 2000);
-        setTimeout(() => updateProgress(80, 'Building export package...'), 4000);
+        // Progressive updates to keep UI responsive
+        const progressInterval = setInterval(() => {
+          const currentProgress = parseInt(progressBar.style.width) || 0;
+          if (currentProgress < 90) {
+            const newProgress = Math.min(currentProgress + 5, 90);
+            updateProgress(newProgress, 'Processing design data...');
+          }
+        }, 1000);
+        
+        // Store interval for cleanup
+        window.progressInterval = progressInterval;
         
       } catch (error) {
         showError('Failed to start export: ' + error.message);
@@ -455,6 +467,12 @@
       if (!message) return;
       
       if (message.type === 'export-complete') {
+        // Clear progress interval
+        if (window.progressInterval) {
+          clearInterval(window.progressInterval);
+          window.progressInterval = null;
+        }
+        
         exportData = message.data;
         updateProgress(100, 'Export complete!');
         
@@ -470,8 +488,17 @@
         resetUI();
         
       } else if (message.type === 'export-error') {
+        // Clear progress interval
+        if (window.progressInterval) {
+          clearInterval(window.progressInterval);
+          window.progressInterval = null;
+        }
+        
         showError(message.error);
         resetUI();
+      } else if (message.type === 'export-progress') {
+        // Handle progress updates from plugin
+        updateProgress(message.progress, message.message);
       }
     };
     
@@ -548,6 +575,12 @@
       isExporting = false;
       exportAllBtn.disabled = false;
       exportSelectionBtn.disabled = false;
+      
+      // Clear any progress intervals
+      if (window.progressInterval) {
+        clearInterval(window.progressInterval);
+        window.progressInterval = null;
+      }
     }
     
     // Download data
