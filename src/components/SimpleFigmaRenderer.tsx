@@ -339,9 +339,9 @@ const FigmaText: React.FC<{
     textOverflow: 'ellipsis',
     
     // Ensure text fits within bounding box with 5% buffer
-               maxWidth: 'calc(100% + 6px)', // Add 6px buffer for font family differences
+               maxWidth: 'calc(100% + 4px)', // Add 4px buffer for font family differences
            maxHeight: '100%',
-           width: 'calc(100% + 6px)', // Ensure container is slightly wider
+           width: 'calc(100% + 4px)', // Ensure container is slightly wider
     
     // Debug styling
     ...(showDebug && {
@@ -516,8 +516,8 @@ const FigmaText: React.FC<{
     justifyContent: textAlignment === 'center' ? 'center' : 'flex-start',
     gap: '4px', // Add gap for inline elements
     overflow: 'hidden',
-         // Add 6px buffer to container width for font family differences
-     width: baseStyles.width ? `calc(${baseStyles.width} + 6px)` : 'calc(100% + 6px)',
+         // Add 4px buffer to container width for font family differences
+     width: baseStyles.width ? `calc(${baseStyles.width} + 4px)` : 'calc(100% + 4px)',
     // Ensure text alignment is properly applied
     textAlign: textAlignment as any,
   };
