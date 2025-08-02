@@ -82,7 +82,7 @@ const FigmaRender: React.FC<FigmaRenderProps> = ({
     if (figmaData.document) {
       // Direct document structure
       documentNode = figmaData.document;
-      console.log('📄 Found direct document:', documentNode.name, documentNode.type);
+      console.log('📄 Found direct document:', documentNode?.name, documentNode?.type);
     } else if (figmaData.nodes) {
       // Standard Figma export structure
       const nodeKeys = Object.keys(figmaData.nodes);

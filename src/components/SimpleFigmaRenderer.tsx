@@ -7,12 +7,162 @@ import {
   getFontFamilyWithFallback, 
   getCornerRadius, 
   getTextAlign, 
-  getVerticalAlign,
-  isFooterComponent,
-  getImageScaleMode,
-  isNodeVisible,
-  getLineStyles
+  getVerticalAlign, 
+  isFooterComponent, 
+  getImageScaleMode, 
+  isNodeVisible, 
+  getLineStyles 
 } from '@/lib/utils';
+
+// Utility function for RGB to Hex conversion
+const rgbToHex = (r: number, g: number, b: number): string => {
+  const toHex = (n: number) => {
+    const hex = Math.round(n * 255).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  };
+  return `${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
+// Enhanced vector rotation utility function
+const getVectorRotationTransform = (
+  vectorRotation?: number,
+  vectorRotationCenter?: { x: number; y: number },
+  vectorRotationAxis?: string,
+  rotation?: number,
+  width?: number,
+  height?: number
+): string => {
+  let transformStyle = '';
+  
+  // Handle vector-specific rotation with center point support
+  if (vectorRotation !== undefined && vectorRotation !== 0) {
+    if (vectorRotationCenter) {
+      // Rotate around specific center point
+      transformStyle += `rotate(${vectorRotation}deg ${vectorRotationCenter.x} ${vectorRotationCenter.y}) `;
+    } else if (vectorRotationAxis === 'CENTER') {
+      // Rotate around center of the element
+      transformStyle += `rotate(${vectorRotation}deg ${(width || 0)/2} ${(height || 0)/2}) `;
+    } else {
+      // Default rotation around origin
+      transformStyle += `rotate(${vectorRotation}deg) `;
+    }
+  } else if (rotation !== undefined && rotation !== 0) {
+    // Handle general rotation - check if it's in radians and convert to degrees
+    let rotationDegrees = rotation;
+    
+    // If rotation is in radians (typically between -π and π), convert to degrees
+    if (Math.abs(rotationDegrees) <= Math.PI) {
+      rotationDegrees = (rotationDegrees * 180) / Math.PI;
+    }
+    
+    // Fix Figma to CSS rotation mapping
+    // Figma's rotation system is different from CSS - we need to invert and adjust
+    rotationDegrees = -rotationDegrees; // Invert the rotation direction
+    
+    // Round to 2 decimal places to avoid floating point issues
+    rotationDegrees = Math.round(rotationDegrees * 100) / 100;
+    
+    transformStyle += `rotate(${rotationDegrees}deg) `;
+  }
+  
+  return transformStyle;
+};
+
+// Enhanced fill styles with comprehensive gradient support
+const getFillStyles = (fills: any[], nodeId?: string, imageMap?: Record<string, string>): React.CSSProperties => {
+  if (!fills || fills.length === 0) {
+    // Return a light gray background for debugging when no fills are provided
+    return { backgroundColor: 'rgba(200, 200, 200, 0.3)' };
+  }
+  
+  const fill = fills[0];
+  const styles: React.CSSProperties = {};
+  
+  if (fill.type === 'SOLID' && fill.color) {
+    // Use rgbaToCss for better color accuracy and opacity handling
+    styles.backgroundColor = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
+  } else if (fill.type === 'IMAGE') {
+    const imageUrl = fill.imageUrl || (nodeId && imageMap && imageMap[nodeId]);
+    if (imageUrl) {
+      styles.backgroundImage = `url('${imageUrl}')`;
+      styles.backgroundSize = 'cover';
+      styles.backgroundPosition = 'center';
+      styles.backgroundRepeat = 'no-repeat';
+    }
+  } else if (fill.gradientStops && fill.gradientStops.length > 0) {
+    // Enhanced gradient support for all types
+    const stops = fill.gradientStops.map((stop: any) => {
+      const rgbaColor = rgbaToCss(stop.color.r, stop.color.g, stop.color.b, stop.color.a);
+      return `${rgbaColor} ${stop.position * 100}%`;
+    }).join(', ');
+    
+    // Handle gradient transform for direction/angle
+    let gradientDirection = '';
+    if (fill.gradientTransform && Array.isArray(fill.gradientTransform)) {
+      const transform = fill.gradientTransform.flat();
+      // Calculate angle from transform matrix
+      const angle = Math.atan2(transform[1], transform[0]) * (180 / Math.PI);
+      gradientDirection = `${angle}deg`;
+    }
+    
+    switch (fill.type) {
+      case 'GRADIENT_LINEAR':
+        styles.background = `linear-gradient(${gradientDirection || 'to bottom'}, ${stops})`;
+        break;
+      case 'GRADIENT_RADIAL':
+        styles.background = `radial-gradient(circle at center, ${stops})`;
+        break;
+      case 'GRADIENT_ANGULAR':
+        // Angular gradient (conic gradient in CSS)
+        styles.background = `conic-gradient(from ${gradientDirection || '0deg'}, ${stops})`;
+        break;
+      case 'GRADIENT_DIAMOND':
+        // Diamond gradient (radial gradient with diamond shape)
+        styles.background = `radial-gradient(ellipse at center, ${stops})`;
+        // Add clip-path for diamond shape
+        styles.clipPath = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+        break;
+      default:
+        // Fallback to linear gradient
+        styles.background = `linear-gradient(${gradientDirection || 'to bottom'}, ${stops})`;
+        break;
+    }
+  }
+  
+  return styles;
+};
+
+// Enhanced border radius with individual corner support
+const getIndividualCornerRadius = (node: any): string => {
+  const { 
+    cornerRadius, 
+    cornerRadiusTopLeft, 
+    cornerRadiusTopRight, 
+    cornerRadiusBottomLeft, 
+    cornerRadiusBottomRight,
+    absoluteBoundingBox 
+  } = node;
+  
+  // If individual corners are specified, use them
+  if (cornerRadiusTopLeft !== undefined || cornerRadiusTopRight !== undefined || 
+      cornerRadiusBottomLeft !== undefined || cornerRadiusBottomRight !== undefined) {
+    const topLeft = cornerRadiusTopLeft ?? cornerRadius ?? 0;
+    const topRight = cornerRadiusTopRight ?? cornerRadius ?? 0;
+    const bottomLeft = cornerRadiusBottomLeft ?? cornerRadius ?? 0;
+    const bottomRight = cornerRadiusBottomRight ?? cornerRadius ?? 0;
+    
+    return `${getCornerRadius(topLeft)} ${getCornerRadius(topRight)} ${getCornerRadius(bottomRight)} ${getCornerRadius(bottomLeft)}`;
+  }
+  
+  // Use general corner radius
+  if (cornerRadius !== undefined) {
+    const width = absoluteBoundingBox?.width;
+    const height = absoluteBoundingBox?.height;
+    return getCornerRadius(cornerRadius, width, height);
+  }
+  
+  return '0px';
+};
 
 interface SimpleFigmaRendererProps {
   node: any;
@@ -243,8 +393,9 @@ const FigmaText: React.FC<{
     );
 };
 
-// Enhanced appearance styles for SimpleFigmaRenderer
-const getSimpleAppearanceStyles = (node: any): React.CSSProperties => {
+// Enhanced shape rendering with better styling
+// Enhanced appearance styles with comprehensive support (for SimpleFigmaRenderer)
+const getAppearanceStyles = (node: any): React.CSSProperties => {
   const styles: React.CSSProperties = {};
   
   // Handle opacity
@@ -257,15 +408,10 @@ const getSimpleAppearanceStyles = (node: any): React.CSSProperties => {
     styles.display = 'none';
   }
   
-  // Handle corner radius with individual corner support
-  if (node.cornerRadiusTopLeft || node.cornerRadiusTopRight || node.cornerRadiusBottomLeft || node.cornerRadiusBottomRight) {
-    const topLeft = node.cornerRadiusTopLeft || 0;
-    const topRight = node.cornerRadiusTopRight || 0;
-    const bottomLeft = node.cornerRadiusBottomLeft || 0;
-    const bottomRight = node.cornerRadiusBottomRight || 0;
-    styles.borderRadius = `${topLeft}px ${topRight}px ${bottomRight}px ${bottomLeft}px`;
-  } else if (node.cornerRadius) {
-    styles.borderRadius = `${node.cornerRadius}px`;
+  // Handle corner radius with comprehensive support
+  const borderRadius = getIndividualCornerRadius(node);
+  if (borderRadius !== '0px') {
+    styles.borderRadius = borderRadius;
   }
   
   // Handle blend modes
@@ -276,45 +422,99 @@ const getSimpleAppearanceStyles = (node: any): React.CSSProperties => {
   return styles;
 };
 
-// Enhanced stroke styles for SimpleFigmaRenderer
-const getSimpleStrokeStyles = (node: any): React.CSSProperties => {
+// Enhanced stroke styles with comprehensive support (for SimpleFigmaRenderer)
+// Enhanced border and stroke styles with comprehensive support for SimpleFigmaRenderer
+const getEnhancedStrokeStyles = (node: any): React.CSSProperties => {
   const styles: React.CSSProperties = {};
   
-  if (!node.strokes || node.strokes.length === 0) return styles;
+  // Handle both strokes and vectorStroke properties
+  const stroke = node.strokes?.[0] || node.vectorStroke;
   
-  const stroke = node.strokes[0];
+  if (!stroke) return styles;
   
-  // Handle stroke color
-  if (stroke.type === 'SOLID' && stroke.color) {
-    const strokeColor = rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a);
-    const strokeWidth = stroke.strokeWeight || node.strokeWeight || 1;
+  // Get stroke color with enhanced support
+  let strokeColor = 'transparent';
+  let strokeWidth = 0;
+  let strokeAlign = 'CENTER';
+  let strokeCap = 'NONE';
+  let strokeJoin = 'MITER';
+  let dashPattern: number[] = [];
+  
+      if (stroke.type === 'SOLID' && stroke.color) {
+    strokeColor = rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a);
+    strokeWidth = stroke.strokeWeight || node.strokeWeight || 1;
+    strokeAlign = stroke.strokeAlign || 'CENTER';
+    strokeCap = stroke.strokeCap || 'NONE';
+    strokeJoin = stroke.strokeJoin || 'MITER';
+    dashPattern = stroke.dashPattern || [];
+  } else if (stroke.color) {
+    // Handle vectorStroke format
+    strokeColor = rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a);
+    strokeWidth = stroke.weight || 1;
+    strokeAlign = stroke.position || 'CENTER';
+    strokeCap = stroke.cap || 'NONE';
+    strokeJoin = stroke.join || 'MITER';
+    dashPattern = stroke.dashPattern || [];
+  }
+  
+  // Apply border styles based on stroke alignment
+  if (strokeWidth > 0) {
+    styles.boxSizing = 'border-box';
     
-    // Handle stroke alignment
-    if (stroke.strokeAlign === 'INSIDE') {
-      styles.boxSizing = 'border-box';
+    if (strokeAlign === 'INSIDE') {
+      // Inside stroke - border shrinks the content area
       styles.border = `${strokeWidth}px solid ${strokeColor}`;
-    } else if (stroke.strokeAlign === 'OUTSIDE') {
-      styles.boxSizing = 'border-box';
+    } else if (strokeAlign === 'OUTSIDE') {
+      // Outside stroke - outline extends beyond the element
       styles.outline = `${strokeWidth}px solid ${strokeColor}`;
       styles.outlineOffset = '0px';
     } else {
-      // CENTER (default)
-      styles.boxSizing = 'border-box';
+      // CENTER (default) - border is centered on the element edge
       styles.border = `${strokeWidth}px solid ${strokeColor}`;
     }
     
-    // Handle dash patterns
-    if (stroke.dashPattern && stroke.dashPattern.length > 0) {
-      styles.borderStyle = 'dashed';
-      (styles as any).borderDasharray = stroke.dashPattern.join(', ');
+    // Handle dash patterns for borders
+    if (dashPattern && dashPattern.length > 0) {
+      if (strokeAlign === 'OUTSIDE') {
+        // For outline, we need to use a different approach
+        styles.outlineStyle = 'dashed';
+        (styles as any).outlineDasharray = dashPattern.join(', ');
+      } else {
+        styles.borderStyle = 'dashed';
+        (styles as any).borderDasharray = dashPattern.join(', ');
+      }
+    }
+  }
+  
+  // Handle stroke caps and joins for SVG elements
+  if (strokeCap && strokeCap !== 'NONE') {
+    styles.strokeLinecap = strokeCap.toLowerCase() as any;
+  }
+  if (strokeJoin && strokeJoin !== 'MITER') {
+    styles.strokeLinejoin = strokeJoin.toLowerCase() as any;
+  }
+  
+  // Handle gradient strokes
+  if (stroke.type === 'GRADIENT_LINEAR' || stroke.type === 'GRADIENT_RADIAL') {
+    // For gradient strokes, we'll use SVG or CSS gradients
+    if (stroke.gradientStops && stroke.gradientStops.length > 0) {
+      const gradientStops = stroke.gradientStops
+        .map((stop: any) => `${rgbaToCss(stop.color.r, stop.color.g, stop.color.b, stop.color.a)} ${stop.position * 100}%`)
+        .join(', ');
+      
+      if (stroke.type === 'GRADIENT_LINEAR') {
+        styles.borderImage = `linear-gradient(to right, ${gradientStops}) 1`;
+      } else {
+        styles.borderImage = `radial-gradient(circle, ${gradientStops}) 1`;
+      }
     }
   }
   
   return styles;
 };
 
-// Enhanced effects styles for SimpleFigmaRenderer
-const getSimpleEffectStyles = (node: any): React.CSSProperties => {
+// Enhanced effects styles with comprehensive support (for SimpleFigmaRenderer)
+const getEnhancedEffectStyles = (node: any): React.CSSProperties => {
   const styles: React.CSSProperties = {};
   
   if (!node.effects || node.effects.length === 0) return styles;
@@ -329,6 +529,7 @@ const getSimpleEffectStyles = (node: any): React.CSSProperties => {
         break;
         
       case 'INNER_SHADOW':
+        // Inner shadows are more complex and may require pseudo-elements
         const innerShadow = `inset ${effect.offset?.x || 0}px ${effect.offset?.y || 0}px ${effect.radius || 0}px ${effect.color ? rgbaToCss(effect.color.r, effect.color.g, effect.color.b, effect.color.a) : 'rgba(0,0,0,0.3)'}`;
         styles.boxShadow = styles.boxShadow ? `${styles.boxShadow}, ${innerShadow}` : innerShadow;
         break;
@@ -339,6 +540,7 @@ const getSimpleEffectStyles = (node: any): React.CSSProperties => {
         break;
         
       case 'BACKGROUND_BLUR':
+        // Background blur requires backdrop-filter
         styles.backdropFilter = `blur(${effect.radius || 0}px)`;
         break;
     }
@@ -347,105 +549,367 @@ const getSimpleEffectStyles = (node: any): React.CSSProperties => {
   return styles;
 };
 
-// Arrow rendering utilities for SimpleFigmaRenderer
-const createSimpleArrowPath = (
-  x1: number, y1: number, 
-  x2: number, y2: number, 
-  strokeWidth: number,
-  arrowStyle: string = 'ARROW_LINES',
-  arrowLength: number = 10,
-  arrowWidth: number = 8
-): string => {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const angle = Math.atan2(dy, dx);
-  
-  // Calculate arrow head points
-  const arrowAngle = Math.PI / 6; // 30 degrees
-  const arrowLengthAdjusted = arrowLength + strokeWidth / 2;
-  const arrowWidthAdjusted = arrowWidth + strokeWidth / 2;
-  
-  let arrowPath = '';
-  
-  switch (arrowStyle) {
-    case 'ARROW_LINES':
-      // Simple arrow with two lines
-      const leftAngle = angle + arrowAngle;
-      const rightAngle = angle - arrowAngle;
-      
-      const leftX = x2 - arrowLengthAdjusted * Math.cos(leftAngle);
-      const leftY = y2 - arrowLengthAdjusted * Math.sin(leftAngle);
-      const rightX = x2 - arrowLengthAdjusted * Math.cos(rightAngle);
-      const rightY = y2 - arrowLengthAdjusted * Math.sin(rightAngle);
-      
-      arrowPath = `M ${x2} ${y2} L ${leftX} ${leftY} M ${x2} ${y2} L ${rightX} ${rightY}`;
-      break;
-      
-    case 'ARROW_EQUILATERAL':
-      // Equilateral triangle arrow
-      const leftAngle2 = angle + Math.PI / 3; // 60 degrees
-      const rightAngle2 = angle - Math.PI / 3; // 60 degrees
-      
-      const leftX2 = x2 - arrowLengthAdjusted * Math.cos(leftAngle2);
-      const leftY2 = y2 - arrowLengthAdjusted * Math.sin(leftAngle2);
-      const rightX2 = x2 - arrowLengthAdjusted * Math.cos(rightAngle2);
-      const rightY2 = y2 - arrowLengthAdjusted * Math.sin(rightAngle2);
-      
-      arrowPath = `M ${x2} ${y2} L ${leftX2} ${leftY2} L ${rightX2} ${rightY2} Z`;
-      break;
-      
-    default:
-      // Default to simple lines
-      const leftAngleDefault = angle + arrowAngle;
-      const rightAngleDefault = angle - arrowAngle;
-      
-      const leftXDefault = x2 - arrowLengthAdjusted * Math.cos(leftAngleDefault);
-      const leftYDefault = y2 - arrowLengthAdjusted * Math.sin(leftAngleDefault);
-      const rightXDefault = x2 - arrowLengthAdjusted * Math.cos(rightAngleDefault);
-      const rightYDefault = y2 - arrowLengthAdjusted * Math.sin(rightAngleDefault);
-      
-      arrowPath = `M ${x2} ${y2} L ${leftXDefault} ${leftYDefault} M ${x2} ${y2} L ${rightXDefault} ${rightYDefault}`;
-  }
-  
-  return arrowPath;
+// Detect if a node is part of a mask group (for SimpleFigmaRenderer)
+const isMaskGroupNode = (node: any): boolean => {
+  return node.isMaskGroup || 
+         node.maskGroupId || 
+         node.maskGroupParent ||
+         (node.name && node.name.toLowerCase().includes('mask group'));
 };
 
-// Render simple arrow for SimpleFigmaRenderer
-const renderSimpleArrow = (node: any, baseStyles: React.CSSProperties) => {
-  const { name, absoluteBoundingBox, strokes, strokeWeight, arrowStart, arrowEnd, arrowStyle, arrowLength, arrowWidth } = node;
+// Get mask group operation mode (for SimpleFigmaRenderer)
+const getMaskGroupMode = (node: any): string => {
+  if (!isMaskGroupNode(node)) return 'normal';
   
-  // Get stroke properties
-  const stroke = strokes?.[0];
-  const strokeColor = stroke?.type === 'SOLID' && stroke.color ? 
-    rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a) : 
-    '#000000';
+  switch (node.maskGroupMode) {
+    case 'ADD':
+      return 'add';
+    case 'SUBTRACT':
+      return 'subtract';
+    case 'INTERSECT':
+      return 'intersect';
+    case 'EXCLUDE':
+      return 'exclude';
+    default:
+      return 'normal';
+  }
+};
+
+// Enhanced mask element creation with image + rectangle support for SimpleFigmaRenderer
+const createMaskElement = (node: any, children: any[], imageMap: Record<string, string> = {}, fileKey?: string, figmaToken?: string, devMode: boolean = false): React.ReactElement | null => {
+  if (!node.isMask || !children || children.length === 0) {
+    return null;
+  }
   
-  const strokeWidth = strokeWeight || stroke?.strokeWeight || 2;
+  const maskId = `mask-${node.id}`;
+  const { absoluteBoundingBox, maskType = 'ALPHA', isMaskGroup, maskGroupMode } = node;
+  
+  // Get mask dimensions
   const width = absoluteBoundingBox?.width || 100;
   const height = absoluteBoundingBox?.height || 100;
   
-  // Calculate line coordinates
-  const x1 = 0;
-  const y1 = height / 2;
-  const x2 = width;
-  const y2 = height / 2;
+  // Handle mask group operations
+  const getMaskGroupOperation = () => {
+    if (!isMaskGroup) return 'normal';
+    
+    switch (maskGroupMode) {
+      case 'ADD':
+        return 'add';
+      case 'SUBTRACT':
+        return 'subtract';
+      case 'INTERSECT':
+        return 'intersect';
+      case 'EXCLUDE':
+        return 'exclude';
+      default:
+        return 'normal';
+    }
+  };
+
+  // Enhanced function to render mask group children with image + rectangle support
+  const renderMaskGroupChild = (child: any, index: number) => {
+    const childMaskMode = getMaskGroupOperation();
+    
+    // Handle different child types for mask groups
+    if (child.type === 'RECTANGLE') {
+      // Render rectangle as mask element
+      const fill = child.fills?.[0];
+      const fillColor = fill?.type === 'SOLID' && fill.color ? 
+        rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a) : 
+        'black';
+      
+      const borderRadius = getIndividualCornerRadius(child);
+      const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
+        child.absoluteBoundingBox || {};
+      
+      return (
+        <g key={child.id || index} mask={childMaskMode}>
+          <rect
+            x={x}
+            y={y}
+            width={childWidth}
+            height={childHeight}
+            fill={fillColor}
+            rx={borderRadius !== '0px' ? parseFloat(borderRadius) : 0}
+            ry={borderRadius !== '0px' ? parseFloat(borderRadius) : 0}
+          />
+        </g>
+      );
+    } else if (child.type === 'IMAGE' || child.fills?.some((fill: any) => fill.type === 'IMAGE')) {
+      // Render image as mask element
+      const imageFill = child.fills?.find((fill: any) => fill.type === 'IMAGE');
+      const imageUrl = imageFill?.imageUrl || imageMap[child.id];
+      
+      if (imageUrl) {
+        const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
+          child.absoluteBoundingBox || {};
+        
+        return (
+          <g key={child.id || index} mask={childMaskMode}>
+            <image
+              href={imageUrl}
+              x={x}
+              y={y}
+              width={childWidth}
+              height={childHeight}
+              preserveAspectRatio="xMidYMid slice"
+            />
+          </g>
+        );
+      }
+    } else if (child.type === 'VECTOR' || child.isVector) {
+      // Render vector as mask element
+      const fill = child.vectorFill || child.fills?.[0];
+      const fillColor = fill?.type === 'SOLID' && fill.color ? 
+        rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a) : 
+        'black';
+      
+      const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
+        child.absoluteBoundingBox || {};
+      
+      // Create vector path
+      let vectorPath = '';
+      if (child.vectorPaths && child.vectorPaths.length > 0) {
+        vectorPath = child.vectorPaths[0].path;
+      } else if (child.vectorType === 'RECTANGLE') {
+        const radius = child.vectorCornerRadius || 0;
+        vectorPath = `M 0 ${radius} Q 0 0 ${radius} 0 L ${childWidth - radius} 0 Q ${childWidth} 0 ${childWidth} ${radius} L ${childWidth} ${childHeight - radius} Q ${childWidth} ${childHeight} ${childWidth - radius} ${childHeight} L ${radius} ${childHeight} Q 0 ${childHeight} 0 ${childHeight - radius} Z`;
+      } else if (child.vectorType === 'ELLIPSE') {
+        const centerX = childWidth / 2;
+        const centerY = childHeight / 2;
+        const radiusX = childWidth / 2;
+        const radiusY = childHeight / 2;
+        vectorPath = `M ${centerX - radiusX} ${centerY} A ${radiusX} ${radiusY} 0 1 1 ${centerX + radiusX} ${centerY} A ${radiusX} ${radiusY} 0 1 1 ${centerX - radiusX} ${centerY} Z`;
+      }
+      
+      return (
+        <g key={child.id || index} mask={childMaskMode}>
+          <path
+            d={vectorPath}
+            fill={fillColor}
+            transform={`translate(${x}, ${y})`}
+          />
+        </g>
+      );
+    } else if (child.type === 'FRAME' || child.type === 'GROUP') {
+      // Render frame/group children recursively
+      return (
+        <g key={child.id || index} mask={childMaskMode}>
+          {child.children?.map((grandChild: any, grandIndex: number) => 
+            renderMaskGroupChild(grandChild, grandIndex)
+          )}
+        </g>
+      );
+    } else {
+      // Fallback to regular SimpleFigmaRenderer for other types
+      return (
+        <g key={child.id || index} mask={childMaskMode}>
+          <SimpleFigmaRenderer
+            node={child}
+            showDebug={false}
+            parentBoundingBox={node.absoluteBoundingBox}
+            imageMap={imageMap}
+            parentMask={true}
+            parentMaskType={maskType}
+            fileKey={fileKey}
+            figmaToken={figmaToken}
+            devMode={devMode}
+          />
+        </g>
+      );
+    }
+  };
   
-  // Create main line path
-  const mainLinePath = `M ${x1} ${y1} L ${x2} ${y2}`;
+  return (
+    <svg
+      style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}
+      aria-hidden="true"
+    >
+      <defs>
+        <mask 
+          id={maskId} 
+          maskUnits="userSpaceOnUse"
+          maskContentUnits="userSpaceOnUse"
+        >
+          {/* White background for mask */}
+          <rect width={width} height={height} fill="white" />
+          
+          {/* Render mask children with enhanced image + rectangle support */}
+          {children.map((child: any, index: number) => renderMaskGroupChild(child, index))}
+        </mask>
+      </defs>
+    </svg>
+  );
+};
+
+// Enhanced vector stroke rendering with comprehensive support for SimpleFigmaRenderer
+const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) => {
+  const { 
+    name, 
+    absoluteBoundingBox, 
+    strokes, 
+    strokeWeight, 
+    transform, 
+    rotation,
+    // Enhanced vector properties
+    vectorStroke,
+    vectorType,
+    vectorPoints,
+    vectorMirror,
+    vectorMirrorAxis,
+    vectorMirrorAngle,
+    vectorMirrorLength,
+    vectorMirrorTransform,
+    vectorX,
+    vectorY,
+    vectorAlign,
+    vectorAnchor,
+    vectorWindingRule,
+    // Enhanced vector rotation properties
+    vectorRotation,
+    vectorRotationCenter,
+    vectorRotationAxis,
+    vectorRotationMode,
+    scale,
+    skew,
+    isMirrored,
+    mirrorAxis
+  } = node;
   
-  // Create arrow paths
-  let arrowPaths = '';
-  const arrowLengthFinal = arrowLength || 10;
-  const arrowWidthFinal = arrowWidth || 8;
-  const arrowStyleFinal = arrowStyle || 'ARROW_LINES';
+  // Get stroke properties with enhanced vector stroke support
+  let strokeColor = '#FF004F'; // Default red from your example
+  let strokeWidth = 2;
+  let strokeCapStyle: 'inherit' | 'round' | 'butt' | 'square' = 'butt';
+  let strokeJoinStyle: 'inherit' | 'round' | 'bevel' | 'miter' = 'miter';
+  let strokeDashArray = 'none';
   
-  if (arrowEnd) {
-    arrowPaths += createSimpleArrowPath(x2, y2, x1, y1, strokeWidth, arrowStyleFinal, arrowLengthFinal, arrowWidthFinal);
+  if (vectorStroke) {
+    strokeColor = vectorStroke.color ? 
+      rgbaToCss(vectorStroke.color.r, vectorStroke.color.g, vectorStroke.color.b, vectorStroke.color.a) : 
+      '#FF004F';
+    strokeWidth = vectorStroke.weight || 2;
+    strokeCapStyle = (vectorStroke.cap?.toLowerCase() as any) || 'butt';
+    strokeJoinStyle = (vectorStroke.join?.toLowerCase() as any) || 'miter';
+    strokeDashArray = vectorStroke.dashPattern?.join(', ') || 'none';
+  } else {
+    const stroke = strokes?.[0];
+    strokeColor = stroke?.type === 'SOLID' && stroke.color ? 
+      rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a) : 
+      '#FF004F';
+    strokeWidth = strokeWeight || stroke?.strokeWeight || 2;
   }
   
-  if (arrowStart) {
-    arrowPaths += createSimpleArrowPath(x1, y1, x2, y2, strokeWidth, arrowStyleFinal, arrowLengthFinal, arrowWidthFinal);
+  // Get dimensions
+  const width = absoluteBoundingBox?.width || 100;
+  const height = absoluteBoundingBox?.height || 100;
+  
+  // Handle vector positioning with vectorAnchor support
+  let vectorXPos = vectorX || 0;
+  let vectorYPos = vectorY || 0;
+  
+  // Handle vector anchor point
+  if (vectorAnchor) {
+    vectorXPos = vectorAnchor.x || 0;
+    vectorYPos = vectorAnchor.y || 0;
   }
+  
+  // Handle vector alignment
+  if (vectorAlign) {
+    switch (vectorAlign) {
+      case 'CENTER':
+        vectorXPos = width / 2;
+        vectorYPos = height / 2;
+        break;
+      case 'RIGHT':
+        vectorXPos = width;
+        break;
+      case 'BOTTOM':
+        vectorYPos = height;
+        break;
+    }
+  }
+  
+  // Handle mirroring with enhanced vectorMirrorTransform support
+  let mirrorTransform = '';
+  if (vectorMirror) {
+    if (vectorMirrorAxis === 'HORIZONTAL') {
+      mirrorTransform = 'scaleX(-1) ';
+    } else if (vectorMirrorAxis === 'VERTICAL') {
+      mirrorTransform = 'scaleY(-1) ';
+    } else if (vectorMirrorAxis === 'BOTH') {
+      mirrorTransform = 'scale(-1, -1) ';
+    }
+    
+    // Handle mirror angle and length
+    if (vectorMirrorAngle !== undefined) {
+      mirrorTransform += `rotate(${vectorMirrorAngle}deg) `;
+    }
+    
+    if (vectorMirrorLength !== undefined) {
+      mirrorTransform += `scale(${vectorMirrorLength}) `;
+    }
+    
+    // Handle vectorMirrorTransform matrix
+    if (vectorMirrorTransform && Array.isArray(vectorMirrorTransform)) {
+      const matrix = vectorMirrorTransform.flat();
+      mirrorTransform += `matrix(${matrix.join(', ')}) `;
+    }
+  }
+  
+  // Handle transforms with enhanced vector rotation support
+  let transformStyle = '';
+  if (transform && Array.isArray(transform)) {
+    transformStyle = `matrix(${transform.join(', ')}) `;
+  }
+  
+  // Use enhanced vector rotation utility
+  transformStyle += getVectorRotationTransform(
+    vectorRotation,
+    vectorRotationCenter,
+    vectorRotationAxis,
+    rotation,
+    width,
+    height
+  );
+  
+  if (scale) {
+    transformStyle += `scale(${scale.x || 1}, ${scale.y || 1}) `;
+  }
+  if (skew !== undefined && skew !== 0) {
+    transformStyle += `skew(${skew}deg) `;
+  }
+  
+  // Combine all transforms
+  const combinedTransform = `${mirrorTransform}${transformStyle}`.trim();
+  
+  // Create SVG path for vector stroke with enhanced support
+  const createVectorPath = () => {
+    // Handle vector points if provided
+    if (vectorPoints && vectorPoints.length >= 2) {
+      const start = vectorPoints[0];
+      const end = vectorPoints[1];
+      return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+    }
+    
+    // Handle vector type
+    if (vectorType === 'LINE') {
+      // For vertical lines (like your example)
+      if (width < 10 && height > width * 2) {
+        return `M ${width/2} 0 L ${width/2} ${height}`;
+      }
+      // For horizontal lines
+      if (height < 10 && width > height * 2) {
+        return `M 0 ${height/2} L ${width} ${height/2}`;
+      }
+      // For diagonal lines
+      return `M 0 0 L ${width} ${height}`;
+    }
+    
+    // Default vertical line
+    return `M ${width/2} 0 L ${width/2} ${height}`;
+  };
+  
+  const pathData = createVectorPath();
   
   return (
     <svg
@@ -455,24 +919,217 @@ const renderSimpleArrow = (node: any, baseStyles: React.CSSProperties) => {
         position: 'absolute',
         top: 0,
         left: 0,
-        ...baseStyles,
+        transform: combinedTransform || undefined,
       }}
     >
       <path
-        d={`${mainLinePath} ${arrowPaths}`}
+        d={pathData}
+        fill="none"
         stroke={strokeColor}
         strokeWidth={strokeWidth}
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        strokeLinecap={strokeCapStyle}
+        strokeLinejoin={strokeJoinStyle}
+        strokeDasharray={strokeDashArray}
       />
     </svg>
   );
 };
 
-// Enhanced shape rendering with better styling
-// Render simple rectangles with vector support for SimpleFigmaRenderer
-const renderSimpleRectangle = (node: any, baseStyles: React.CSSProperties) => {
+// Enhanced rectangle rendering with comprehensive support (for SimpleFigmaRenderer)
+// Enhanced ellipse rendering with comprehensive support for SimpleFigmaRenderer
+const renderSimpleEllipse = (node: any, baseStyles: React.CSSProperties) => {
+  const { 
+    name, 
+    absoluteBoundingBox, 
+    fills, 
+    strokes, 
+    strokeWeight, 
+    strokeAlign,
+    effects,
+    isMirrored,
+    mirrorAxis,
+    aspectRatio,
+    blendMode,
+    isVisible,
+    isHidden,
+    rotation,
+    scale,
+    skew,
+    relativeTransform,
+    opacity,
+    // Enhanced rotation properties
+    vectorRotation,
+    vectorRotationCenter,
+    vectorRotationAxis,
+    vectorRotationMode,
+    transform
+  } = node;
+  
+  // Skip hidden elements
+  if (isHidden || isVisible === false) {
+    return null;
+  }
+  
+  // Get dimensions
+  const width = absoluteBoundingBox?.width || 100;
+  const height = absoluteBoundingBox?.height || 100;
+  
+  // Get fill color with enhanced support
+  let fillColor = 'transparent';
+  if (fills && fills.length > 0) {
+    const fill = fills[0];
+      if (fill.type === 'SOLID' && fill.color) {
+      fillColor = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
+    }
+  }
+  
+  // Get stroke properties with enhanced support
+  const stroke = strokes?.[0];
+  const strokeColor = stroke?.type === 'SOLID' && stroke.color ? 
+    rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a) : 
+    'transparent';
+  
+  const strokeWidth = strokeWeight || stroke?.strokeWeight || 0;
+  
+  // Get enhanced stroke styles
+  const strokeStyles = getEnhancedStrokeStyles(node);
+  
+  // Handle stroke alignment with comprehensive support
+  let borderStyle = 'none';
+  let outlineStyle = {};
+  
+  if (strokeWidth > 0) {
+    if (strokeAlign === 'INSIDE') {
+      borderStyle = `${strokeWidth}px solid ${strokeColor}`;
+    } else if (strokeAlign === 'OUTSIDE') {
+      // For outside stroke, we'll use outline
+      outlineStyle = {
+        outline: `${strokeWidth}px solid ${strokeColor}`,
+        outlineOffset: '0px',
+      };
+      
+      // Handle dash patterns for outline
+      if (stroke?.dashPattern && stroke.dashPattern.length > 0) {
+        outlineStyle = {
+          ...outlineStyle,
+          outlineStyle: 'dashed',
+          outlineDasharray: stroke.dashPattern.join(', '),
+        };
+      }
+    } else {
+      // CENTER (default)
+      borderStyle = `${strokeWidth}px solid ${strokeColor}`;
+    }
+    
+    // Handle dash patterns for border
+    if (stroke?.dashPattern && stroke.dashPattern.length > 0 && strokeAlign !== 'OUTSIDE') {
+      borderStyle = `${strokeWidth}px dashed ${strokeColor}`;
+    }
+  }
+  
+  // Calculate transform style with enhanced rotation support
+  const getTransformStyle = () => {
+    let transformParts: string[] = [];
+    
+    // Handle vector-specific rotation with priority
+    if (vectorRotation !== undefined && vectorRotation !== 0) {
+      if (vectorRotationCenter) {
+        // Rotate around specific center point
+        transformParts.push(`rotate(${vectorRotation}deg ${vectorRotationCenter.x} ${vectorRotationCenter.y})`);
+      } else if (vectorRotationAxis === 'CENTER') {
+        // Rotate around center of the element
+        const centerX = width / 2;
+        const centerY = height / 2;
+        transformParts.push(`rotate(${vectorRotation}deg ${centerX} ${centerY})`);
+      } else {
+        // Default rotation around origin
+        transformParts.push(`rotate(${vectorRotation}deg)`);
+      }
+    } else if (rotation !== undefined && rotation !== 0) {
+      // Handle general rotation - check if it's in radians and convert to degrees
+      let rotationDegrees = rotation;
+      
+      // If rotation is in radians (typically between -π and π), convert to degrees
+      if (Math.abs(rotationDegrees) <= Math.PI) {
+        rotationDegrees = (rotationDegrees * 180) / Math.PI;
+      }
+      
+      // Fix Figma to CSS rotation mapping
+      // Figma's rotation system is different from CSS - we need to invert and adjust
+      rotationDegrees = -rotationDegrees; // Invert the rotation direction
+      
+      // Round to 2 decimal places to avoid floating point issues
+      rotationDegrees = Math.round(rotationDegrees * 100) / 100;
+      
+      transformParts.push(`rotate(${rotationDegrees}deg)`);
+    }
+    
+    // Handle scale
+    if (scale) {
+      transformParts.push(`scale(${scale.x}, ${scale.y})`);
+    }
+    
+    // Handle skew
+    if (skew !== undefined && skew !== 0) {
+      transformParts.push(`skew(${skew}deg)`);
+    }
+    
+    // Handle matrix transform
+    if (relativeTransform) {
+      const matrix = relativeTransform.flat();
+      transformParts.push(`matrix(${matrix.join(', ')})`);
+    }
+    
+    // Handle transform array
+    if (transform && Array.isArray(transform)) {
+      transformParts.push(`matrix(${transform.join(', ')})`);
+    }
+    
+    // Handle mirroring
+    if (isMirrored) {
+      if (mirrorAxis === 'HORIZONTAL') {
+        transformParts.push('scaleX(-1)');
+      } else if (mirrorAxis === 'VERTICAL') {
+        transformParts.push('scaleY(-1)');
+      } else if (mirrorAxis === 'BOTH') {
+        transformParts.push('scale(-1, -1)');
+      }
+    }
+    
+    return transformParts.join(' ');
+  };
+  
+  // Handle aspect ratio
+  const aspectRatioStyle: React.CSSProperties = {};
+  if (aspectRatio && aspectRatio > 0) {
+    aspectRatioStyle.aspectRatio = aspectRatio.toString();
+  }
+  
+  // Create ellipse styles
+  const ellipseStyles: React.CSSProperties = {
+    ...baseStyles,
+    width: `${width}px`,
+    height: `${height}px`,
+    backgroundColor: fillColor,
+    border: borderStyle,
+    borderRadius: '50%', // Make it circular/elliptical
+    boxSizing: 'border-box',
+    mixBlendMode: blendMode?.toLowerCase().replace('_', '-') || 'normal',
+    transform: getTransformStyle(),
+    ...aspectRatioStyle,
+    ...strokeStyles,
+    ...outlineStyle,
+  };
+  
+  return (
+    <div
+      style={ellipseStyles}
+      title={`${name} - Ellipse (${width}×${height})`}
+    />
+  );
+};
+
+const renderSimpleRectangle = (node: any, baseStyles: React.CSSProperties, showDebug: boolean = false, devMode: boolean = false) => {
   const { 
     name, 
     absoluteBoundingBox, 
@@ -480,24 +1137,33 @@ const renderSimpleRectangle = (node: any, baseStyles: React.CSSProperties) => {
     strokes, 
     strokeWeight, 
     cornerRadius,
-    mirroring,
-    vectorType,
-    vectorPath,
-    vectorFills,
-    vectorStrokes
+    cornerRadiusTopLeft,
+    cornerRadiusTopRight,
+    cornerRadiusBottomLeft,
+    cornerRadiusBottomRight,
+    strokeAlign,
+    effects,
+    isMirrored,
+    mirrorAxis,
+    aspectRatio,
+    blendMode,
+    isVisible,
+    isHidden
   } = node;
   
+  // Skip hidden elements
+  if (isHidden || isVisible === false) {
+    return null;
+  }
+  
   // Get dimensions
   const width = absoluteBoundingBox?.width || 100;
   const height = absoluteBoundingBox?.height || 100;
   
-  // Get fill color
-  let fillColor = 'transparent';
-  if (fills?.[0]?.type === 'SOLID' && fills[0].color) {
-    fillColor = rgbaToCss(fills[0].color.r, fills[0].color.g, fills[0].color.b, fills[0].color.a);
-  }
+  // Get enhanced fill styles with comprehensive gradient support
+  const fillStyles = getFillStyles(fills, node.id, {});
   
-  // Get stroke properties
+  // Get stroke properties with enhanced support
   const stroke = strokes?.[0];
   const strokeColor = stroke?.type === 'SOLID' && stroke.color ? 
     rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a) : 
@@ -505,184 +1171,85 @@ const renderSimpleRectangle = (node: any, baseStyles: React.CSSProperties) => {
   
   const strokeWidth = strokeWeight || stroke?.strokeWeight || 0;
   
-  // Calculate border radius
-  let borderRadius = '0px';
-  if (cornerRadius && cornerRadius > 0) {
-    borderRadius = `${cornerRadius}px`;
+  // Calculate border radius with comprehensive support
+  const borderRadius = getIndividualCornerRadius(node);
+  
+  // Get enhanced stroke styles
+  const strokeStyles = getEnhancedStrokeStyles(node);
+  
+  // Handle stroke alignment with comprehensive support
+  let borderStyle = 'none';
+  let outlineStyle = {};
+  
+  if (strokeWidth > 0) {
+    if (strokeAlign === 'INSIDE') {
+      borderStyle = `${strokeWidth}px solid ${strokeColor}`;
+    } else if (strokeAlign === 'OUTSIDE') {
+      // For outside stroke, we'll use outline
+      outlineStyle = {
+        outline: `${strokeWidth}px solid ${strokeColor}`,
+        outlineOffset: '0px',
+      };
+      
+      // Handle dash patterns for outline
+      if (stroke?.dashPattern && stroke.dashPattern.length > 0) {
+        outlineStyle = {
+          ...outlineStyle,
+          outlineStyle: 'dashed',
+          outlineDasharray: stroke.dashPattern.join(', '),
+        };
+      }
+    } else {
+      // CENTER (default)
+      borderStyle = `${strokeWidth}px solid ${strokeColor}`;
+    }
+    
+    // Handle dash patterns for border
+    if (stroke?.dashPattern && stroke.dashPattern.length > 0 && strokeAlign !== 'OUTSIDE') {
+      borderStyle = `${strokeWidth}px dashed ${strokeColor}`;
+    }
   }
   
-  // Handle mirroring transforms
+  // Handle mirroring
   let transform = baseStyles.transform || '';
-  if (mirroring) {
-    switch (mirroring) {
+  if (isMirrored && mirrorAxis) {
+    switch (mirrorAxis) {
       case 'HORIZONTAL':
-        transform += ' scaleX(-1)';
+        transform += ' scaleX(-1) ';
         break;
       case 'VERTICAL':
-        transform += ' scaleY(-1)';
+        transform += ' scaleY(-1) ';
         break;
       case 'BOTH':
-        transform += ' scale(-1, -1)';
+        transform += ' scale(-1, -1) ';
         break;
     }
   }
   
-  // If it's a vector with path data, render as SVG
-  if (vectorType === 'VECTOR' && vectorPath) {
-    return (
-      <svg
-        width={width}
-        height={height}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          transform: transform,
-          transformOrigin: 'center center',
-        }}
-      >
-        <path
-          d={vectorPath}
-          fill={fillColor}
-          stroke={strokeColor}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
+  // Handle aspect ratio
+  let aspectRatioStyle = {};
+  if (aspectRatio && aspectRatio > 0) {
+    aspectRatioStyle = { aspectRatio: aspectRatio.toString() };
   }
-
+  
   return (
-    <div 
+    <div
       style={{
         ...baseStyles,
         width: `${width}px`,
         height: `${height}px`,
-        backgroundColor: fillColor,
-        border: strokeWidth > 0 ? `${strokeWidth}px solid ${strokeColor}` : 'none',
+        border: borderStyle,
         borderRadius: borderRadius,
         boxSizing: 'border-box',
+        mixBlendMode: blendMode?.toLowerCase().replace('_', '-') || 'normal',
         transform: transform,
-        transformOrigin: 'center center',
+        ...aspectRatioStyle,
+        ...fillStyles,
+        ...strokeStyles,
+        ...outlineStyle,
       }}
-      title={`${name} - ${vectorType || 'Rectangle'} (${width}×${height})${fillStyle ? ` - ${fillStyle}` : ''}`}
+      title={`${name} - Rectangle (${width}×${height})`}
     />
-  );
-};
-
-// Render simple ellipses for SimpleFigmaRenderer
-const renderSimpleEllipse = (node: any, baseStyles: React.CSSProperties) => {
-  const { name, absoluteBoundingBox, fills, strokes, strokeWeight, cornerRadius } = node;
-  
-  // Get dimensions
-  const width = absoluteBoundingBox?.width || 100;
-  const height = absoluteBoundingBox?.height || 100;
-  
-  // Determine if it should be circular
-  const isCircular = Math.abs(width - height) < 5 || cornerRadius === Math.min(width, height) / 2;
-  
-  // Get fill color
-  let fillColor = 'transparent';
-  if (fills?.[0]?.type === 'SOLID' && fills[0].color) {
-    fillColor = rgbaToCss(fills[0].color.r, fills[0].color.g, fills[0].color.b, fills[0].color.a);
-  }
-  
-  // Get stroke properties
-  const stroke = strokes?.[0];
-  const strokeColor = stroke?.type === 'SOLID' && stroke.color ? 
-    rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a) : 
-    'transparent';
-  
-  const strokeWidth = strokeWeight || stroke?.strokeWeight || 0;
-  
-  // Calculate border radius
-  let borderRadius = '0px';
-  if (isCircular) {
-    borderRadius = '50%';
-  } else if (cornerRadius) {
-    borderRadius = `${cornerRadius}px`;
-  }
-
-  return (
-    <div 
-      style={{
-        ...baseStyles,
-        width: `${width}px`,
-        height: `${height}px`,
-        backgroundColor: fillColor,
-        border: strokeWidth > 0 ? `${strokeWidth}px solid ${strokeColor}` : 'none',
-        borderRadius: borderRadius,
-        boxSizing: 'border-box',
-      }}
-      title={`${name} - Ellipse (${width}×${height})`}
-    />
-  );
-};
-
-// Render simple vector strokes for SimpleFigmaRenderer
-const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) => {
-  const { name, absoluteBoundingBox, strokes, strokeWeight, transform, rotation } = node;
-  
-  // Get stroke properties
-  const stroke = strokes?.[0];
-  const strokeColor = stroke?.type === 'SOLID' && stroke.color ? 
-    rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a) : 
-    '#FF004F'; // Default red from your example
-  
-  const strokeWidth = strokeWeight || stroke?.strokeWeight || 2;
-  
-  // Get dimensions
-  const width = absoluteBoundingBox?.width || 100;
-  const height = absoluteBoundingBox?.height || 100;
-  
-  // Handle transforms
-  let transformStyle = '';
-  if (transform && Array.isArray(transform)) {
-    transformStyle = `matrix(${transform.join(', ')})`;
-  } else if (rotation) {
-    transformStyle = `rotate(${rotation}deg)`;
-  }
-  
-  // Create SVG path for vector stroke
-  const createVectorPath = () => {
-    // For vertical lines (like your example)
-    if (width < 10 && height > width * 2) {
-      return `M ${width/2} 0 L ${width/2} ${height}`;
-    }
-    // For horizontal lines
-    if (height < 10 && width > height * 2) {
-      return `M 0 ${height/2} L ${width} ${height/2}`;
-    }
-    // For diagonal lines
-    if (Math.abs(width - height) < 50) {
-      return `M 0 0 L ${width} ${height}`;
-    }
-    // For complex paths, create a rectangle outline
-    return `M 0 0 L ${width} 0 L ${width} ${height} L 0 ${height} Z`;
-  };
-  
-  return (
-    <svg
-      width={width}
-      height={height}
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        transform: transformStyle,
-        transformOrigin: '0 0',
-      }}
-    >
-      <path
-        d={createVectorPath()}
-        stroke={strokeColor}
-        strokeWidth={strokeWidth}
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 };
 
@@ -697,21 +1264,26 @@ const FigmaShape: React.FC<{
     console.warn('FigmaShape: Invalid node provided', node);
     return <div>Invalid shape node</div>;
   }
+  
+  // Handle different shape types with specialized rendering
+  if (node.type === 'ELLIPSE') {
+    return renderSimpleEllipse(node, baseStyles);
+  } else if (node.type === 'RECTANGLE') {
+    return renderSimpleRectangle(node, baseStyles, showDebug, devMode);
+  }
+  
+  // Default shape rendering for other types
   const { fills, strokes, cornerRadius, effects } = node;
   
   const shapeStyles: React.CSSProperties = {
-    // Background color from fills
-    backgroundColor: fills?.[0]?.type === 'SOLID' && fills[0].color ? 
-                    rgbaToCss(fills[0].color.r, fills[0].color.g, fills[0].color.b, fills[0].color.a) : 
-                    'transparent',
+    // Enhanced fill support with comprehensive gradient handling
+    ...getFillStyles(fills || [], node.id, {}),
     
-    // Border from strokes
-    border: strokes?.[0]?.type === 'SOLID' && strokes[0].color ? 
-            `${strokes[0].strokeWeight || 1}px solid ${rgbaToCss(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b, strokes[0].color.a)}` : 
-            'none',
+    // Enhanced border support with comprehensive stroke handling
+    ...getEnhancedStrokeStyles(node),
     
-    // Enhanced border radius with circular detection
-    borderRadius: cornerRadius ? getCornerRadius(cornerRadius, baseStyles.width as number, baseStyles.height as number) : '0',
+    // Enhanced border radius with comprehensive support
+    borderRadius: getIndividualCornerRadius(node),
     
     // Effects (shadows, etc.)
     ...(effects?.reduce((acc: any, effect: any) => {
@@ -804,7 +1376,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
 
   const { type, name, absoluteBoundingBox, children, fills, strokes, cornerRadius, characters, style, opacity, effects } = node;
 
-  // Calculate positioning styles
+  // Calculate positioning styles with comprehensive support
   const positionStyles: React.CSSProperties = {};
   
   if (absoluteBoundingBox) {
@@ -825,6 +1397,128 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     }
   }
   
+  // Handle min/max dimensions
+  if (node.minWidth !== undefined) {
+    positionStyles.minWidth = `${node.minWidth}px`;
+  }
+  if (node.maxWidth !== undefined) {
+    positionStyles.maxWidth = `${node.maxWidth}px`;
+  }
+  if (node.minHeight !== undefined) {
+    positionStyles.minHeight = `${node.minHeight}px`;
+  }
+  if (node.maxHeight !== undefined) {
+    positionStyles.maxHeight = `${node.maxHeight}px`;
+  }
+  
+  // Enhanced rotation support for all component types
+  let transformParts: string[] = [];
+  
+  // Handle vector-specific rotation with priority
+  if (node.vectorRotation !== undefined && node.vectorRotation !== 0) {
+    if (node.vectorRotationCenter) {
+      // Rotate around specific center point
+      transformParts.push(`rotate(${node.vectorRotation}deg ${node.vectorRotationCenter.x} ${node.vectorRotationCenter.y})`);
+    } else if (node.vectorRotationAxis === 'CENTER') {
+      // Rotate around center of the element
+      const centerX = absoluteBoundingBox ? absoluteBoundingBox.width / 2 : 0;
+      const centerY = absoluteBoundingBox ? absoluteBoundingBox.height / 2 : 0;
+      transformParts.push(`rotate(${node.vectorRotation}deg ${centerX} ${centerY})`);
+    } else {
+      // Default rotation around origin
+      transformParts.push(`rotate(${node.vectorRotation}deg)`);
+    }
+  } else if (node.rotation !== undefined && node.rotation !== 0) {
+    // Handle general rotation - check if it's in radians and convert to degrees
+    let rotationDegrees = node.rotation;
+    
+    // Debug logging for rotation values
+    console.log(`SimpleFigmaRenderer Rotation Debug for ${node.name}:`, {
+      originalRotation: node.rotation,
+      isRadians: Math.abs(node.rotation) <= Math.PI,
+      type: node.type,
+      id: node.id,
+      absoluteBoundingBox: node.absoluteBoundingBox
+    });
+    
+    // If rotation is in radians (typically between -π and π), convert to degrees
+    if (Math.abs(rotationDegrees) <= Math.PI) {
+      rotationDegrees = (rotationDegrees * 180) / Math.PI;
+      console.log(`SimpleFigmaRenderer: Converted from radians: ${node.rotation} → ${rotationDegrees} degrees`);
+    }
+    
+    // Advanced Figma to CSS rotation mapping
+    // Figma uses a different coordinate system - we need to map it correctly
+    let finalRotation = rotationDegrees;
+    
+    // Map Figma rotations to CSS rotations
+    if (Math.abs(rotationDegrees - 90) < 0.1) {
+      // Figma 90° should be CSS 180° (vertical)
+      finalRotation = 180;
+    } else if (Math.abs(rotationDegrees - (-90)) < 0.1) {
+      // Figma -90° should be CSS 180° (vertical)
+      finalRotation = 180;
+    } else if (Math.abs(rotationDegrees - 0) < 0.1) {
+      // Figma 0° should be CSS 0° (horizontal)
+      finalRotation = 0;
+    } else if (Math.abs(rotationDegrees - 180) < 0.1) {
+      // Figma 180° should be CSS 180° (horizontal)
+      finalRotation = 180;
+    } else {
+      // For other angles, use the same value (no inversion)
+      finalRotation = rotationDegrees;
+    }
+    
+    // Round to 2 decimal places to avoid floating point issues
+    finalRotation = Math.round(finalRotation * 100) / 100;
+    
+    console.log(`SimpleFigmaRenderer: Final rotation (after advanced mapping): ${finalRotation} degrees`);
+    
+    transformParts.push(`rotate(${finalRotation}deg)`);
+  }
+  
+  // Handle scale transforms
+  if (node.scale && (node.scale.x !== 1 || node.scale.y !== 1)) {
+    transformParts.push(`scale(${node.scale.x}, ${node.scale.y})`);
+  }
+  
+  // Handle skew transforms
+  if (node.skew !== undefined && node.skew !== 0) {
+    transformParts.push(`skew(${node.skew}deg)`);
+  }
+  
+  // Handle relative transform (matrix)
+  if (node.relativeTransform && Array.isArray(node.relativeTransform)) {
+    const matrix = node.relativeTransform.flat();
+    transformParts.push(`matrix(${matrix.join(', ')})`);
+  }
+  
+  // Handle transform array
+  if (node.transform && Array.isArray(node.transform)) {
+    transformParts.push(`matrix(${node.transform.join(', ')})`);
+  }
+  
+  // Handle mirroring transforms
+  if (node.isMirrored && node.mirrorAxis) {
+    switch (node.mirrorAxis) {
+      case 'HORIZONTAL':
+        transformParts.push('scaleX(-1)');
+        break;
+      case 'VERTICAL':
+        transformParts.push('scaleY(-1)');
+        break;
+      case 'BOTH':
+        transformParts.push('scale(-1, -1)');
+        break;
+    }
+  }
+  
+  // Combine all transforms
+  if (transformParts.length > 0) {
+    positionStyles.transform = transformParts.join(' ');
+    positionStyles.transformOrigin = 'center center';
+  }
+  
   // Handle opacity
   if (opacity !== undefined && opacity !== 1) {
     positionStyles.opacity = opacity;
@@ -835,19 +1529,16 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     positionStyles.zIndex = node.zIndex;
   }
   
-  // Add debug styling
+  // Add debug styling with selection colors support
   if (showDebug) {
-    positionStyles.border = '1px solid #3b82f6';
-    positionStyles.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+    if (node.selectionColors) {
+      positionStyles.border = `1px solid ${node.selectionColors.stroke || '#3b82f6'}`;
+      positionStyles.backgroundColor = node.selectionColors.background || 'rgba(59, 130, 246, 0.1)';
+    } else {
+      positionStyles.border = '1px solid #3b82f6';
+      positionStyles.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+    }
   }
-  
-  // Add enhanced styles support
-  const appearanceStyles = getSimpleAppearanceStyles(node);
-  const strokeStyles = getSimpleStrokeStyles(node);
-  const effectStyles = getSimpleEffectStyles(node);
-  
-  // Combine all styles
-  Object.assign(positionStyles, appearanceStyles, strokeStyles, effectStyles);
   
   // Add basic mask support
   if (parentMask) {
@@ -905,148 +1596,167 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
           data-figma-node-type={type}
           data-figma-node-name={name}
         >
-          {showDebug && devMode && (
-            <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
-              <div className="font-bold">{name}</div>
-              <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
-              {node.isMask && <div className="text-yellow-300">🔒 Mask</div>}
-            </div>
-          )}
+                      {showDebug && devMode && (
+              <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+                <div className="font-bold">{name}</div>
+                <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
+                {node.isMask && <div className="text-yellow-300">🔒 Mask</div>}
+                {isMaskGroupNode(node) && <div className="text-purple-300">🎭 Mask Group ({getMaskGroupMode(node)})</div>}
+                {node.isGroup && <div className="text-green-300">👥 Group</div>}
+                {node.layoutMode && <div className="text-purple-300">📐 {node.layoutMode}</div>}
+                {node.primaryAxisAlignItems && <div className="text-indigo-300">↔️ {node.primaryAxisAlignItems}</div>}
+                {node.counterAxisAlignItems && <div className="text-indigo-300">↕️ {node.counterAxisAlignItems}</div>}
+                {node.itemSpacing && <div className="text-cyan-300">📏 {node.itemSpacing}px</div>}
+              </div>
+            )}
           
-          {children?.map((child: any, index: number) => (
-            <SimpleFigmaRenderer
-              key={child.id || index}
-              node={child}
-              showDebug={showDebug}
-              parentBoundingBox={node.absoluteBoundingBox}
-              imageMap={imageMap}
-              parentMask={node.isMask}
-              parentMaskType={node.maskType || 'ALPHA'}
-              fileKey={fileKey}
-              figmaToken={figmaToken}
-              devMode={devMode}
-            />
-          ))}
+          {/* Handle mask group children with enhanced image + rectangle support */}
+          {isMaskGroupNode(node) ? (
+            <svg
+              width={absoluteBoundingBox?.width || 100}
+              height={absoluteBoundingBox?.height || 100}
+              style={{ position: 'absolute', top: 0, left: 0 }}
+            >
+              <defs>
+                <mask id={`mask-group-${node.id}`}>
+                  <rect width="100%" height="100%" fill="white" />
+                  {children?.map((child: any, index: number) => {
+                    const childMaskMode = getMaskGroupMode(child);
+                    
+                    // Handle different child types for mask groups
+                    if (child.type === 'RECTANGLE') {
+                      // Render rectangle as mask element
+                      const fill = child.fills?.[0];
+                      const fillColor = fill?.type === 'SOLID' && fill.color ? 
+                        rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a) : 
+                        'black';
+                      
+                      const borderRadius = getIndividualCornerRadius(child);
+                      const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
+                        child.absoluteBoundingBox || {};
+                      
+                      return (
+                        <g key={child.id || index} mask={childMaskMode}>
+                          <rect
+                            x={x}
+                            y={y}
+                            width={childWidth}
+                            height={childHeight}
+                            fill={fillColor}
+                            rx={borderRadius !== '0px' ? parseFloat(borderRadius) : 0}
+                            ry={borderRadius !== '0px' ? parseFloat(borderRadius) : 0}
+                          />
+                        </g>
+                      );
+                    } else if (child.type === 'IMAGE' || child.fills?.some((fill: any) => fill.type === 'IMAGE')) {
+                      // Render image as mask element
+                      const imageFill = child.fills?.find((fill: any) => fill.type === 'IMAGE');
+                      const imageUrl = imageFill?.imageUrl || imageMap[child.id];
+                      
+                      if (imageUrl) {
+                        const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
+                          child.absoluteBoundingBox || {};
+                        
+                        return (
+                          <g key={child.id || index} mask={childMaskMode}>
+                            <image
+                              href={imageUrl}
+                              x={x}
+                              y={y}
+                              width={childWidth}
+                              height={childHeight}
+                              preserveAspectRatio="xMidYMid slice"
+                            />
+                          </g>
+                        );
+                      }
+                    } else if (child.type === 'VECTOR' || child.isVector) {
+                      // Render vector as mask element
+                      const fill = child.vectorFill || child.fills?.[0];
+                      const fillColor = fill?.type === 'SOLID' && fill.color ? 
+                        rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a) : 
+                        'black';
+                      
+                      const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
+                        child.absoluteBoundingBox || {};
+                      
+                      // Create vector path
+                      let vectorPath = '';
+                      if (child.vectorPaths && child.vectorPaths.length > 0) {
+                        vectorPath = child.vectorPaths[0].path;
+                      } else if (child.vectorType === 'RECTANGLE') {
+                        const radius = child.vectorCornerRadius || 0;
+                        vectorPath = `M 0 ${radius} Q 0 0 ${radius} 0 L ${childWidth - radius} 0 Q ${childWidth} 0 ${childWidth} ${radius} L ${childWidth} ${childHeight - radius} Q ${childWidth} ${childHeight} ${childWidth - radius} ${childHeight} L ${radius} ${childHeight} Q 0 ${childHeight} 0 ${childHeight - radius} Z`;
+                      } else if (child.vectorType === 'ELLIPSE') {
+                        const centerX = childWidth / 2;
+                        const centerY = childHeight / 2;
+                        const radiusX = childWidth / 2;
+                        const radiusY = childHeight / 2;
+                        vectorPath = `M ${centerX - radiusX} ${centerY} A ${radiusX} ${radiusY} 0 1 1 ${centerX + radiusX} ${centerY} A ${radiusX} ${radiusY} 0 1 1 ${centerX - radiusX} ${centerY} Z`;
+                      }
+                      
+                      return (
+                        <g key={child.id || index} mask={childMaskMode}>
+                          <path
+                            d={vectorPath}
+                            fill={fillColor}
+                            transform={`translate(${x}, ${y})`}
+                          />
+                        </g>
+                      );
+                    } else {
+                      // Fallback to regular SimpleFigmaRenderer for other types
+                      return (
+                        <g key={child.id || index} mask={childMaskMode}>
+                          <SimpleFigmaRenderer
+                            node={child}
+                            showDebug={false}
+                            parentBoundingBox={node.absoluteBoundingBox}
+                            imageMap={imageMap}
+                            parentMask={true}
+                            parentMaskType={node.maskType || 'ALPHA'}
+                            fileKey={fileKey}
+                            figmaToken={figmaToken}
+                            devMode={false}
+                          />
+                        </g>
+                      );
+                    }
+                  })}
+                </mask>
+              </defs>
+              <rect 
+                width="100%" 
+                height="100%" 
+                fill="currentColor"
+                mask={`url(#mask-group-${node.id})`}
+              />
+            </svg>
+          ) : (
+            /* Regular children rendering */
+            children?.map((child: any, index: number) => (
+              <SimpleFigmaRenderer
+                key={child.id || index}
+                node={child}
+                showDebug={showDebug}
+                parentBoundingBox={node.absoluteBoundingBox}
+                imageMap={imageMap}
+                parentMask={node.isMask}
+                parentMaskType={node.maskType || 'ALPHA'}
+                fileKey={fileKey}
+                figmaToken={figmaToken}
+                devMode={devMode}
+              />
+            ))
+          )}
         </div>
       );
 
     case 'TEXT':
       return <FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />;
 
-    case 'ELLIPSE':
-      // Handle ellipses with proper circular styling
-      return (
-        <div
-          style={positionStyles}
-          title={`${name} (${type})`}
-          data-figma-node-id={node.id}
-          data-figma-node-type={type}
-          data-figma-node-name={name}
-        >
-          {showDebug && devMode && (
-            <div className="absolute -top-8 left-0 bg-green-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
-              <div className="font-bold">{name}</div>
-              <div>{type} - Ellipse</div>
-              <div className="text-green-300">⭕ {node.cornerRadius ? `${node.cornerRadius}px radius` : 'circular'}</div>
-            </div>
-          )}
-          
-          {renderSimpleEllipse(node, positionStyles)}
-        </div>
-      );
-
     case 'RECTANGLE':
-      // Handle rectangles with comprehensive vector support
-      return (
-        <div
-          style={positionStyles}
-          title={`${name} (${type})`}
-          data-figma-node-id={node.id}
-          data-figma-node-type={type}
-          data-figma-node-name={name}
-        >
-          {showDebug && devMode && (
-            <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
-              <div className="font-bold">{name}</div>
-              <div>{type} - {node.vectorType || 'Rectangle'}</div>
-              <div className="text-blue-300">📐 {node.cornerRadius ? `${node.cornerRadius}px radius` : 'sharp corners'}</div>
-              {node.mirroring && (
-                <div className="text-blue-300">🪞 {node.mirroring}</div>
-              )}
-              {node.vectorFills?.[0]?.style && (
-                <div className="text-blue-300">🎨 {node.vectorFills[0].style}</div>
-              )}
-              {node.vectorStrokes?.[0]?.style && (
-                <div className="text-blue-300">✏️ {node.vectorStrokes[0].style}</div>
-              )}
-            </div>
-          )}
-          
-          {renderSimpleRectangle(node, positionStyles)}
-        </div>
-      );
-
-    case 'ARROW':
-      // Comprehensive arrow rendering
-      return (
-        <div
-          style={positionStyles}
-          title={`${name} (${type})`}
-          data-figma-node-id={node.id}
-          data-figma-node-type={type}
-          data-figma-node-name={name}
-        >
-          {showDebug && devMode && (
-            <div className="absolute -top-8 left-0 bg-purple-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
-              <div className="font-bold">{name}</div>
-              <div>{type} - Arrow</div>
-              <div className="text-purple-300">
-                {node.arrowStart && node.arrowEnd ? '↔️ Both' : 
-                 node.arrowStart ? '← Start' : 
-                 node.arrowEnd ? '→ End' : '— Line'}
-              </div>
-              <div className="text-purple-300">📏 {node.strokeWeight || 2}px</div>
-            </div>
-          )}
-          
-          {renderSimpleArrow(node, positionStyles)}
-        </div>
-      );
-
-    case 'VECTOR':
-      // Handle vector paths with comprehensive support
-      return (
-        <div
-          style={positionStyles}
-          title={`${name} (${type})`}
-          data-figma-node-id={node.id}
-          data-figma-node-type={type}
-          data-figma-node-name={name}
-        >
-          {showDebug && devMode && (
-            <div className="absolute -top-8 left-0 bg-indigo-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
-              <div className="font-bold">{name}</div>
-              <div>{type} - Vector Path</div>
-              <div className="text-indigo-300">📐 {node.cornerRadius ? `${node.cornerRadius}px radius` : 'sharp corners'}</div>
-              {node.mirroring && (
-                <div className="text-indigo-300">🪞 {node.mirroring}</div>
-              )}
-              {node.vectorFills?.[0]?.style && (
-                <div className="text-indigo-300">🎨 {node.vectorFills[0].style}</div>
-              )}
-              {node.vectorStrokes?.[0]?.style && (
-                <div className="text-indigo-300">✏️ {node.vectorStrokes[0].style}</div>
-              )}
-              {node.vectorPath && (
-                <div className="text-indigo-300">🔄 Path Data</div>
-              )}
-            </div>
-          )}
-          
-          {renderSimpleRectangle(node, positionStyles)}
-        </div>
-      );
-
+    case 'ELLIPSE':
     case 'VECTOR':
       // Handle image fills
       if (imageUrl) {
@@ -1102,9 +1812,9 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat',
                 borderRadius: positionStyles.borderRadius,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
                 color: '#0369a1',
                 fontSize: '12px',
                 fontFamily: 'Inter, sans-serif',
@@ -1119,7 +1829,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                     fontSize: '9px', 
                     opacity: '0.6',
                     maxWidth: '100%',
-                    overflow: 'hidden',
+    overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap'
                   }}>
@@ -1138,7 +1848,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     case 'LINE':
     case 'VECTOR':
       // Handle lines and vectors with proper stroke rendering
-      return (
+    return (
         <div
           style={positionStyles}
           title={`${name} (${type})`}
@@ -1151,20 +1861,20 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               <div className="font-bold">{name}</div>
               <div>{type} - Vector Stroke</div>
               <div className="text-pink-300">📐 {node.strokes?.[0]?.color ? `#${rgbToHex(node.strokes[0].color.r, node.strokes[0].color.g, node.strokes[0].color.b)}` : 'default'}</div>
-            </div>
+        </div>
           )}
           
           {renderSimpleVectorStroke(node, positionStyles)}
-        </div>
-      );
+      </div>
+    );
 
     case 'INSTANCE':
     case 'COMPONENT':
-      return (
-        <div
+  return (
+    <div 
           style={positionStyles}
           title={`${name} (${type})`}
-          data-figma-node-id={node.id}
+      data-figma-node-id={node.id}
           data-figma-node-type={type}
           data-figma-node-name={name}
         >
@@ -1177,9 +1887,9 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
           )}
           
           {children?.map((child: any, index: number) => (
-            <SimpleFigmaRenderer
+            <SimpleFigmaRenderer 
               key={child.id || index}
-              node={child}
+              node={child} 
               showDebug={showDebug}
               parentBoundingBox={node.absoluteBoundingBox}
               imageMap={imageMap}
@@ -1207,8 +1917,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 <div className="font-bold">{name}</div>
                 <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
                 <div className="text-gray-300">❓ Unknown type</div>
-              </div>
-            )}
+        </div>
+      )}
             
             {children?.map((child: any, index: number) => (
               <SimpleFigmaRenderer
@@ -1222,8 +1932,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 devMode={devMode}
               />
             ))}
-          </div>
-        );
+    </div>
+  );
       }
       
       // Handle nodes without bounding box but with children
