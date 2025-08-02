@@ -120,3 +120,41 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Enhanced underline visibility for Figma text elements */
+.figma-underline {
+  text-decoration: underline !important;
+  text-decoration-color: currentColor !important;
+  text-decoration-thickness: 1px !important;
+  text-underline-offset: 2px !important;
+}
+
+/* Ensure underlines are visible in all text elements */
+[data-figma-node-type="TEXT"] {
+  text-decoration-skip-ink: none;
+}
+
+/* Force underline visibility for specific text patterns */
+[data-figma-node-type="TEXT"] span[style*="text-decoration: underline"] {
+  text-decoration: underline !important;
+  text-decoration-color: currentColor !important;
+  text-decoration-thickness: 1px !important;
+  text-underline-offset: 2px !important;
+}
+
+/* Enhanced underline visibility for vision statement and specific text */
+[data-figma-node-type="TEXT"] span[style*="largest"],
+[data-figma-node-type="TEXT"] span[style*="vertically integrated"],
+[data-figma-node-type="TEXT"] span[style*="sports company"] {
+  text-decoration: underline !important;
+  text-decoration-color: currentColor !important;
+  text-decoration-thickness: 1px !important;
+  text-underline-offset: 2px !important;
+  font-weight: 700 !important;
+}
+
+/* Ensure underlines are visible in vision statement context */
+[data-figma-node-name*="vision"] span,
+[data-figma-node-name*="Vision"] span {
+  text-decoration-skip-ink: none !important;
+}

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { 
   rgbaToCss, 
-  getFontFamily, 
+  getFontFamilyWithFallback, 
   getCornerRadius, 
   getTextAlign, 
   getVerticalAlign,
@@ -54,7 +54,7 @@ const FigmaImage: React.FC<{
   const imageStyles: React.CSSProperties = {
     width: '100%',
     height: '100%',
-    objectFit: scaleMode,
+    objectFit: scaleMode as any,
     borderRadius: isFooterIcon ? '50%' : baseStyles.borderRadius,
   };
   
@@ -132,7 +132,7 @@ const FigmaText: React.FC<{
   
   const textStyles: React.CSSProperties = {
     // Font family
-    fontFamily: style?.fontFamily ? getFontFamily(style.fontFamily) : 'inherit',
+            fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
     
     // Font size
     fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',

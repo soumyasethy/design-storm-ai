@@ -99,53 +99,83 @@ async function exportCompleteDesign() {
     });
     designData.pages = await extractPages(figma.root.children);
     
-    // Extract all assets (lightweight)
-    figma.ui.postMessage({
-      type: 'export-progress',
-      progress: 30,
-      message: 'Extracting assets...'
-    });
-    designData.assets = await extractAllAssets();
+    // Extract all assets (lightweight) - with error handling
+    try {
+      figma.ui.postMessage({
+        type: 'export-progress',
+        progress: 30,
+        message: 'Extracting assets...'
+      });
+      designData.assets = await extractAllAssets();
+    } catch (error) {
+      console.warn('Failed to extract assets:', error);
+      designData.assets = [];
+    }
     
-    // Extract all images with actual image data (heavy operation)
-    figma.ui.postMessage({
-      type: 'export-progress',
-      progress: 50,
-      message: 'Extracting images...'
-    });
-    designData.images = await extractAllImages();
+    // Extract all images with actual image data (heavy operation) - with error handling
+    try {
+      figma.ui.postMessage({
+        type: 'export-progress',
+        progress: 50,
+        message: 'Extracting images...'
+      });
+      designData.images = await extractAllImages();
+    } catch (error) {
+      console.warn('Failed to extract images:', error);
+      designData.images = [];
+    }
     
-    // Build image map for easy access (heavy operation)
-    figma.ui.postMessage({
-      type: 'export-progress',
-      progress: 70,
-      message: 'Building image map...'
-    });
-    designData.imageMap = await buildImageMap(designData.images);
+    // Build image map for easy access (heavy operation) - with error handling
+    try {
+      figma.ui.postMessage({
+        type: 'export-progress',
+        progress: 70,
+        message: 'Building image map...'
+      });
+      designData.imageMap = await buildImageMap(designData.images);
+    } catch (error) {
+      console.warn('Failed to build image map:', error);
+      designData.imageMap = {};
+    }
     
-    // Extract all fonts (lightweight)
-    figma.ui.postMessage({
-      type: 'export-progress',
-      progress: 80,
-      message: 'Extracting fonts...'
-    });
-    designData.fonts = await extractAllFonts();
+    // Extract all fonts (lightweight) - with error handling
+    try {
+      figma.ui.postMessage({
+        type: 'export-progress',
+        progress: 80,
+        message: 'Extracting fonts...'
+      });
+      designData.fonts = await extractAllFonts();
+    } catch (error) {
+      console.warn('Failed to extract fonts:', error);
+      designData.fonts = [];
+    }
     
-    // Extract all styles (lightweight)
-    figma.ui.postMessage({
-      type: 'export-progress',
-      progress: 85,
-      message: 'Extracting styles...'
-    });
-    designData.styles = await extractAllStyles();
+    // Extract all styles (lightweight) - with error handling
+    try {
+      figma.ui.postMessage({
+        type: 'export-progress',
+        progress: 85,
+        message: 'Extracting styles...'
+      });
+      designData.styles = await extractAllStyles();
+    } catch (error) {
+      console.warn('Failed to extract styles:', error);
+      designData.styles = { paint: [], text: [], effect: [], grid: [] };
+    }
     
-    // Extract all components (lightweight)
-    figma.ui.postMessage({
-      type: 'export-progress',
-      progress: 90,
-      message: 'Extracting components...'
-    });
-    designData.components = await extractAllComponents();
+    // Extract all components (lightweight) - with error handling
+    try {
+      figma.ui.postMessage({
+        type: 'export-progress',
+        progress: 90,
+        message: 'Extracting components...'
+      });
+      designData.components = await extractAllComponents();
+    } catch (error) {
+      console.warn('Failed to extract components:', error);
+      designData.components = [];
+    }
     
     figma.ui.postMessage({
       type: 'export-progress',
@@ -451,6 +481,12 @@ async function extractAllAssets() {
   const assets = [];
   
   try {
+    // Check if the API exists first
+    if (typeof figma.getLocalImageAssets !== 'function') {
+      console.log('getLocalImageAssets API not available, skipping assets extraction');
+      return assets;
+    }
+    
     // Get all image assets
     const imageAssets = figma.getLocalImageAssets();
     
@@ -458,21 +494,23 @@ async function extractAllAssets() {
     if (imageAssets && Array.isArray(imageAssets)) {
       for (const asset of imageAssets) {
         try {
+          if (!asset) continue;
+          
           // Skip heavy byte extraction to prevent freezing
           assets.push({
-            id: asset.id,
-            name: asset.name,
+            id: asset.id || 'unknown',
+            name: asset.name || 'unnamed',
             type: 'IMAGE',
-            width: asset.width,
-            height: asset.height,
+            width: asset.width || 0,
+            height: asset.height || 0,
             hasBytes: false // Don't extract bytes to prevent freezing
           });
         } catch (error) {
-          console.warn('Could not extract asset:', asset.name, error);
+          console.warn('Could not extract asset:', error);
         }
       }
     } else {
-      console.log('No image assets found or assets not iterable');
+      console.log('No image assets found or assets not iterable:', imageAssets);
     }
   } catch (error) {
     console.warn('Error extracting assets:', error);
@@ -634,41 +672,57 @@ async function extractAllStyles() {
   };
   
   try {
-    // Get all style types with proper error handling
-    const paintStyles = figma.getLocalPaintStyles();
-    if (paintStyles && Array.isArray(paintStyles)) {
-      styles.paint = paintStyles.map(style => ({
-        id: style.id,
-        name: style.name,
-        description: style.description
-      }));
+    // Check if style APIs exist and handle them safely
+    if (typeof figma.getLocalPaintStyles === 'function') {
+      const paintStyles = figma.getLocalPaintStyles();
+      if (paintStyles && Array.isArray(paintStyles)) {
+        styles.paint = paintStyles.map(style => ({
+          id: style.id || 'unknown',
+          name: style.name || 'unnamed',
+          description: style.description || ''
+        }));
+      }
+    } else {
+      console.log('getLocalPaintStyles API not available');
     }
     
-    const textStyles = figma.getLocalTextStyles();
-    if (textStyles && Array.isArray(textStyles)) {
-      styles.text = textStyles.map(style => ({
-        id: style.id,
-        name: style.name,
-        description: style.description
-      }));
+    if (typeof figma.getLocalTextStyles === 'function') {
+      const textStyles = figma.getLocalTextStyles();
+      if (textStyles && Array.isArray(textStyles)) {
+        styles.text = textStyles.map(style => ({
+          id: style.id || 'unknown',
+          name: style.name || 'unnamed',
+          description: style.description || ''
+        }));
+      }
+    } else {
+      console.log('getLocalTextStyles API not available');
     }
     
-    const effectStyles = figma.getLocalEffectStyles();
-    if (effectStyles && Array.isArray(effectStyles)) {
-      styles.effect = effectStyles.map(style => ({
-        id: style.id,
-        name: style.name,
-        description: style.description
-      }));
+    if (typeof figma.getLocalEffectStyles === 'function') {
+      const effectStyles = figma.getLocalEffectStyles();
+      if (effectStyles && Array.isArray(effectStyles)) {
+        styles.effect = effectStyles.map(style => ({
+          id: style.id || 'unknown',
+          name: style.name || 'unnamed',
+          description: style.description || ''
+        }));
+      }
+    } else {
+      console.log('getLocalEffectStyles API not available');
     }
     
-    const gridStyles = figma.getLocalGridStyles();
-    if (gridStyles && Array.isArray(gridStyles)) {
-      styles.grid = gridStyles.map(style => ({
-        id: style.id,
-        name: style.name,
-        description: style.description
-      }));
+    if (typeof figma.getLocalGridStyles === 'function') {
+      const gridStyles = figma.getLocalGridStyles();
+      if (gridStyles && Array.isArray(gridStyles)) {
+        styles.grid = gridStyles.map(style => ({
+          id: style.id || 'unknown',
+          name: style.name || 'unnamed',
+          description: style.description || ''
+        }));
+      }
+    } else {
+      console.log('getLocalGridStyles API not available');
     }
   } catch (error) {
     console.warn('Error extracting styles:', error);
@@ -682,43 +736,54 @@ async function extractAllComponents() {
   const components = [];
   
   try {
-    // Get all component sets
-    const componentSets = figma.getLocalComponentSets();
-    if (componentSets && Array.isArray(componentSets)) {
-      for (const componentSet of componentSets) {
-        try {
-          components.push({
-            id: componentSet.id,
-            name: componentSet.name,
-            description: componentSet.description,
-            type: 'COMPONENT_SET',
-            children: componentSet.children ? componentSet.children.map(child => ({
-              id: child.id,
-              name: child.name,
-              description: child.description
-            })) : []
-          });
-        } catch (error) {
-          console.warn('Could not extract component set:', componentSet.name, error);
+    // Check if component APIs exist and handle them safely
+    if (typeof figma.getLocalComponentSets === 'function') {
+      const componentSets = figma.getLocalComponentSets();
+      if (componentSets && Array.isArray(componentSets)) {
+        for (const componentSet of componentSets) {
+          try {
+            if (!componentSet) continue;
+            
+            components.push({
+              id: componentSet.id || 'unknown',
+              name: componentSet.name || 'unnamed',
+              description: componentSet.description || '',
+              type: 'COMPONENT_SET',
+              children: componentSet.children && Array.isArray(componentSet.children) ? componentSet.children.map(child => ({
+                id: child.id || 'unknown',
+                name: child.name || 'unnamed',
+                description: child.description || ''
+              })) : []
+            });
+          } catch (error) {
+            console.warn('Could not extract component set:', error);
+          }
         }
       }
+    } else {
+      console.log('getLocalComponentSets API not available');
     }
     
-    // Get all individual components
-    const individualComponents = figma.getLocalComponents();
-    if (individualComponents && Array.isArray(individualComponents)) {
-      for (const component of individualComponents) {
-        try {
-          components.push({
-            id: component.id,
-            name: component.name,
-            description: component.description,
-            type: 'COMPONENT'
-          });
-        } catch (error) {
-          console.warn('Could not extract component:', component.name, error);
+    if (typeof figma.getLocalComponents === 'function') {
+      const individualComponents = figma.getLocalComponents();
+      if (individualComponents && Array.isArray(individualComponents)) {
+        for (const component of individualComponents) {
+          try {
+            if (!component) continue;
+            
+            components.push({
+              id: component.id || 'unknown',
+              name: component.name || 'unnamed',
+              description: component.description || '',
+              type: 'COMPONENT'
+            });
+          } catch (error) {
+            console.warn('Could not extract component:', error);
+          }
         }
       }
+    } else {
+      console.log('getLocalComponents API not available');
     }
   } catch (error) {
     console.warn('Error extracting components:', error);

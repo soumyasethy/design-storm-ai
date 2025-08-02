@@ -333,38 +333,116 @@ export function getSpecialColor(nodeName: string, defaultColor: string): string 
     return '#1E1E1E'; // Dark for names
   }
   
-  // Geometric elements
-  if (name.includes('geometric') || name.includes('line') || name.includes('accent-line')) {
+  // Geometric elements and accent lines
+  if (name.includes('geometric') || name.includes('line') || name.includes('accent-line') || name.includes('vector')) {
     return '#FF004F'; // Pink for geometric lines
+  }
+  
+  // Vertical accent lines
+  if (name.includes('vertical') || name.includes('accent') || name.includes('decorative')) {
+    return '#FF004F'; // Pink for accent elements
+  }
+  
+  // Section transitions and angled elements
+  if (name.includes('transition') || name.includes('angled') || name.includes('diagonal')) {
+    return '#FF004F'; // Pink for section transitions
   }
   
   return defaultColor;
 }
 
-// Enhanced typography utilities with Inter prioritization
-export function getFontFamily(family: string): string {
-  if (!family) return 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+// Dynamic font loading utility for Google Fonts
+export const loadGoogleFont = (fontFamily: string): void => {
+  // Skip if already loaded or not a Google Font
+  if (typeof window === 'undefined' || !fontFamily) return;
   
+  const googleFonts = [
+    'Inter', 'Roboto', 'Open Sans', 'Lato', 'Poppins', 'Montserrat', 
+    'Source Sans Pro', 'Raleway', 'Ubuntu', 'Nunito', 'Work Sans', 
+    'DM Sans', 'Noto Sans', 'Fira Sans', 'PT Sans', 'Oswald', 
+    'Bebas Neue', 'Playfair Display', 'Merriweather', 'Lora'
+  ];
+  
+  const fontName = fontFamily.split(',')[0].trim().replace(/['"]/g, '');
+  
+  if (!googleFonts.includes(fontName)) return;
+  
+  // Check if font is already loaded
+  const existingLink = document.querySelector(`link[href*="${fontName}"]`);
+  if (existingLink) return;
+  
+  // Create and append Google Fonts link
+  const link = document.createElement('link');
+  link.href = `https://fonts.googleapis.com/css2?family=${fontName.replace(' ', '+')}:wght@300;400;500;600;700;800;900&display=swap`;
+  link.rel = 'stylesheet';
+  link.type = 'text/css';
+  document.head.appendChild(link);
+};
+
+// Enhanced font family mapping with dynamic loading
+export const getFontFamilyWithFallback = (family: string): string => {
+  if (!family) return 'inherit';
+  
+  // Load Google Font if needed
+  loadGoogleFont(family);
+  
+  // Enhanced font mapping with better fallbacks
   const fontMap: Record<string, string> = {
-    'Inter': 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    'Roboto': 'Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Open Sans': '"Open Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Lato': 'Lato, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Poppins': 'Poppins, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Montserrat': 'Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Source Sans Pro': '"Source Sans Pro", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Raleway': 'Raleway, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Ubuntu': 'Ubuntu, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Nunito': 'Nunito, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Arial': 'Arial, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Helvetica': 'Helvetica, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Times New Roman': '"Times New Roman", Times, serif',
+    // Sans-serif fonts
+    'Inter': 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'Roboto': 'Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Open Sans': '"Open Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Lato': 'Lato, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Poppins': 'Poppins, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Montserrat': 'Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Source Sans Pro': '"Source Sans Pro", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Raleway': 'Raleway, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Ubuntu': 'Ubuntu, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Nunito': 'Nunito, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Work Sans': 'Work Sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'DM Sans': 'DM Sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Noto Sans': 'Noto Sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Fira Sans': 'Fira Sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'PT Sans': 'PT Sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Oswald': 'Oswald, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'Bebas Neue': 'Bebas Neue, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    
+    // Serif fonts
+    'Playfair Display': 'Playfair Display, Georgia, serif',
+    'Merriweather': 'Merriweather, Georgia, serif',
+    'Lora': 'Lora, Georgia, serif',
+    
+    // System fonts
+    'Arial': 'Arial, Helvetica, sans-serif',
+    'Helvetica': 'Helvetica, Arial, sans-serif',
     'Georgia': 'Georgia, serif',
-    'Verdana': 'Verdana, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'Times New Roman': '"Times New Roman", Times, serif',
+    'Verdana': 'Verdana, Geneva, sans-serif',
   };
   
-  return fontMap[family] || `Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-}
+  // Check if the font family exists in our map
+  if (fontMap[family]) {
+    return fontMap[family];
+  }
+  
+  // For unknown fonts, provide a reasonable fallback
+  const familyLower = family.toLowerCase();
+  
+  if (familyLower.includes('serif') || familyLower.includes('times') || familyLower.includes('georgia')) {
+    return `${family}, Georgia, serif`;
+  }
+  
+  if (familyLower.includes('mono') || familyLower.includes('courier') || familyLower.includes('consolas')) {
+    return `${family}, Consolas, monospace`;
+  }
+  
+  if (familyLower.includes('script') || familyLower.includes('hand') || familyLower.includes('brush')) {
+    return `${family}, cursive, sans-serif`;
+  }
+  
+  // Default fallback for sans-serif fonts
+  return `${family}, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
+};
 
 // Enhanced corner radius utilities with improved circular detection
 export function getCornerRadius(radius: number, width?: number, height?: number): string {
@@ -390,13 +468,15 @@ export function isCircularElement(node: any): boolean {
   const { width, height } = node.absoluteBoundingBox || {};
   const radius = node.cornerRadius || 0;
   
-  // Check by name for specific design elements
+  // Check by name for specific design elements with enhanced precision
   if (name.includes('linkedin') || name.includes('instagram') || name.includes('youtube') ||
       name.includes('social') || name.includes('avatar') || name.includes('icon') ||
       name.includes('circle') || name.includes('round') || name.includes('logo') ||
       name.includes('manufacturing') || name.includes('brands') || name.includes('stores') ||
       name.includes('retail') || name.includes('integrated') || name.includes('agile') ||
-      name.includes('circular') || name.includes('dot') || name.includes('top button')) {
+      name.includes('circular') || name.includes('dot') || name.includes('top button') ||
+      name.includes('shoe') || name.includes('fire') || name.includes('people') ||
+      name.includes('footer') || name.includes('social icon')) {
     return true;
   }
   
@@ -709,16 +789,16 @@ export function getGeometricLineProperties(node: any): {
 export function getLineStyles(node: any): React.CSSProperties {
   if (!node || typeof node !== 'object') {
     return {
-      border: '2px solid #FF004F',
+      border: '2px solid #1D1BFB',
       backgroundColor: 'transparent',
       borderRadius: '0',
     };
   }
   
-  const { strokes, strokeWeight, name } = node;
+  const { strokes, strokeWeight, name, transform, absoluteBoundingBox } = node;
   
   // Determine border color and width
-  let borderColor = '#FF004F'; // Default pink
+  let borderColor = '#1D1BFB'; // Default AG Bright Blue
   let borderWidth = strokeWeight || 2;
   
   if (strokes?.[0]?.type === 'SOLID' && strokes[0].color) {
@@ -729,15 +809,67 @@ export function getLineStyles(node: any): React.CSSProperties {
   const nodeName = name?.toLowerCase() || '';
   if (nodeName.includes('pink') || nodeName.includes('accent')) {
     borderColor = '#FF004F';
-  } else if (nodeName.includes('blue')) {
-    borderColor = '#0066FF';
+  } else if (nodeName.includes('blue') || nodeName.includes('bright blue') || nodeName.includes('ag bright blue')) {
+    borderColor = '#1D1BFB'; // AG Bright Blue
   } else if (nodeName.includes('red')) {
     borderColor = '#ff0055';
   }
   
-  return {
+  // Handle matrix transform
+  let transformStyle = '';
+  if (transform && Array.isArray(transform)) {
+    transformStyle = `matrix(${transform.join(', ')})`;
+  }
+  
+  const styles: React.CSSProperties = {
     border: `${borderWidth}px solid ${borderColor}`,
     backgroundColor: 'transparent',
     borderRadius: '0',
+    position: 'absolute',
+    boxSizing: 'border-box',
   };
+  
+  // Add transform if present
+  if (transformStyle) {
+    styles.transform = transformStyle;
+    styles.transformOrigin = '0 0';
+  }
+  
+  // Add dimensions if available
+  if (absoluteBoundingBox) {
+    styles.width = `${absoluteBoundingBox.width}px`;
+    styles.height = `${absoluteBoundingBox.height}px`;
+  }
+  
+  return styles;
+}
+
+// Check if node is an angled box
+export function isAngledBox(node: any): boolean {
+  if (!node || typeof node !== 'object') return false;
+  
+  const nodeName = node.name?.toLowerCase() || '';
+  
+  // Check for angled keywords in name
+  if (nodeName.includes('angled') || nodeName.includes('skewed') || nodeName.includes('tilted') || 
+      nodeName.includes('diagonal') || nodeName.includes('transformed')) {
+    return true;
+  }
+  
+  // Check for transform properties
+  if (node.transform && Array.isArray(node.transform)) {
+    return true;
+  }
+  
+  // Check for skew properties
+  if (node.skew !== undefined && node.skew !== 0) {
+    return true;
+  }
+  
+  // Check for rotation
+  if (node.rotation !== undefined && node.rotation !== 0) {
+    return true;
+  }
+  
+  return false;
 }

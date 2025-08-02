@@ -2,6 +2,7 @@
 
 ## Core Principles
 - Dont create new file. Always optimise within existing file furthur
+- Dont do auto commit
 - Never hardcode any values - always extract from design
 - Use CSS custom properties for all design tokens
 - Implement container queries over media queries

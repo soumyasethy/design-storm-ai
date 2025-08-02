@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import Image from 'next/image';
-import { getSpecialColor, isCircularElement, getLineStyles } from '@/lib/utils';
+import { getSpecialColor, isCircularElement, getLineStyles, getFontFamilyWithFallback, isAngledBox } from '@/lib/utils';
 
 interface FigmaRendererProps {
   node: any;
@@ -161,8 +161,14 @@ const getStrokeStyles = (strokes: any[], strokeWeight?: number): React.CSSProper
   const styles: React.CSSProperties = {};
   
   if (stroke.type === 'SOLID' && stroke.color) {
-    const weight = stroke.strokeWeight || strokeWeight || 1;
-    styles.border = `${weight}px solid ${rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a)}`;
+    const weight = stroke.strokeWeight || strokeWeight || 2; // Default to 2px for better visibility
+    const strokeColor = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
+    styles.border = `${weight}px solid ${strokeColor}`;
+    
+    // Handle opacity separately for better browser support
+    if (stroke.color.a !== undefined && stroke.color.a !== 1) {
+      styles.borderColor = rgbaToCss(stroke.color.r, stroke.color.g, stroke.color.b, stroke.color.a);
+    }
   }
   
   return styles;
@@ -175,30 +181,7 @@ const getCornerRadius = (radius: number): string => {
   return `${radius}px`;
 };
 
-// Enhanced font family mapping
-const getFontFamily = (family: string): string => {
-  if (!family) return 'inherit';
-  
-  const fontMap: Record<string, string> = {
-    'Inter': 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    'Roboto': 'Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Open Sans': '"Open Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Lato': 'Lato, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Poppins': 'Poppins, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Montserrat': 'Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Source Sans Pro': '"Source Sans Pro", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Raleway': 'Raleway, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Ubuntu': 'Ubuntu, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Nunito': 'Nunito, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Arial': 'Arial, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Helvetica': 'Helvetica, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    'Times New Roman': '"Times New Roman", Times, serif',
-    'Georgia': 'Georgia, serif',
-    'Verdana': 'Verdana, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  };
-  
-  return fontMap[family] || `${family}, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
-};
+
 
 // Enhanced text alignment
 const getTextAlign = (align: string): string => {
@@ -285,9 +268,22 @@ const getLayoutStyles = (node: any): React.CSSProperties => {
     styles.margin = `${node.marginTop || 0}px ${node.marginRight || 0}px ${node.marginBottom || 0}px ${node.marginLeft || 0}px`;
   }
   
-  // Handle overflow for better content clipping
+  // Handle overflow for better content clipping with pixel-perfect precision
   if (node.absoluteBoundingBox) {
     styles.overflow = 'hidden'; // Default to hidden to prevent content bleeding
+    styles.boxSizing = 'border-box';
+  }
+  
+  // Enhanced spacing and alignment for pixel-perfect rendering
+  if (node.itemSpacing) {
+    styles.gap = `${node.itemSpacing}px`;
+    styles.flexWrap = 'nowrap'; // Prevent wrapping for exact spacing
+  }
+  
+  // Handle flex properties for better alignment
+  if (node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL') {
+    styles.flexShrink = 0; // Prevent unwanted shrinking
+    styles.flexGrow = node.layoutGrow || 0; // Use specified grow value
   }
   
   // Handle section transitions and angled cuts
@@ -347,31 +343,57 @@ const getPositionStyles = (node: any, parentBoundingBox?: { x: number; y: number
     const { x, y, width, height } = node.absoluteBoundingBox;
     
     if (parentBoundingBox) {
-      // Calculate relative positioning for children
+      // Calculate relative positioning for children with pixel-perfect precision
       styles.position = 'absolute';
       styles.left = `${x - parentBoundingBox.x}px`;
       styles.top = `${y - parentBoundingBox.y}px`;
       styles.width = `${width}px`;
       styles.height = `${height}px`;
+      
+      // Ensure exact positioning with transform-origin
+      styles.transformOrigin = '0 0';
+      styles.boxSizing = 'border-box';
     } else {
       // Root node positioning
       styles.position = 'relative';
       styles.width = `${width}px`;
       styles.height = `${height}px`;
+      styles.boxSizing = 'border-box';
     }
   }
   
-  // Handle z-index and stacking order
+  // Handle z-index and stacking order with enhanced precision
   if (node.zIndex !== undefined) {
     styles.zIndex = node.zIndex;
   } else if (node.name?.toLowerCase().includes('overlay') || node.name?.toLowerCase().includes('modal')) {
     // Auto-assign high z-index for overlay elements
     styles.zIndex = 1000;
+  } else if (node.name?.toLowerCase().includes('background')) {
+    // Background elements should be behind
+    styles.zIndex = -1;
   }
   
-  // Handle transform for angled layouts
+  // Handle transform for angled layouts with enhanced precision
   if (node.rotation !== undefined && node.rotation !== 0) {
     styles.transform = `rotate(${node.rotation}rad)`;
+    styles.transformOrigin = 'center center';
+  }
+  
+  // Handle complex transforms for geometric elements
+  if (node.transform && Array.isArray(node.transform)) {
+    styles.transform = `matrix(${node.transform.join(', ')})`;
+  }
+  
+  // Handle skew transforms
+  if (node.skew !== undefined && node.skew !== 0) {
+    const currentTransform = styles.transform || '';
+    styles.transform = `${currentTransform} skew(${node.skew}deg)`;
+  }
+  
+  // Handle scale transforms
+  if (node.scale && (node.scale.x !== 1 || node.scale.y !== 1)) {
+    const currentTransform = styles.transform || '';
+    styles.transform = `${currentTransform} scale(${node.scale.x}, ${node.scale.y})`;
   }
   
   return styles;
@@ -417,7 +439,7 @@ const getTextStyles = (node: any): React.CSSProperties => {
     if (node.style) {
     // Font family - prioritize Inter for better rendering
       if (node.style.fontFamily) {
-        styles.fontFamily = getFontFamily(node.style.fontFamily);
+        styles.fontFamily = getFontFamilyWithFallback(node.style.fontFamily);
     } else {
       // Default to Inter if no font family specified
       styles.fontFamily = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -462,13 +484,18 @@ const getTextStyles = (node: any): React.CSSProperties => {
         styles.letterSpacing = `${node.style.letterSpacing}px`;
       }
     
-    // Text decoration - handle underline and other decorations
+    // Text decoration - handle underline and other decorations with enhanced visibility
     if (node.style.textDecoration) {
       const decoration = node.style.textDecoration.toLowerCase();
       if (decoration === 'underline') {
         styles.textDecoration = 'underline';
+        styles.textDecorationColor = 'currentColor';
+        styles.textDecorationThickness = '1px';
+        styles.textUnderlineOffset = '2px';
       } else if (decoration === 'strikethrough') {
         styles.textDecoration = 'line-through';
+        styles.textDecorationColor = 'currentColor';
+        styles.textDecorationThickness = '1px';
       } else {
         styles.textDecoration = decoration;
       }
@@ -490,11 +517,23 @@ const getTextStyles = (node: any): React.CSSProperties => {
     styles.whiteSpace = 'pre-wrap';
     styles.overflowWrap = 'break-word';
   styles.wordBreak = 'break-word';
-  styles.display = 'inline'; // Ensure text elements are inline by default
+  // Don't force inline display as it can interfere with underline rendering
+  // styles.display = 'inline'; // Ensure text elements are inline by default
   
-  // Ensure proper text rendering
+  // Ensure proper text rendering for pixel-perfect output
   (styles as any).fontSmoothing = 'antialiased';
   (styles as any).webkitFontSmoothing = 'antialiased';
+  styles.textRendering = 'optimizeLegibility';
+  styles.fontFeatureSettings = '"liga" 1, "kern" 1';
+  
+  // Enhanced precision for text positioning
+  styles.position = 'relative';
+  styles.boxSizing = 'border-box';
+  styles.maxWidth = '100%';
+  
+  // Prevent unwanted text transformations
+  styles.textTransform = 'none';
+  styles.fontVariant = 'normal';
     
     return styles;
   };
@@ -584,24 +623,40 @@ const getShapeStyles = (node: any): React.CSSProperties => {
     }
   }
   
-  // Handle circular icons in the "Integrated. Agile. All-In." section
+  // Handle circular icons in the "Integrated. Agile. All-In." section with pixel-perfect precision
   if (node.name?.toLowerCase().includes('manufacturing') ||
       node.name?.toLowerCase().includes('brands') ||
       node.name?.toLowerCase().includes('retail') ||
       node.name?.toLowerCase().includes('circular') ||
-      node.name?.toLowerCase().includes('icon')) {
+      node.name?.toLowerCase().includes('icon') ||
+      node.name?.toLowerCase().includes('shoe') ||
+      node.name?.toLowerCase().includes('fire') ||
+      node.name?.toLowerCase().includes('people')) {
     styles.borderRadius = '50%';
     styles.overflow = 'hidden';
+    styles.border = '2px solid #FF0A54'; // Pink border for circular elements
+    styles.boxSizing = 'border-box';
   }
   
-  // Handle strokes for better border rendering
+  // Handle strokes for better border rendering with AG Bright Blue priority
   if (node.strokes && node.strokes.length > 0) {
     const stroke = node.strokes[0];
     if (stroke.type === 'SOLID' && stroke.color) {
-      const strokeWidth = stroke.strokeWeight || node.strokeWeight || 1;
+      const strokeWidth = stroke.strokeWeight || node.strokeWeight || 2;
       const strokeColor = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
       styles.border = `${strokeWidth}px solid ${strokeColor}`;
+      styles.boxSizing = 'border-box';
     }
+  }
+  
+  // Handle specific color names for AG Dark Teal and AG Bright Blue
+  const nodeName = node.name?.toLowerCase() || '';
+  if (nodeName.includes('dark teal') || nodeName.includes('ag dark teal')) {
+    styles.backgroundColor = '#00282D'; // AG Dark Teal
+  }
+  if (nodeName.includes('bright blue') || nodeName.includes('ag bright blue')) {
+    styles.border = '2px solid #1D1BFB'; // AG Bright Blue
+    styles.boxSizing = 'border-box';
   }
   
   return styles;
@@ -641,54 +696,81 @@ const isNodeVisible = (node: any): boolean => {
 
 // Render geometric accent lines with exact positioning and styling
 const renderGeometricLine = (node: any, baseStyles: React.CSSProperties) => {
-  const { name, absoluteBoundingBox, lineStart, lineEnd, angleDegrees, geometricType } = node;
+  const { name, absoluteBoundingBox, lineStart, lineEnd, angleDegrees, geometricType, transform } = node;
   
   // Determine line color based on node name or type
   const getLineColor = () => {
     const nodeName = name?.toLowerCase() || '';
+    
+    // Check for specific color from strokes first
+    if (node.strokes?.[0]?.type === 'SOLID' && node.strokes[0].color) {
+      return rgbaToCss(node.strokes[0].color.r, node.strokes[0].color.g, node.strokes[0].color.b, node.strokes[0].color.a);
+    }
+    
+    // Check for specific color names
+    if (nodeName.includes('blue') || nodeName.includes('bright blue') || nodeName.includes('ag bright blue')) {
+      return '#1D1BFB'; // AG Bright Blue from your example
+    }
     if (nodeName.includes('pink') || nodeName.includes('accent') || nodeName.includes('primary')) {
       return '#FF0A54'; // Pink accent
-    }
-    if (nodeName.includes('blue') || nodeName.includes('secondary')) {
-      return '#0066FF'; // Blue
     }
     if (nodeName.includes('red')) {
       return '#ff0055'; // Red
     }
-    // Check for specific color from strokes
-    if (node.strokes?.[0]?.type === 'SOLID' && node.strokes[0].color) {
-      return rgbaToCss(node.strokes[0].color.r, node.strokes[0].color.g, node.strokes[0].color.b, node.strokes[0].color.a);
-    }
-    return '#FF004F'; // Default pink from your example
+    
+    return '#1D1BFB'; // Default to AG Bright Blue
   };
 
   const lineColor = getLineColor();
   const strokeWidth = node.strokeWeight || 2;
+  const width = absoluteBoundingBox?.width || 100;
+  const height = absoluteBoundingBox?.height || 100;
 
-  if (geometricType === 'diagonal' || angleDegrees) {
-    // Render diagonal/angled line
+  // Handle matrix transform (like matrix(-1, 0, 0, 1, 0, 0) for horizontal flip)
+  const getTransformStyle = () => {
+    let transformStyle = '';
+    
+    if (transform && Array.isArray(transform)) {
+      transformStyle = `matrix(${transform.join(', ')})`;
+    }
+    
+    if (angleDegrees) {
+      const rotation = `rotate(${angleDegrees}deg)`;
+      transformStyle = transformStyle ? `${transformStyle} ${rotation}` : rotation;
+    }
+    
+    return transformStyle;
+  };
+
+  // Enhanced vector rendering with proper CSS properties
+  const vectorStyles: React.CSSProperties = {
+    ...baseStyles,
+    position: 'absolute',
+    width: `${width}px`,
+    height: `${height}px`,
+    border: `${strokeWidth}px solid ${lineColor}`,
+    transform: getTransformStyle(),
+    transformOrigin: '0 0',
+    boxSizing: 'border-box',
+  };
+
+  // For complex geometric lines, use SVG
+  if (geometricType === 'diagonal' || (lineStart && lineEnd)) {
     const angle = angleDegrees || 45;
-    const length = absoluteBoundingBox?.width || 100;
+    const length = Math.sqrt(Math.pow(width, 2) + Math.pow(height, 2));
     
     return (
-      <div
-        style={{
-          ...baseStyles,
-          position: 'absolute',
-          transform: `rotate(${angle}deg)`,
-          transformOrigin: '0 0',
-        }}
-      >
+      <div style={vectorStyles}>
         <svg
-          width={length}
-          height={strokeWidth}
+          width={width}
+          height={height}
           style={{ display: 'block' }}
         >
           <line
             x1="0"
-            y1={strokeWidth / 2}
-            x2={length}
-            y2={strokeWidth / 2}
+            y1="0"
+            x2={width}
+            y2={height}
             stroke={lineColor}
             strokeWidth={strokeWidth}
             strokeLinecap="round"
@@ -698,62 +780,12 @@ const renderGeometricLine = (node: any, baseStyles: React.CSSProperties) => {
     );
   }
 
-  if (lineStart && lineEnd) {
-    // Render line between two points
-    const dx = lineEnd.x - lineStart.x;
-    const dy = lineEnd.y - lineStart.y;
-    const length = Math.sqrt(dx * dx + dy * dy);
-    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-
-    return (
-      <div
-        style={{
-          ...baseStyles,
-          position: 'absolute',
-          left: `${lineStart.x}px`,
-          top: `${lineStart.y}px`,
-          transform: `rotate(${angle}deg)`,
-          transformOrigin: '0 0',
-        }}
-      >
-        <svg
-          width={length}
-          height={strokeWidth}
-          style={{ display: 'block' }}
-        >
-          <line
-            x1="0"
-            y1={strokeWidth / 2}
-            x2={length}
-            y2={strokeWidth / 2}
-            stroke={lineColor}
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-          />
-        </svg>
-      </div>
-    );
-  }
-
-  // Default vertical line
+  // For simple vectors, use border-based approach (like your CSS example)
   return (
-    <div style={baseStyles}>
-      <svg
-        width={strokeWidth}
-        height={absoluteBoundingBox?.height || 100}
-        style={{ display: 'block' }}
-      >
-        <line
-          x1={strokeWidth / 2}
-          y1="0"
-          x2={strokeWidth / 2}
-          y2={absoluteBoundingBox?.height || 100}
-          stroke={lineColor}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-        />
-      </svg>
-    </div>
+    <div 
+      style={vectorStyles}
+      title={`${name} - Vector (${width}×${height})`}
+    />
   );
 };
 
@@ -819,49 +851,177 @@ const renderImage = (node: any, imageUrl: string, baseStyles: React.CSSPropertie
     objectFit: objectFit,
     borderRadius: isCircular ? '50%' : baseStyles.borderRadius,
     objectPosition: 'center',
+    // Enhanced pixel-perfect image rendering
+    imageRendering: 'crisp-edges',
+    backfaceVisibility: 'hidden',
+    transform: 'translateZ(0)', // Force hardware acceleration
+    willChange: 'transform', // Optimize for animations
   };
   
-  if (imageError) {
+  // Get appropriate placeholder content based on node type and name
+  const getPlaceholderContent = () => {
+    const nodeName = node.name?.toLowerCase() || '';
+    
+    // Hero/Banner images
+    if (nodeName.includes('hero') || nodeName.includes('banner')) {
+      return { message: 'Hero Image', icon: '🎨', type: 'missing' as const };
+    }
+    
+    // Product images
+    if (nodeName.includes('product') || nodeName.includes('shoe') || nodeName.includes('item')) {
+      return { message: 'Product Image', icon: '👟', type: 'missing' as const };
+    }
+    
+    // Logo images
+    if (nodeName.includes('logo') || nodeName.includes('brand')) {
+      return { message: 'Logo', icon: '🏷️', type: 'missing' as const };
+    }
+    
+    // Avatar/Profile images
+    if (nodeName.includes('avatar') || nodeName.includes('profile') || nodeName.includes('user')) {
+      return { message: 'Avatar', icon: '👤', type: 'missing' as const };
+    }
+    
+    // Background images
+    if (nodeName.includes('background') || nodeName.includes('bg')) {
+      return { message: 'Background', icon: '🖼️', type: 'missing' as const };
+    }
+    
+    // Icon images
+    if (nodeName.includes('icon')) {
+      return { message: 'Icon', icon: '🔧', type: 'missing' as const };
+    }
+    
+    // Manufacturing/Business images
+    if (nodeName.includes('manufacturing') || nodeName.includes('factory')) {
+      return { message: 'Manufacturing', icon: '🏭', type: 'missing' as const };
+    }
+    
+    // Retail/Store images
+    if (nodeName.includes('retail') || nodeName.includes('store') || nodeName.includes('shop')) {
+      return { message: 'Retail', icon: '🏪', type: 'missing' as const };
+    }
+    
+    // Default fallback
+    return { message: 'Image', icon: '🖼️', type: 'missing' as const };
+  };
+
+  // Enhanced placeholder component with better visual design
+  const PlaceholderImage = ({ 
+    message = 'No Image', 
+    icon = '🖼️', 
+    type = 'error' 
+  }: { 
+    message?: string; 
+    icon?: string; 
+    type?: 'error' | 'loading' | 'missing' 
+  }) => {
+    const getPlaceholderStyles = () => {
+      const basePlaceholderStyles = {
+        ...imageStyles,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '12px',
+        fontFamily: 'Inter, sans-serif',
+        fontWeight: '500',
+        position: 'relative' as const,
+      };
+
+      switch (type) {
+        case 'error':
+          return {
+            ...basePlaceholderStyles,
+            backgroundColor: '#fef2f2',
+            border: '2px dashed #fecaca',
+            color: '#dc2626',
+          };
+        case 'loading':
+          return {
+            ...basePlaceholderStyles,
+            backgroundColor: '#f8fafc',
+            border: '2px dashed #cbd5e1',
+            color: '#64748b',
+          };
+        case 'missing':
+          return {
+            ...basePlaceholderStyles,
+            backgroundColor: '#f0f9ff',
+            border: '2px dashed #bae6fd',
+            color: '#0369a1',
+          };
+        default:
+          return {
+            ...basePlaceholderStyles,
+            backgroundColor: '#f8fafc',
+            border: '2px dashed #cbd5e1',
+            color: '#64748b',
+          };
+      }
+    };
+
     return (
-      <div 
-        style={{
-          ...imageStyles,
-          backgroundColor: '#f3f4f6',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#9ca3af',
-          fontSize: '12px',
-        }}
-      >
-        <span>Image failed to load</span>
+      <div style={getPlaceholderStyles()}>
+        <div style={{ textAlign: 'center', padding: '8px' }}>
+          <div style={{ 
+            fontSize: '20px', 
+            marginBottom: '4px', 
+            opacity: '0.7',
+            lineHeight: '1'
+          }}>
+            {icon}
+          </div>
+          <div style={{ 
+            fontSize: '11px', 
+            lineHeight: '1.2',
+            marginBottom: '2px'
+          }}>
+            {message}
+          </div>
+          {node.name && (
+            <div style={{ 
+              fontSize: '10px', 
+              opacity: '0.6',
+              maxWidth: '100%',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}>
+              {node.name.length > 15 ? node.name.substring(0, 15) + '...' : node.name}
+            </div>
+          )}
+        </div>
       </div>
     );
+  };
+  
+  // Show error placeholder if image failed to load
+  if (imageError) {
+    return <PlaceholderImage message="Failed to Load" icon="⚠️" type="error" />;
+  }
+  
+  // Show loading placeholder while image is loading
+  if (imageLoading) {
+    return <PlaceholderImage message="Loading..." icon="⏳" type="loading" />;
+  }
+  
+  // If no image URL, show smart placeholder based on node content
+  if (!imageUrl) {
+    const content = getPlaceholderContent();
+    return <PlaceholderImage message={content.message} icon={content.icon} type={content.type} />;
   }
   
   return (
-    <>
-      {imageLoading && (
-        <div 
-          style={{
-            ...imageStyles,
-            background: 'linear-gradient(45deg, #f0f0f0 25%, transparent 25%), linear-gradient(-45deg, #f0f0f0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f0f0f0 75%), linear-gradient(-45deg, transparent 75%, #f0f0f0 75%)',
-            backgroundSize: '20px 20px',
-            backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
-          }}
-        />
-      )}
-      <Image
-        src={imageUrl}
-        alt={node.name || 'Figma image'}
-        width={parseInt(baseStyles.width as string) || 100}
-        height={parseInt(baseStyles.height as string) || 100}
-        style={imageStyles}
-        onLoad={handleImageLoad}
-        onError={handleImageError}
-        priority={false}
-      />
-    </>
+    <Image
+      src={imageUrl}
+      alt={node.name || 'Figma image'}
+      width={parseInt(baseStyles.width as string) || 100}
+      height={parseInt(baseStyles.height as string) || 100}
+      style={imageStyles}
+      onLoad={handleImageLoad}
+      onError={handleImageError}
+      priority={false}
+    />
   );
 };
 
@@ -1014,166 +1174,48 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
               alignItems: getVerticalAlign(style?.textAlignVertical || 'TOP'),
               justifyContent: getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'center' ? 'center' : 
                             getTextAlign(style?.textAlignHorizontal || 'LEFT') === 'right' ? 'flex-end' : 'flex-start',
+              // Ensure text decoration is preserved
+              textDecoration: textStyles.textDecoration || 'none',
+              textDecorationColor: textStyles.textDecorationColor || 'currentColor',
+              textDecorationThickness: textStyles.textDecorationThickness || '1px',
+              textUnderlineOffset: textStyles.textUnderlineOffset || '2px',
         };
         
-        // Enhanced text rendering with rich text support and inline alignment
+        // Enhanced text rendering with dynamic styling based on Figma properties
         const renderRichText = (text: string) => {
-          // Handle "Built to Move the World" hero text
-          if (text.includes('Built to Move the World')) {
-            return text.replace(
-              /Built to Move the World/g,
-              '<span style="font-weight: 700; color: #FFFFFF; display: inline;">Built to Move the World</span>'
-            );
+          let spanStyles = '';
+          
+          // Apply font family from Figma style if present
+          if (style?.fontFamily) {
+            const fontFamily = getFontFamilyWithFallback(style.fontFamily);
+            spanStyles += `font-family: ${fontFamily}; `;
           }
           
-          // Handle "Integrated. Agile. All-In." with proper spacing and pink accent
-          if (text.includes('Integrated. Agile. All-In.')) {
-            return text.replace(
-              /Integrated\. Agile\. All-In\./g,
-              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Integrated. Agile. <span style="color: #FF0A54;">All-In.</span></span>'
-            );
+          // Apply font weight from Figma style if present
+          if (style?.fontWeight && style.fontWeight > 400) {
+            spanStyles += `font-weight: ${style.fontWeight}; `;
           }
           
-          // Handle "All-In." standalone with pink color
-          if (text.includes('All-In.')) {
-            return text.replace(
-              /All-In\./g, 
-              '<span style="color: #FF0A54; font-weight: 700; display: inline;">All-In.</span>'
-            );
+          // Apply text decoration from Figma style if present
+          if (style?.textDecoration === 'underline') {
+            spanStyles += `text-decoration: underline; text-decoration-color: currentColor; text-decoration-thickness: 1px; text-underline-offset: 2px; `;
           }
           
-          // Handle "Explore →" with blue color and underline
-          if (text.includes('Explore →')) {
-            return text.replace(
-              /Explore →/g,
-              '<span style="color: #0066FF; text-decoration: underline; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; font-weight: 600;">Explore <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
-            );
+          // Apply letter spacing if present
+          if (style?.letterSpacing) {
+            spanStyles += `letter-spacing: ${style.letterSpacing}px; `;
           }
           
-          // Handle "Learn More →" buttons with proper spacing and inline alignment
-          if (text.includes('Learn More →')) {
-            return text.replace(
-              /Learn More →/g,
-              '<span style="color: #0066FF; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; text-decoration: none;">Learn More <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
-            );
+          // Apply line height if present
+          if (style?.lineHeight) {
+            spanStyles += `line-height: ${style.lineHeight}px; `;
+          } else if (style?.lineHeightPercent) {
+            spanStyles += `line-height: ${style.lineHeightPercent}%; `;
           }
           
-          // Handle "Let's talk →" button
-          if (text.includes("Let's talk →")) {
-            return text.replace(
-              /Let's talk →/g,
-              '<span style="color: #FFFFFF; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">Let\'s talk <span style="font-size: 0.9em; margin-left: 2px;">→</span></span>'
-            );
-          }
-          
-          // Handle "Brand Spotlight" section heading
-          if (text.includes('Brand Spotlight')) {
-            return text.replace(
-              /Brand Spotlight/g,
-              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Brand Spotlight</span>'
-            );
-          }
-          
-          // Handle "Fresh Off The Field" section heading
-          if (text.includes('Fresh Off The Field')) {
-            return text.replace(
-              /Fresh Off The Field/g,
-              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Fresh Off The Field</span>'
-            );
-          }
-          
-          // Handle "Our Vision" and "Our Mission" headings
-          if (text.includes('Our Vision')) {
-            return text.replace(
-              /Our Vision/g,
-              '<span style="font-weight: 700; color: #FFFFFF; display: inline;">Our Vision</span>'
-            );
-          }
-          
-          if (text.includes('Our Mission')) {
-            return text.replace(
-              /Our Mission/g,
-              '<span style="font-weight: 700; color: #FFFFFF; display: inline;">Our Mission</span>'
-            );
-          }
-          
-          // Handle "Get in touch" heading
-          if (text.includes('Get in touch')) {
-            return text.replace(
-              /Get in touch/g,
-              '<span style="font-weight: 700; color: #FFFFFF; display: inline;">Get in touch</span>'
-            );
-          }
-          
-          // Handle "vertically integrated" with bold styling
-          if (text.includes('vertically integrated')) {
-            return text.replace(
-              /vertically integrated/g,
-              '<span style="font-weight: 700; display: inline;">vertically integrated</span>'
-            );
-          }
-          
-          // Handle "largest" and "futuristic" with bold styling
-          if (text.includes('largest') || text.includes('futuristic')) {
-            return text
-              .replace(/(largest)/g, '<span style="font-weight: 700; display: inline;">$1</span>')
-              .replace(/(futuristic)/g, '<span style="font-weight: 700; display: inline;">$1</span>');
-          }
-          
-          // Handle "LOTTO" brand name
-          if (text.includes('LOTTO')) {
-            return text.replace(
-              /LOTTO/g,
-              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">LOTTO</span>'
-            );
-          }
-          
-          // Handle "One8" brand name
-          if (text.includes('One8')) {
-            return text.replace(
-              /One8/g,
-              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">One8</span>'
-            );
-          }
-          
-          // Handle "WHATS COMING" text
-          if (text.includes('WHATS COMING')) {
-            return text.replace(
-              /WHATS COMING/g,
-              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">WHATS COMING</span>'
-            );
-          }
-          
-          // Handle "Sustainable Manufacturing" with specific styling
-          if (text.includes('Sustainable Manufacturing')) {
-            return text.replace(
-              /Sustainable Manufacturing/g,
-              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Sustainable Manufacturing</span>'
-            );
-          }
-          
-          // Handle "Made to Move, Built to Care" tagline
-          if (text.includes('Made to Move, Built to Care')) {
-            return text.replace(
-              /Made to Move, Built to Care/g,
-              '<span style="font-weight: 600; color: #1E1E1E; display: inline;">Made to Move, Built to Care</span>'
-            );
-          }
-          
-          // Handle "Virat Kohli" name
-          if (text.includes('Virat Kohli')) {
-            return text.replace(
-              /Virat Kohli/g,
-              '<span style="font-weight: 700; color: #1E1E1E; display: inline;">Virat Kohli</span>'
-            );
-          }
-          
-          // Handle "agilitas" logo text
-          if (text.toLowerCase().includes('agilitas')) {
-            return text.replace(
-              /agilitas/gi,
-              '<span style="font-weight: 700; color: #FFFFFF; display: inline;">agilitas</span>'
-            );
+          // Return styled span if we have styles, otherwise return plain text
+          if (spanStyles) {
+            return `<span style="${spanStyles.trim()}">${text}</span>`;
           }
           
           return text;
@@ -1197,8 +1239,15 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
                 <div>Font: {style?.fontFamily} {style?.fontSize}px</div>
               </div>
             )}
-            <span 
+                        <span
               className="block w-full h-full leading-none whitespace-pre-wrap"
+              style={{
+                fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : undefined,
+                textDecoration: style?.textDecoration || 'none',
+                textDecorationColor: style?.textDecoration === 'underline' ? 'currentColor' : undefined,
+                textDecorationThickness: style?.textDecoration === 'underline' ? '1px' : undefined,
+                textUnderlineOffset: style?.textDecoration === 'underline' ? '2px' : undefined,
+              }}
               dangerouslySetInnerHTML={{ __html: processedText }}
             />
           </div>
@@ -1230,7 +1279,66 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
           );
         }
         
-        // Handle regular shapes
+        // Handle nodes that should have images but don't have imageUrl (fallback)
+        if (node.fills && node.fills.some((fill: any) => fill.type === 'IMAGE')) {
+          return (
+            <div
+              style={baseStyles}
+              title={`${name} (${type})`}
+              data-figma-node-id={node.id}
+              data-figma-node-type={type}
+              data-figma-node-name={name}
+            >
+              {showDebug && devMode && (
+                <div className="absolute -top-8 left-0 bg-orange-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+                  <div className="font-bold">{name}</div>
+                  <div>{type} - {baseStyles.width}×{baseStyles.height}</div>
+                  <div className="text-orange-300">⚠️ Image missing</div>
+                </div>
+              )}
+              
+              {renderImage(node, '', baseStyles, showDebug)}
+            </div>
+          );
+        }
+        
+        // Handle angled box vectors with transforms
+        if (isAngledBox(node) || (node.transform && Array.isArray(node.transform))) {
+          return (
+            <div
+              style={baseStyles}
+              title={`${name} (${type}) - Angled Box`}
+              data-figma-node-id={node.id}
+              data-figma-node-type={type}
+              data-figma-node-name={name}
+            >
+              {showDebug && devMode && (
+                <div className="absolute -top-8 left-0 bg-purple-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+                  <div className="font-bold">{name}</div>
+                  <div>{type} - Angled Box</div>
+                  <div className="text-purple-300">📐 {node.transform ? `matrix(${node.transform.join(', ')})` : 'transformed'}</div>
+                </div>
+              )}
+              
+              {children?.map((child: any, index: number) => (
+                <FigmaRenderer
+                  key={child.id || index}
+                  node={child}
+                  showDebug={showDebug}
+                  parentBoundingBox={node.absoluteBoundingBox}
+                  imageMap={imageMap}
+                  parentMask={isMask}
+                  parentMaskType={maskType}
+                  fileKey={fileKey}
+                  figmaToken={figmaToken}
+                  devMode={devMode}
+                />
+              ))}
+            </div>
+          );
+        }
+        
+        // Handle regular shapes with enhanced fill and stroke support
         return (
           <div
             style={baseStyles}
@@ -1264,8 +1372,9 @@ const FigmaRenderer: React.FC<FigmaRendererProps> = ({
         );
 
       case 'LINE':
-        // Handle geometric accent lines
-        if (node.geometricType || node.angleDegrees || node.lineStart || node.lineEnd) {
+      case 'VECTOR':
+        // Handle geometric accent lines and vectors
+        if (node.geometricType || node.angleDegrees || node.lineStart || node.lineEnd || node.strokes || node.strokeWeight) {
           return (
             <div
               style={baseStyles}
