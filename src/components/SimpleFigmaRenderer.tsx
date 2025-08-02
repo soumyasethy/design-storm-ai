@@ -294,8 +294,8 @@ const FigmaText: React.FC<{
     // Font family
     fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
     
-    // Font size
-    fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
+    // Font size with buffer to prevent truncation
+    fontSize: style?.fontSize ? `${style.fontSize * 0.95}px` : 'inherit',
     
     // Font weight
     fontWeight: style?.fontWeight || 'normal',
@@ -319,6 +319,7 @@ const FigmaText: React.FC<{
            'inherit',
     
     // Enhanced text wrapping for better fidelity
+    whiteSpace: 'pre-wrap',
     overflowWrap: 'break-word',
     wordBreak: 'break-word',
     display: 'flex',
@@ -327,23 +328,16 @@ const FigmaText: React.FC<{
     alignItems: style?.textAlignHorizontal === 'CENTER' ? 'center' : 
               style?.textAlignHorizontal === 'RIGHT' ? 'flex-end' : 'flex-start',
     
-    // Enhanced text fitting with buffer space
-    ...(style?.fontSize && style.fontSize > 24 ? {
-      whiteSpace: 'nowrap',
-      overflow: 'visible', // Allow overflow instead of truncating
-      textOverflow: 'clip', // Remove ellipsis
-      width: 'auto', // Let text determine width
-      minWidth: 'fit-content', // Ensure minimum width fits content
-      paddingRight: '10px', // Add buffer space
-      paddingLeft: '10px', // Add buffer space
-    } : {
-      // For smaller text, allow wrapping but add buffer
-      whiteSpace: 'pre-wrap',
-      paddingRight: '5px',
-      paddingLeft: '5px',
-      width: 'auto',
-      minWidth: 'fit-content',
-    }),
+    // Remove extra spacing and ensure text fits
+    width: '100%',
+    height: '100%',
+    padding: '0',
+    margin: '0',
+    boxSizing: 'border-box',
+    
+    // Allow text to wrap naturally without truncation
+    overflow: 'visible',
+    textOverflow: 'clip',
   };
   
   // Enhanced rich text processing with character style overrides
@@ -440,9 +434,10 @@ const FigmaText: React.FC<{
       styles.push(`font-family: ${fontFamily}`);
     }
 
-    // Font size
+    // Font size with buffer to prevent truncation
     if (textStyle?.fontSize) {
-      styles.push(`font-size: ${textStyle.fontSize}px`);
+      const adjustedSize = textStyle.fontSize * 0.95; // 5% buffer to prevent truncation
+      styles.push(`font-size: ${adjustedSize}px`);
     }
 
     // Font weight
@@ -521,23 +516,18 @@ const FigmaText: React.FC<{
     }
 
     // White space handling for better text wrapping
-    if (textStyle?.fontSize && textStyle.fontSize > 24) {
-      styles.push('white-space: nowrap');
-      styles.push('overflow: visible');
-      styles.push('text-overflow: clip');
-      styles.push('width: auto');
-      styles.push('min-width: fit-content');
-      styles.push('padding-right: 10px');
-      styles.push('padding-left: 10px');
-    } else {
-      styles.push('white-space: pre-wrap');
-      styles.push('overflow-wrap: break-word');
-      styles.push('word-break: break-word');
-      styles.push('padding-right: 5px');
-      styles.push('padding-left: 5px');
-      styles.push('width: auto');
-      styles.push('min-width: fit-content');
-    }
+    styles.push('white-space: pre-wrap');
+    styles.push('overflow-wrap: break-word');
+    styles.push('word-break: break-word');
+    
+    // Remove extra spacing and ensure proper fitting
+    styles.push('padding: 0');
+    styles.push('margin: 0');
+    styles.push('box-sizing: border-box');
+    styles.push('overflow: visible');
+    styles.push('text-overflow: clip');
+    styles.push('display: inline-block');
+    styles.push('vertical-align: top');
 
     return styles.join('; ');
   };
@@ -671,7 +661,19 @@ const FigmaText: React.FC<{
   
     return (
     <div
-      style={combinedStyles}
+      style={{
+        ...combinedStyles,
+        // Remove any extra spacing from the container
+        padding: '0',
+        margin: '0',
+        // Ensure proper text container sizing
+        width: '100%',
+        height: '100%',
+        // Remove any default browser spacing
+        boxSizing: 'border-box',
+        // Ensure text flows naturally
+        overflow: 'visible',
+      }}
       title={`${node.name} (${node.type})`}
       data-figma-node-id={node.id}
       data-figma-node-type={node.type}
@@ -686,25 +688,21 @@ const FigmaText: React.FC<{
         </div>
       )}
       <span 
-        className="block leading-none"
+        className="block w-full h-full leading-none"
         style={{
-          width: 'auto',
-          minWidth: 'fit-content',
-          height: 'auto',
-          // Enhanced text fitting with buffer space
-          ...(style?.fontSize && style.fontSize > 24 ? {
-            whiteSpace: 'nowrap',
-            overflow: 'visible',
-            textOverflow: 'clip',
-            paddingRight: '10px',
-            paddingLeft: '10px',
-          } : {
-            whiteSpace: 'pre-wrap',
-            overflowWrap: 'break-word',
-            wordBreak: 'break-word',
-            paddingRight: '5px',
-            paddingLeft: '5px',
-          }),
+          whiteSpace: 'pre-wrap',
+          overflowWrap: 'break-word',
+          wordBreak: 'break-word',
+          // Remove all extra spacing
+          padding: '0',
+          margin: '0',
+          lineHeight: 'inherit',
+          // Ensure text fits without truncation
+          overflow: 'visible',
+          textOverflow: 'clip',
+          // Remove any default browser spacing
+          display: 'inline-block',
+          verticalAlign: 'top',
         }}
         dangerouslySetInnerHTML={{ __html: processedText }}
       />
@@ -1729,31 +1727,18 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   if (absoluteBoundingBox) {
     const { x, y, width, height } = absoluteBoundingBox;
     
-    // Add buffer for text nodes to prevent truncation
-    const isTextNode = type === 'TEXT';
-    const bufferWidth = isTextNode ? 40 : 0; // Add 40px buffer for text nodes
-    const adjustedWidth = width + bufferWidth;
-    
     if (parentBoundingBox) {
       // Calculate relative positioning for children
       positionStyles.position = 'absolute';
       positionStyles.left = `${x - parentBoundingBox.x}px`;
       positionStyles.top = `${y - parentBoundingBox.y}px`;
-      positionStyles.width = `${adjustedWidth}px`;
+      positionStyles.width = `${width}px`;
       positionStyles.height = `${height}px`;
-      // Allow text to overflow for better visibility
-      if (isTextNode) {
-        positionStyles.overflow = 'visible';
-      }
     } else {
       // Root node positioning
       positionStyles.position = 'relative';
-      positionStyles.width = `${adjustedWidth}px`;
+      positionStyles.width = `${width}px`;
       positionStyles.height = `${height}px`;
-      // Allow text to overflow for better visibility
-      if (isTextNode) {
-        positionStyles.overflow = 'visible';
-      }
     }
   }
   
