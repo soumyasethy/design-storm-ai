@@ -998,7 +998,7 @@ const createMaskElement = (node: any, children: any[], imageMap: Record<string, 
 };
 
 // Enhanced vector stroke rendering with comprehensive support for SimpleFigmaRenderer
-const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) => {
+const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties, devMode: boolean = false) => {
   const { 
     name, 
     absoluteBoundingBox, 
@@ -2338,7 +2338,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
             </div>
           )}
           
-          {renderSimpleVectorStroke(node, positionStyles)}
+          {renderSimpleVectorStroke(node, positionStyles, devMode)}
         </div>
       );
 
