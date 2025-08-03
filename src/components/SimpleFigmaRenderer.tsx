@@ -1146,6 +1146,21 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
   
   // Create SVG path for vector stroke with enhanced support for icons and dashed lines
   const createVectorPath = () => {
+    // Debug logging
+    if (devMode) {
+      console.log('🔧 Vector Path Creation:', {
+        nodeId: node.id,
+        nodeName: name,
+        width,
+        height,
+        vectorType,
+        vectorPoints,
+        strokes: strokes?.length,
+        strokeColor,
+        strokeWidth
+      });
+    }
+    
     // Handle vector points if provided
     if (vectorPoints && vectorPoints.length >= 2) {
       const start = vectorPoints[0];
@@ -1181,13 +1196,35 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
       }
     }
     
-    // Handle decorative angled lines (pink/red lines)
+    // Handle decorative angled lines (pink/red lines) - IMPROVED LOGIC
     if (name?.toLowerCase().includes('decorative') || 
         name?.toLowerCase().includes('accent') || 
+        name?.toLowerCase().includes('vector') ||
         strokeColor.includes('ff004f') || 
-        strokeColor.includes('ff0a54')) {
-      // Create angled decorative line
-      const angle = 45; // 45 degree angle
+        strokeColor.includes('ff0a54') ||
+        strokeColor.includes('255, 0, 79')) {
+      
+      // Create angled decorative line - improved for diagonal lines
+      // For tall narrow vectors (like your example: 57.5px wide, 268px tall)
+      if (height > width * 2) {
+        // This is likely a diagonal line - create a diagonal path
+        const angle = Math.atan2(height, width) * (180 / Math.PI);
+        const startX = 0;
+        const startY = height * 0.1; // Start 10% from top
+        const endX = width * 0.9; // End 90% from left
+        const endY = height * 0.9; // End 90% from top
+        
+        if (devMode) {
+          console.log('🎨 Creating diagonal line:', {
+            startX, startY, endX, endY, angle,
+            strokeColor, width, height
+          });
+        }
+        
+        return `M ${startX} ${startY} L ${endX} ${endY}`;
+      }
+      
+      // For wider vectors, create a more horizontal diagonal
       const startX = 0;
       const startY = height * 0.2;
       const endX = width * 0.8;
@@ -1201,10 +1238,26 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) =>
       if (width > height) {
         // Horizontal dashed line
         return `M 0 ${height/2} L ${width} ${height/2}`;
-    } else {
+      } else {
         // Vertical dashed line
         return `M ${width/2} 0 L ${width/2} ${height}`;
       }
+    }
+    
+    // For vectors with pink/red stroke color, assume diagonal line
+    if (strokeColor.includes('ff004f') || strokeColor.includes('255, 0, 79')) {
+      const startX = 0;
+      const startY = height * 0.1;
+      const endX = width * 0.9;
+      const endY = height * 0.9;
+      
+      if (devMode) {
+        console.log('🎨 Pink/Red stroke detected, creating diagonal:', {
+          startX, startY, endX, endY, strokeColor
+        });
+      }
+      
+      return `M ${startX} ${startY} L ${endX} ${endY}`;
     }
     
     // Default vertical line
@@ -2197,10 +2250,9 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
 
     case 'RECTANGLE':
     case 'ELLIPSE':
-    case 'VECTOR':
       // Handle image fills
       if (imageUrl) {
-    return (
+        return (
           <div
             style={positionStyles}
             title={`${name} (${type})`}
@@ -2213,13 +2265,13 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 <div className="font-bold">{name}</div>
                 <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
                 <div className="text-green-300">🖼️ Image loaded</div>
-        </div>
+              </div>
             )}
             
             <FigmaImage node={node} imageUrl={imageUrl} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />
-      </div>
-    );
-  }
+          </div>
+        );
+      }
 
       // Handle nodes that should be images but don't have imageUrl (show placeholder)
       if (node.fills?.some((fill: any) => fill.type === 'IMAGE') || 
@@ -2227,11 +2279,11 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
           node.name?.toLowerCase().includes('photo') ||
           node.name?.toLowerCase().includes('picture') ||
           node.name?.toLowerCase().includes('img')) {
-  return (
-    <div 
+        return (
+          <div 
             style={positionStyles}
             title={`${name} (${type})`}
-      data-figma-node-id={node.id}
+            data-figma-node-id={node.id}
             data-figma-node-type={type}
             data-figma-node-name={name}
           >
@@ -2268,7 +2320,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     case 'LINE':
     case 'VECTOR':
       // Handle lines and vectors with proper stroke rendering
-    return (
+      return (
         <div
           style={positionStyles}
           title={`${name} (${type})`}
@@ -2287,8 +2339,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
           )}
           
           {renderSimpleVectorStroke(node, positionStyles)}
-      </div>
-    );
+        </div>
+      );
 
     case 'INSTANCE':
     case 'COMPONENT':
