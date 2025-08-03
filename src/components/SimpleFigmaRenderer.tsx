@@ -1964,16 +1964,24 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
             >
               <defs>
                 <mask id={`mask-group-${node.id}`}>
-                  <rect width="100%" height="100%" fill="white" />
+                  {/* Black background - hides everything by default */}
+                  <rect width="100%" height="100%" fill="black" />
                   {children?.map((child: any, index: number) => {
                     // Only render mask elements (isMask: true) in the mask definition
                     if (!child.isMask) return null;
                     
-                    const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
-                      child.absoluteBoundingBox || {};
+                    // Calculate relative position within the mask group
+                    const maskGroupBounds = node.absoluteBoundingBox || { x: 0, y: 0, width: 100, height: 100 };
+                    const childBounds = child.absoluteBoundingBox || { x: 0, y: 0, width: 100, height: 100 };
+                    
+                    // Convert absolute coordinates to relative coordinates within the mask group
+                    const relativeX = childBounds.x - maskGroupBounds.x;
+                    const relativeY = childBounds.y - maskGroupBounds.y;
+                    const childWidth = childBounds.width;
+                    const childHeight = childBounds.height;
                     
                     if (child.type === 'ELLIPSE') {
-                      // Create circular mask
+                      // Create circular mask - white circle reveals the content
                       const centerX = childWidth / 2;
                       const centerY = childHeight / 2;
                       const radiusX = childWidth / 2;
@@ -1984,23 +1992,23 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                         <path
                           key={child.id || index}
                           d={ellipsePath}
-                          fill="black"
-                          transform={`translate(${x}, ${y})`}
+                          fill="white"
+                          transform={`translate(${relativeX}, ${relativeY})`}
                         />
                       );
                     } else if (child.type === 'RECTANGLE') {
-                      // Create rectangular mask
+                      // Create rectangular mask - white rectangle reveals the content
                       const borderRadius = getIndividualCornerRadius(child);
                       const radius = borderRadius !== '0px' ? parseFloat(borderRadius) : 0;
                       
                       return (
                         <rect
                           key={child.id || index}
-                          x={x}
-                          y={y}
+                          x={relativeX}
+                          y={relativeY}
                           width={childWidth}
                           height={childHeight}
-                          fill="black"
+                          fill="white"
                           rx={radius}
                           ry={radius}
                         />
