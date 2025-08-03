@@ -814,7 +814,7 @@ const createMaskElement = (node: any, children: any[], imageMap: Record<string, 
     }
   };
 
-  // Enhanced function to render mask group children with image + rectangle support
+  // Enhanced function to render mask group children with image + rectangle + ellipse support
   const renderMaskGroupChild = (child: any, index: number) => {
     const childMaskMode = getMaskGroupOperation();
     
@@ -840,6 +840,32 @@ const createMaskElement = (node: any, children: any[], imageMap: Record<string, 
             fill={fillColor}
             rx={borderRadius !== '0px' ? parseFloat(borderRadius) : 0}
             ry={borderRadius !== '0px' ? parseFloat(borderRadius) : 0}
+          />
+        </g>
+      );
+    } else if (child.type === 'ELLIPSE') {
+      // Render ellipse as mask element for circular masks
+      const fill = child.fills?.[0];
+      const fillColor = fill?.type === 'SOLID' && fill.color ? 
+        rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a) : 
+        'black';
+      
+      const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
+        child.absoluteBoundingBox || {};
+      
+      // Create ellipse path for circular mask
+      const centerX = childWidth / 2;
+      const centerY = childHeight / 2;
+      const radiusX = childWidth / 2;
+      const radiusY = childHeight / 2;
+      const ellipsePath = `M ${centerX - radiusX} ${centerY} A ${radiusX} ${radiusY} 0 1 1 ${centerX + radiusX} ${centerY} A ${radiusX} ${radiusY} 0 1 1 ${centerX - radiusX} ${centerY} Z`;
+      
+      return (
+        <g key={child.id || index} mask={childMaskMode}>
+          <path
+            d={ellipsePath}
+            fill={fillColor}
+            transform={`translate(${x}, ${y})`}
           />
         </g>
       );
@@ -899,33 +925,9 @@ const createMaskElement = (node: any, children: any[], imageMap: Record<string, 
           />
         </g>
       );
-    } else if (child.type === 'FRAME' || child.type === 'GROUP') {
-      // Render frame/group children recursively
-      return (
-        <g key={child.id || index} mask={childMaskMode}>
-          {child.children?.map((grandChild: any, grandIndex: number) => 
-            renderMaskGroupChild(grandChild, grandIndex)
-          )}
-        </g>
-      );
-    } else {
-      // Fallback to regular SimpleFigmaRenderer for other types
-      return (
-        <g key={child.id || index} mask={childMaskMode}>
-          <SimpleFigmaRenderer
-            node={child}
-            showDebug={false}
-            parentBoundingBox={node.absoluteBoundingBox}
-            imageMap={imageMap}
-            parentMask={true}
-            parentMaskType={maskType}
-            fileKey={fileKey}
-            figmaToken={figmaToken}
-            devMode={devMode}
-          />
-        </g>
-      );
     }
+    
+    return null;
   };
   
   return (
@@ -1605,12 +1607,13 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   figmaToken,
   devMode = false
 }) => {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+
   // Add null check to prevent runtime errors
   if (!node || typeof node !== 'object') {
     console.warn('SimpleFigmaRenderer: Invalid node provided', node);
     return <div>Invalid node</div>;
   }
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   // Load image if this node has image fills
   useEffect(() => {
@@ -1952,181 +1955,112 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
         </div>
               )}
           
-          {/* Handle mask group children with enhanced image + rectangle support */}
+          {/* Handle mask group children with enhanced image + rectangle + ellipse support */}
           {isMaskGroupNode(node) ? (
             <svg
               width={absoluteBoundingBox?.width || 100}
               height={absoluteBoundingBox?.height || 100}
-              style={{ 
-                position: 'absolute', 
-                top: 0, 
-                left: 0,
-                borderRadius: `${Math.min(absoluteBoundingBox?.width || 100, absoluteBoundingBox?.height || 100) / 2}px`,
-                zIndex: 1
-              }}
+              style={{ position: 'absolute', top: 0, left: 0 }}
             >
               <defs>
                 <mask id={`mask-group-${node.id}`}>
                   <rect width="100%" height="100%" fill="white" />
                   {children?.map((child: any, index: number) => {
-                    const childMaskMode = getMaskGroupMode(child);
+                    // Only render mask elements (isMask: true) in the mask definition
+                    if (!child.isMask) return null;
                     
-                    // Handle mask child (ELLIPSE with isMask: true)
-                    if (child.isMask && child.type === 'ELLIPSE') {
-                      const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
-                        child.absoluteBoundingBox || {};
+                    const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
+                      child.absoluteBoundingBox || {};
+                    
+                    if (child.type === 'ELLIPSE') {
+                      // Create circular mask
+                      const centerX = childWidth / 2;
+                      const centerY = childHeight / 2;
+                      const radiusX = childWidth / 2;
+                      const radiusY = childHeight / 2;
+                      const ellipsePath = `M ${centerX - radiusX} ${centerY} A ${radiusX} ${radiusY} 0 1 1 ${centerX + radiusX} ${centerY} A ${radiusX} ${radiusY} 0 1 1 ${centerX - radiusX} ${centerY} Z`;
                       
                       return (
-                        <g key={child.id || index} mask="normal">
-                          <ellipse
-                            cx={x - (absoluteBoundingBox?.x || 0) + childWidth / 2}
-                            cy={y - (absoluteBoundingBox?.y || 0) + childHeight / 2}
-                            rx={childWidth / 2}
-                            ry={childHeight / 2}
-                            fill="white"
-                          />
-                        </g>
+                        <path
+                          key={child.id || index}
+                          d={ellipsePath}
+                          fill="black"
+                          transform={`translate(${x}, ${y})`}
+                        />
                       );
-                    }
-                    
-                    // Handle content child (RECTANGLE with image)
-                    if (child.type === 'RECTANGLE' && child.fills?.some((fill: any) => fill.type === 'IMAGE')) {
-                      const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
-                        child.absoluteBoundingBox || {};
-                      
-                      return (
-                        <g key={child.id || index} mask="normal">
-                          <rect 
-                            x={x - (absoluteBoundingBox?.x || 0)}
-                            y={y - (absoluteBoundingBox?.y || 0)}
-                            width={childWidth}
-                            height={childHeight}
-                            fill="black"
-                            rx={child.cornerRadius || 0}
-                            ry={child.cornerRadius || 0}
-                          />
-                        </g>
-                      );
-                    }
-                    
-                    // Handle other child types
-                    if (child.type === 'RECTANGLE') {
-                      const fill = child.fills?.[0];
-                      const fillColor = fill?.type === 'SOLID' && fill.color ? 
-                        rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a) : 
-                        'black';
-                      
+                    } else if (child.type === 'RECTANGLE') {
+                      // Create rectangular mask
                       const borderRadius = getIndividualCornerRadius(child);
-                      const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
-                        child.absoluteBoundingBox || {};
+                      const radius = borderRadius !== '0px' ? parseFloat(borderRadius) : 0;
                       
                       return (
-                        <g key={child.id || index} mask={childMaskMode}>
-                          <rect
-                            x={x - (absoluteBoundingBox?.x || 0)}
-                            y={y - (absoluteBoundingBox?.y || 0)}
-                            width={childWidth}
-                            height={childHeight}
-                            fill={fillColor}
-                            rx={borderRadius !== '0px' ? parseFloat(borderRadius) : 0}
-                            ry={borderRadius !== '0px' ? parseFloat(borderRadius) : 0}
-                          />
-                        </g>
-                      );
-                    } else if (child.type === 'ELLIPSE') {
-                      const fill = child.fills?.[0];
-                      const fillColor = fill?.type === 'SOLID' && fill.color ? 
-                        rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a) : 
-                        'black';
-                      
-                      const { x = 0, y = 0, width: childWidth = 100, height: childHeight = 100 } = 
-                        child.absoluteBoundingBox || {};
-                      
-                      return (
-                        <g key={child.id || index} mask={childMaskMode}>
-                          <ellipse
-                            cx={x - (absoluteBoundingBox?.x || 0) + childWidth / 2}
-                            cy={y - (absoluteBoundingBox?.y || 0) + childHeight / 2}
-                            rx={childWidth / 2}
-                            ry={childHeight / 2}
-                            fill={fillColor}
-                          />
-                        </g>
-                      );
-                    } else {
-                      // Fallback to regular SimpleFigmaRenderer for other types
-                      return (
-                        <g key={child.id || index} mask={childMaskMode}>
-                          <SimpleFigmaRenderer
-                            node={child}
-                            showDebug={false}
-                            parentBoundingBox={node.absoluteBoundingBox}
-                            imageMap={imageMap}
-                            parentMask={true}
-                            parentMaskType={node.maskType || 'ALPHA'}
-                            fileKey={fileKey}
-                            figmaToken={figmaToken}
-                            devMode={false}
-                          />
-                        </g>
+                        <rect
+                          key={child.id || index}
+                          x={x}
+                          y={y}
+                          width={childWidth}
+                          height={childHeight}
+                          fill="black"
+                          rx={radius}
+                          ry={radius}
+                        />
                       );
                     }
+                    
+                    return null;
                   })}
                 </mask>
               </defs>
-              {/* Render the actual content with mask applied */}
+              
+              {/* Render the actual content (non-mask elements) */}
               {children?.map((child: any, index: number) => {
-                // Find the content child (not the mask child)
-                if (!child.isMask && child.type === 'RECTANGLE' && child.fills?.some((fill: any) => fill.type === 'IMAGE')) {
+                // Skip mask elements, they're already handled in the mask definition
+                if (child.isMask) return null;
+                
+                // Handle image content
+                if (child.fills?.some((fill: any) => fill.type === 'IMAGE')) {
                   const imageFill = child.fills?.find((fill: any) => fill.type === 'IMAGE');
                   const imageUrl = imageFill?.imageUrl || imageMap[child.id];
                   
-                                     if (imageUrl) {
-                     return (
-                       <image
-                         key={child.id || index}
-                         href={imageUrl}
-                         x="0"
-                         y="0"
-                         width="100%"
-                         height="100%"
-                         preserveAspectRatio="xMidYMid slice"
-                         mask={`url(#mask-group-${node.id})`}
-                         style={{
-                           zIndex: 1,
-                           position: 'relative'
-                         }}
-                       />
-                     );
-                                     } else {
-                     // Use placeholder if no image URL
-                     return (
-                       <image
-                         key={child.id || index}
-                         href="/placeholder.svg"
-                         x="0"
-                         y="0"
-                         width="100%"
-                         height="100%"
-                         preserveAspectRatio="xMidYMid slice"
-                         mask={`url(#mask-group-${node.id})`}
-                         style={{
-                           zIndex: 1,
-                           position: 'relative'
-                         }}
-                       />
-                     );
-                   }
+                  if (imageUrl) {
+                    return (
+                      <image
+                        key={child.id || index}
+                        href={imageUrl}
+                        x="0"
+                        y="0"
+                        width="100%"
+                        height="100%"
+                        preserveAspectRatio="xMidYMid slice"
+                        mask={`url(#mask-group-${node.id})`}
+                      />
+                    );
+                  } else {
+                    // Use placeholder if no image URL
+                    return (
+                      <image
+                        key={child.id || index}
+                        href="/placeholder.svg"
+                        x="0"
+                        y="0"
+                        width="100%"
+                        height="100%"
+                        preserveAspectRatio="xMidYMid slice"
+                        mask={`url(#mask-group-${node.id})`}
+                      />
+                    );
+                  }
                 }
+                
                 return null;
               })}
               
               {/* Fallback if no content child found */}
-              {!children?.some((child: any) => !child.isMask && child.type === 'RECTANGLE' && child.fills?.some((fill: any) => fill.type === 'IMAGE')) && (
+              {!children?.some((child: any) => !child.isMask && child.fills?.some((fill: any) => fill.type === 'IMAGE')) && (
                 <rect 
                   width="100%" 
                   height="100%" 
-                  fill="black"
+                  fill="rgba(200, 200, 200, 0.5)"
                   mask={`url(#mask-group-${node.id})`}
                 />
               )}
@@ -2159,7 +2093,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     case 'VECTOR':
       // Handle image fills
       if (imageUrl) {
-        return (
+    return (
           <div
             style={positionStyles}
             title={`${name} (${type})`}
@@ -2172,25 +2106,25 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 <div className="font-bold">{name}</div>
                 <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
                 <div className="text-green-300">🖼️ Image loaded</div>
-              </div>
+        </div>
             )}
             
             <FigmaImage node={node} imageUrl={imageUrl} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />
-          </div>
-        );
-      }
-      
+      </div>
+    );
+  }
+
       // Handle nodes that should be images but don't have imageUrl (show placeholder)
       if (node.fills?.some((fill: any) => fill.type === 'IMAGE') || 
           node.name?.toLowerCase().includes('image') ||
           node.name?.toLowerCase().includes('photo') ||
           node.name?.toLowerCase().includes('picture') ||
           node.name?.toLowerCase().includes('img')) {
-        return (
-          <div
+  return (
+    <div 
             style={positionStyles}
             title={`${name} (${type})`}
-            data-figma-node-id={node.id}
+      data-figma-node-id={node.id}
             data-figma-node-type={type}
             data-figma-node-name={name}
           >
