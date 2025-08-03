@@ -480,7 +480,7 @@ const FigmaText: React.FC<{
       // Text color from fills
       if (segment.style.fills && segment.style.fills.length > 0) {
         const fill = segment.style.fills[0];
-        if (fill.type === 'SOLID' && fill.color) {
+      if (fill.type === 'SOLID' && fill.color) {
           const color = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
           spanStyles.push(`color: ${color}`);
           
@@ -998,7 +998,7 @@ const createMaskElement = (node: any, children: any[], imageMap: Record<string, 
 };
 
 // Enhanced vector stroke rendering with comprehensive support for SimpleFigmaRenderer
-const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties, devMode: boolean = false) => {
+const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties) => {
   const { 
     name, 
     absoluteBoundingBox, 
@@ -1146,21 +1146,6 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties, de
   
   // Create SVG path for vector stroke with enhanced support for icons and dashed lines
   const createVectorPath = () => {
-    // Debug logging
-    if (devMode) {
-      console.log('🔧 Vector Path Creation:', {
-        nodeId: node.id,
-        nodeName: name,
-        width,
-        height,
-        vectorType,
-        vectorPoints,
-        strokes: strokes?.length,
-        strokeColor,
-        strokeWidth
-      });
-    }
-    
     // Handle vector points if provided
     if (vectorPoints && vectorPoints.length >= 2) {
       const start = vectorPoints[0];
@@ -1196,35 +1181,13 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties, de
       }
     }
     
-    // Handle decorative angled lines (pink/red lines) - IMPROVED LOGIC
+    // Handle decorative angled lines (pink/red lines)
     if (name?.toLowerCase().includes('decorative') || 
         name?.toLowerCase().includes('accent') || 
-        name?.toLowerCase().includes('vector') ||
         strokeColor.includes('ff004f') || 
-        strokeColor.includes('ff0a54') ||
-        strokeColor.includes('255, 0, 79')) {
-      
-      // Create angled decorative line - improved for diagonal lines
-      // For tall narrow vectors (like your example: 57.5px wide, 268px tall)
-      if (height > width * 2) {
-        // This is likely a diagonal line - create a diagonal path
-        const angle = Math.atan2(height, width) * (180 / Math.PI);
-        const startX = 0;
-        const startY = height * 0.1; // Start 10% from top
-        const endX = width * 0.9; // End 90% from left
-        const endY = height * 0.9; // End 90% from top
-        
-        if (devMode) {
-          console.log('🎨 Creating diagonal line:', {
-            startX, startY, endX, endY, angle,
-            strokeColor, width, height
-          });
-        }
-        
-        return `M ${startX} ${startY} L ${endX} ${endY}`;
-      }
-      
-      // For wider vectors, create a more horizontal diagonal
+        strokeColor.includes('ff0a54')) {
+      // Create angled decorative line
+      const angle = 45; // 45 degree angle
       const startX = 0;
       const startY = height * 0.2;
       const endX = width * 0.8;
@@ -1238,26 +1201,10 @@ const renderSimpleVectorStroke = (node: any, baseStyles: React.CSSProperties, de
       if (width > height) {
         // Horizontal dashed line
         return `M 0 ${height/2} L ${width} ${height/2}`;
-      } else {
+    } else {
         // Vertical dashed line
         return `M ${width/2} 0 L ${width/2} ${height}`;
       }
-    }
-    
-    // For vectors with pink/red stroke color, assume diagonal line
-    if (strokeColor.includes('ff004f') || strokeColor.includes('255, 0, 79')) {
-      const startX = 0;
-      const startY = height * 0.1;
-      const endX = width * 0.9;
-      const endY = height * 0.9;
-      
-      if (devMode) {
-        console.log('🎨 Pink/Red stroke detected, creating diagonal:', {
-          startX, startY, endX, endY, strokeColor
-        });
-      }
-      
-      return `M ${startX} ${startY} L ${endX} ${endY}`;
     }
     
     // Default vertical line
@@ -2061,23 +2008,9 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               style={{ position: 'absolute', top: 0, left: 0 }}
             >
               {devMode && (
-                <script dangerouslySetInnerHTML={{
-                  __html: `
-                    console.log('🎭 Mask Group Debug:', {
-                      nodeId: '${node.id}',
-                      nodeName: '${node.name}',
-                      children: ${JSON.stringify(children?.map((c: any) => ({
-                        id: c.id,
-                        name: c.name,
-                        type: c.type,
-                        isMask: c.isMask,
-                        hasImageFill: c.fills?.some((f: any) => f.type === 'IMAGE'),
-                        bounds: c.absoluteBoundingBox
-                      })))},
-                      maskGroupBounds: ${JSON.stringify(node.absoluteBoundingBox)}
-                    });
-                  `
-                }} />
+                <text x="10" y="20" fill="red" fontSize="12">
+                  Mask Group: {node.name} ({node.id})
+                </text>
               )}
               <defs>
                 <mask id={`mask-group-${node.id}`}>
@@ -2086,6 +2019,18 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                   {children?.map((child: any, index: number) => {
                     // Only render mask elements (isMask: true) in the mask definition
                     if (!child.isMask) return null;
+                    
+                    // Debug logging for mask elements
+                    if (devMode) {
+                      console.log('🎭 Mask Element:', {
+                        nodeId: node.id,
+                        childId: child.id,
+                        childType: child.type,
+                        childName: child.name,
+                        isMask: child.isMask,
+                        bounds: child.absoluteBoundingBox
+                      });
+                    }
                     
                     // Calculate relative position within the mask group
                     const maskGroupBounds = node.absoluteBoundingBox || { x: 0, y: 0, width: 100, height: 100 };
@@ -2096,18 +2041,6 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                     const relativeY = childBounds.y - maskGroupBounds.y;
                     const childWidth = childBounds.width;
                     const childHeight = childBounds.height;
-                    
-                    if (devMode) {
-                      console.log('🎭 Mask Element:', {
-                        childId: child.id,
-                        childName: child.name,
-                        childType: child.type,
-                        relativeX,
-                        relativeY,
-                        childWidth,
-                        childHeight
-                      });
-                    }
                     
                     if (child.type === 'ELLIPSE') {
                       // Create circular mask - white circle reveals the content
@@ -2154,57 +2087,53 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 // Skip mask elements, they're already handled in the mask definition
                 if (child.isMask) return null;
                 
+                // Debug logging for content elements
+                if (devMode) {
+                  console.log('🖼️ Content Element:', {
+                    nodeId: node.id,
+                    childId: child.id,
+                    childType: child.type,
+                    childName: child.name,
+                    hasImageFill: child.fills?.some((fill: any) => fill.type === 'IMAGE'),
+                    fills: child.fills
+                  });
+                }
+                
                 // Handle image content
                 if (child.fills?.some((fill: any) => fill.type === 'IMAGE')) {
                   const imageFill = child.fills?.find((fill: any) => fill.type === 'IMAGE');
                   const imageUrl = imageFill?.imageUrl || imageMap[child.id];
-                  
-                  // Calculate relative position for the image
-                  const maskGroupBounds = node.absoluteBoundingBox || { x: 0, y: 0, width: 100, height: 100 };
-                  const childBounds = child.absoluteBoundingBox || { x: 0, y: 0, width: 100, height: 100 };
-                  
-                  // Convert absolute coordinates to relative coordinates within the mask group
-                  const relativeX = childBounds.x - maskGroupBounds.x;
-                  const relativeY = childBounds.y - maskGroupBounds.y;
-                  const childWidth = childBounds.width;
-                  const childHeight = childBounds.height;
-                  
-                  if (devMode) {
-                    console.log('🖼️ Image Content:', {
-                      childId: child.id,
-                      childName: child.name,
-                      imageUrl: imageUrl || '/placeholder.svg',
-                      relativeX,
-                      relativeY,
-                      childWidth,
-                      childHeight,
-                      maskGroupId: `mask-group-${node.id}`
-                    });
-                  }
                   
                   if (imageUrl) {
                     return (
                       <image
                         key={child.id || index}
                         href={imageUrl}
-                        x={relativeX}
-                        y={relativeY}
-                        width={childWidth}
-                        height={childHeight}
+                        x="0"
+                        y="0"
+                        width="100%"
+                        height="100%"
                         preserveAspectRatio="xMidYMid slice"
                         mask={`url(#mask-group-${node.id})`}
                       />
                     );
                   } else {
                     // Use placeholder if no image URL
+                    if (devMode) {
+                      console.log('🖼️ Using Placeholder:', {
+                        nodeId: node.id,
+                        childId: child.id,
+                        childName: child.name
+                      });
+                    }
                     return (
                       <image
                         key={child.id || index}
                         href="/placeholder.svg"
-                        x={relativeX}
-                        y={relativeY}
-                        width={childWidth}
-                        height={childHeight}
+                        x="0"
+                        y="0"
+                        width="100%"
+                        height="100%"
                         preserveAspectRatio="xMidYMid slice"
                         mask={`url(#mask-group-${node.id})`}
                       />
@@ -2250,9 +2179,10 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
 
     case 'RECTANGLE':
     case 'ELLIPSE':
+    case 'VECTOR':
       // Handle image fills
       if (imageUrl) {
-        return (
+    return (
           <div
             style={positionStyles}
             title={`${name} (${type})`}
@@ -2265,13 +2195,13 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 <div className="font-bold">{name}</div>
                 <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
                 <div className="text-green-300">🖼️ Image loaded</div>
-              </div>
+        </div>
             )}
             
             <FigmaImage node={node} imageUrl={imageUrl} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />
-          </div>
-        );
-      }
+      </div>
+    );
+  }
 
       // Handle nodes that should be images but don't have imageUrl (show placeholder)
       if (node.fills?.some((fill: any) => fill.type === 'IMAGE') || 
@@ -2279,11 +2209,11 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
           node.name?.toLowerCase().includes('photo') ||
           node.name?.toLowerCase().includes('picture') ||
           node.name?.toLowerCase().includes('img')) {
-        return (
-          <div 
+  return (
+    <div 
             style={positionStyles}
             title={`${name} (${type})`}
-            data-figma-node-id={node.id}
+      data-figma-node-id={node.id}
             data-figma-node-type={type}
             data-figma-node-name={name}
           >
@@ -2320,7 +2250,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     case 'LINE':
     case 'VECTOR':
       // Handle lines and vectors with proper stroke rendering
-      return (
+    return (
         <div
           style={positionStyles}
           title={`${name} (${type})`}
@@ -2338,9 +2268,9 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
             </div>
           )}
           
-          {renderSimpleVectorStroke(node, positionStyles, devMode)}
-        </div>
-      );
+          {renderSimpleVectorStroke(node, positionStyles)}
+      </div>
+    );
 
     case 'INSTANCE':
     case 'COMPONENT':
