@@ -460,9 +460,9 @@ const FigmaText: React.FC<{
       // Text color from fills
       if (segment.style.fills && segment.style.fills.length > 0) {
         const fill = segment.style.fills[0];
-      if (fill.type === 'SOLID' && fill.color) {
+        if (fill.type === 'SOLID' && fill.color) {
           const color = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
-          spanStyles.push(`color: ${color}`);
+          spanStyles.push(`color: ${color} !important`); // Add !important to ensure color is applied
         }
       }
       
@@ -479,6 +479,18 @@ const FigmaText: React.FC<{
           spanStyles.push('text-transform: lowercase');
         } else if (segment.style.textCase === 'TITLE') {
           spanStyles.push('text-transform: capitalize');
+        }
+      }
+      
+      // Add debugging for color application
+      if (devMode && segment.style.fills && segment.style.fills.length > 0) {
+        const fill = segment.style.fills[0];
+        if (fill.type === 'SOLID' && fill.color) {
+          console.log(`Rich text color applied:`, {
+            text: segment.text,
+            color: fill.color,
+            cssColor: rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a)
+          });
         }
       }
       
@@ -545,8 +557,7 @@ const FigmaText: React.FC<{
           )}
         </div>
       )}
-      <span 
-        className="block w-full h-full leading-none"
+      <div 
         style={{
           whiteSpace: 'pre-wrap',
           overflowWrap: 'break-word',
@@ -556,6 +567,9 @@ const FigmaText: React.FC<{
           fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
           fontWeight: style?.fontWeight || 'normal',
           textAlign: textAlignment as any,
+          width: '100%',
+          height: '100%',
+          lineHeight: 'normal',
         }}
         dangerouslySetInnerHTML={{ __html: processedText }}
       />
