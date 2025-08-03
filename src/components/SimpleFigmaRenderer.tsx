@@ -360,6 +360,16 @@ const FigmaText: React.FC<{
     let currentStyle = characterStyleOverrides[0] || 0;
     let currentText = '';
 
+    // Debug logging
+    if (devMode) {
+      console.log('🔍 Rich Text Processing:', {
+        text,
+        characterStyleOverrides,
+        styleOverrideTable,
+        nodeId: node.id
+      });
+    }
+
     // Process each character and group consecutive characters with same style
     for (let i = 0; i < text.length; i++) {
       const char = text[i];
@@ -412,6 +422,16 @@ const FigmaText: React.FC<{
       });
     }
 
+    // Debug logging for segments
+    if (devMode) {
+      console.log('📝 Text Segments:', segments.map(s => ({
+        text: s.text,
+        hasFills: !!s.style?.fills,
+        fillColor: s.style?.fills?.[0]?.color,
+        styleKey: s.style ? Object.keys(s.style).filter(k => k !== 'fills') : []
+      })));
+    }
+
     // Generate HTML with inline styles
     const html = segments.map(segment => {
       if (segment.text === '<br>') {
@@ -462,7 +482,16 @@ const FigmaText: React.FC<{
         const fill = segment.style.fills[0];
         if (fill.type === 'SOLID' && fill.color) {
           const color = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
-          spanStyles.push(`color: ${color} !important`); // Add !important to ensure color is applied
+          spanStyles.push(`color: ${color}`);
+          
+          // Debug logging for color
+          if (devMode) {
+            console.log('🎨 Applied Color:', {
+              text: segment.text,
+              color: color,
+              fill: fill
+            });
+          }
         }
       }
       
@@ -482,22 +511,26 @@ const FigmaText: React.FC<{
         }
       }
       
-      // Add debugging for color application
-      if (devMode && segment.style.fills && segment.style.fills.length > 0) {
-        const fill = segment.style.fills[0];
-        if (fill.type === 'SOLID' && fill.color) {
-          console.log(`Rich text color applied:`, {
-            text: segment.text,
-            color: fill.color,
-            cssColor: rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a)
-          });
-        }
-      }
-      
-      return spanStyles.length > 0 
+      const result = spanStyles.length > 0 
         ? `<span style="${spanStyles.join('; ')}">${segment.text}</span>`
         : segment.text;
+        
+      // Debug logging for final HTML
+      if (devMode && spanStyles.length > 0) {
+        console.log('🏷️ Generated HTML:', {
+          text: segment.text,
+          styles: spanStyles,
+          html: result
+        });
+      }
+      
+      return result;
     }).join('');
+
+    // Debug logging for final HTML
+    if (devMode) {
+      console.log('🎯 Final Rich Text HTML:', html);
+    }
 
     return html;
   };
@@ -526,15 +559,22 @@ const FigmaText: React.FC<{
     justifyContent: textAlignment === 'center' ? 'center' : 'flex-start',
     gap: '4px', // Add gap for inline elements
     overflow: 'hidden',
-         // Add 4px buffer to container width for font family differences
-     width: baseStyles.width ? `calc(${baseStyles.width} + 4px)` : 'calc(100% + 4px)',
+    // Add 4px buffer to container width for font family differences
+    width: baseStyles.width ? `calc(${baseStyles.width} + 4px)` : 'calc(100% + 4px)',
     // Ensure text alignment is properly applied
     textAlign: textAlignment as any,
-  };
+    // Apply base text styles directly to container
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'break-word' as any,
+    wordBreak: 'break-word',
+    fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
+    fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
+    fontWeight: style?.fontWeight || 'normal',
+  } as React.CSSProperties;
   
   const processedText = processRichText(characters);
   
-    return (
+  return (
     <div
       style={combinedStyles}
       title={`${node.name} (${node.type})`}
@@ -558,23 +598,14 @@ const FigmaText: React.FC<{
         </div>
       )}
       <div 
-        style={{
-          whiteSpace: 'pre-wrap',
-          overflowWrap: 'break-word',
-          wordBreak: 'break-word',
-          overflow: 'hidden',
-          fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
-          fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
-          fontWeight: style?.fontWeight || 'normal',
-          textAlign: textAlignment as any,
-          width: '100%',
-          height: '100%',
-          lineHeight: 'normal',
-        }}
         dangerouslySetInnerHTML={{ __html: processedText }}
+        style={{
+          display: 'inline',
+          lineHeight: 'inherit',
+        }}
       />
-      </div>
-    );
+    </div>
+  );
 };
 
 // Enhanced shape rendering with better styling
