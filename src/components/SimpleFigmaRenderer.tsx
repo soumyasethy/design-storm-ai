@@ -2007,6 +2007,25 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               height={absoluteBoundingBox?.height || 100}
               style={{ position: 'absolute', top: 0, left: 0 }}
             >
+              {devMode && (
+                <script dangerouslySetInnerHTML={{
+                  __html: `
+                    console.log('🎭 Mask Group Debug:', {
+                      nodeId: '${node.id}',
+                      nodeName: '${node.name}',
+                      children: ${JSON.stringify(children?.map((c: any) => ({
+                        id: c.id,
+                        name: c.name,
+                        type: c.type,
+                        isMask: c.isMask,
+                        hasImageFill: c.fills?.some((f: any) => f.type === 'IMAGE'),
+                        bounds: c.absoluteBoundingBox
+                      })))},
+                      maskGroupBounds: ${JSON.stringify(node.absoluteBoundingBox)}
+                    });
+                  `
+                }} />
+              )}
               <defs>
                 <mask id={`mask-group-${node.id}`}>
                   {/* Black background - hides everything by default */}
@@ -2025,6 +2044,18 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                     const childWidth = childBounds.width;
                     const childHeight = childBounds.height;
                     
+                    if (devMode) {
+                      console.log('🎭 Mask Element:', {
+                        childId: child.id,
+                        childName: child.name,
+                        childType: child.type,
+                        relativeX,
+                        relativeY,
+                        childWidth,
+                        childHeight
+                      });
+                    }
+                    
                     if (child.type === 'ELLIPSE') {
                       // Create circular mask - white circle reveals the content
                       const centerX = childWidth / 2;
@@ -2041,7 +2072,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                           transform={`translate(${relativeX}, ${relativeY})`}
                         />
                       );
-                    } else if (child.type === 'RECTANGLE') {
+                    } else if (child.type === 'RECTANGLE' || child.type === 'VECTOR') {
                       // Create rectangular mask - white rectangle reveals the content
                       const borderRadius = getIndividualCornerRadius(child);
                       const radius = borderRadius !== '0px' ? parseFloat(borderRadius) : 0;
@@ -2075,15 +2106,38 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                   const imageFill = child.fills?.find((fill: any) => fill.type === 'IMAGE');
                   const imageUrl = imageFill?.imageUrl || imageMap[child.id];
                   
+                  // Calculate relative position for the image
+                  const maskGroupBounds = node.absoluteBoundingBox || { x: 0, y: 0, width: 100, height: 100 };
+                  const childBounds = child.absoluteBoundingBox || { x: 0, y: 0, width: 100, height: 100 };
+                  
+                  // Convert absolute coordinates to relative coordinates within the mask group
+                  const relativeX = childBounds.x - maskGroupBounds.x;
+                  const relativeY = childBounds.y - maskGroupBounds.y;
+                  const childWidth = childBounds.width;
+                  const childHeight = childBounds.height;
+                  
+                  if (devMode) {
+                    console.log('🖼️ Image Content:', {
+                      childId: child.id,
+                      childName: child.name,
+                      imageUrl: imageUrl || '/placeholder.svg',
+                      relativeX,
+                      relativeY,
+                      childWidth,
+                      childHeight,
+                      maskGroupId: `mask-group-${node.id}`
+                    });
+                  }
+                  
                   if (imageUrl) {
                     return (
                       <image
                         key={child.id || index}
                         href={imageUrl}
-                        x="0"
-                        y="0"
-                        width="100%"
-                        height="100%"
+                        x={relativeX}
+                        y={relativeY}
+                        width={childWidth}
+                        height={childHeight}
                         preserveAspectRatio="xMidYMid slice"
                         mask={`url(#mask-group-${node.id})`}
                       />
@@ -2094,10 +2148,10 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                       <image
                         key={child.id || index}
                         href="/placeholder.svg"
-                        x="0"
-                        y="0"
-                        width="100%"
-                        height="100%"
+                        x={relativeX}
+                        y={relativeY}
+                        width={childWidth}
+                        height={childHeight}
                         preserveAspectRatio="xMidYMid slice"
                         mask={`url(#mask-group-${node.id})`}
                       />
