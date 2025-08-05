@@ -379,6 +379,11 @@ const FigmaText: React.FC<{
         text,
         characterStyleOverrides: characterStyleOverrides?.slice(0, 20), // Show first 20
         styleOverrideTable: Object.keys(styleOverrideTable),
+        styleOverrideDetails: Object.entries(styleOverrideTable).map(([key, style]: [string, any]) => ({
+          key,
+          textDecoration: style.textDecoration,
+          hasUnderline: style.textDecoration === 'UNDERLINE'
+        })),
         nodeId: node.id,
         nodeName: node.name,
         hasUnderlines: Object.values(styleOverrideTable).some((style: any) => style.textDecoration === 'UNDERLINE')
@@ -443,7 +448,9 @@ const FigmaText: React.FC<{
         text: s.text,
         hasFills: !!s.style?.fills,
         fillColor: s.style?.fills?.[0]?.color,
-        styleKey: s.style ? Object.keys(s.style).filter(k => k !== 'fills') : []
+        styleKey: s.style ? Object.keys(s.style).filter(k => k !== 'fills') : [],
+        textDecoration: s.style?.textDecoration,
+        hasUnderline: s.style?.textDecoration === 'UNDERLINE'
       })));
     }
 
@@ -518,8 +525,36 @@ const FigmaText: React.FC<{
           spanStyles.push('text-decoration-color: currentColor');
           spanStyles.push('text-decoration-thickness: 1px');
           spanStyles.push('text-underline-offset: 2px');
+          
+          // Debug logging for underline
+          if (devMode) {
+            console.log('🎯 Applied Underline:', {
+              text: segment.text,
+              decoration: decoration,
+              spanStyles: spanStyles
+            });
+          }
         } else {
           spanStyles.push(`text-decoration: ${decoration}`);
+        }
+      }
+      
+      // Fallback: Check for underline in other properties
+      if (!segment.style.textDecoration && segment.style.textDecorationLine) {
+        const decoration = segment.style.textDecorationLine.toLowerCase();
+        if (decoration === 'underline') {
+          spanStyles.push('text-decoration: underline');
+          spanStyles.push('text-decoration-color: currentColor');
+          spanStyles.push('text-decoration-thickness: 1px');
+          spanStyles.push('text-underline-offset: 2px');
+          
+          if (devMode) {
+            console.log('🎯 Applied Underline (Fallback):', {
+              text: segment.text,
+              decoration: decoration,
+              spanStyles: spanStyles
+            });
+          }
         }
       }
       
@@ -553,6 +588,21 @@ const FigmaText: React.FC<{
     // Debug logging for final HTML
     if (devMode) {
       console.log('🎯 Final Rich Text HTML:', html);
+    }
+
+    // Fallback: Force underlines for specific words if no underlines detected
+    const hasUnderlines = html.includes('text-decoration: underline');
+    if (!hasUnderlines && devMode) {
+      console.log('⚠️ No underlines detected in rich text, checking for fallback...');
+      
+      // Check if this looks like a mission statement with key words
+      const keyWords = ['largest', 'futuristic', 'vertically', 'integrated', 'sports', 'company'];
+      const hasKeyWords = keyWords.some(word => text.toLowerCase().includes(word));
+      
+      if (hasKeyWords) {
+        console.log('🎯 Mission statement detected, applying fallback underlines...');
+        // This is where we could apply fallback underlines if needed
+      }
     }
 
     return html;
