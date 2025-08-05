@@ -6,6 +6,8 @@ import SimpleFigmaRenderer from '@/components/SimpleFigmaRenderer';
 
 import { extractFileKeyFromUrl, loadFigmaAssetsFromNodes } from '@/lib/utils';
 import { isPluginExport, parsePluginData, figmaPlugin } from '@/lib/figma-plugin';
+import { fontLoader } from '@/lib/fontLoader';
+import { useMultipleFonts } from '@/lib/useFontLoader';
 
 interface FigmaData {
   name?: string;
@@ -102,9 +104,64 @@ export default function OutputPage() {
   const [devMode, setDevMode] = useState<boolean>(true);
   const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
   const [enableScaling, setEnableScaling] = useState<boolean>(true);
+  const [fontLoadingStatus, setFontLoadingStatus] = useState<string>('Not started');
+  const [loadedFonts, setLoadedFonts] = useState<Set<string>>(new Set());
   const [maxScale, setMaxScale] = useState<number>(1.2);
 
   // Function to load assets (images and SVGs) from Figma API
+  // Extract unique font families from Figma data
+  const extractFontFamilies = (node: any): Set<string> => {
+    const fonts = new Set<string>();
+    
+    const traverse = (currentNode: any) => {
+      if (currentNode.style?.fontFamily) {
+        fonts.add(currentNode.style.fontFamily);
+      }
+      
+      if (currentNode.children) {
+        currentNode.children.forEach(traverse);
+      }
+    };
+    
+    traverse(node);
+    return fonts;
+  };
+
+  // Load fonts from Figma data
+  const loadFontsFromFigmaData = async (rootNode: any) => {
+    if (!rootNode) return;
+    
+    setFontLoadingStatus('Extracting fonts...');
+    const fontFamilies = Array.from(extractFontFamilies(rootNode));
+    
+    if (fontFamilies.length === 0) {
+      setFontLoadingStatus('No fonts found');
+      return;
+    }
+    
+    setFontLoadingStatus(`Loading ${fontFamilies.length} fonts...`);
+    
+    try {
+      await fontLoader.loadFonts(
+        fontFamilies.map(family => ({
+          family,
+          weights: [400, 500, 600, 700], // Common weights
+          display: 'swap'
+        }))
+      );
+      
+      setLoadedFonts(new Set(fontFamilies));
+      setFontLoadingStatus(`Loaded ${fontFamilies.length} fonts successfully`);
+      
+      if (devMode) {
+        console.log('🎨 Fonts loaded:', fontFamilies);
+      }
+    } catch (error) {
+      setFontLoadingStatus(`Font loading failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Font loading error:', error);
+    }
+  };
+
   const loadAssetsFromFigmaAPI = async (rootNode: any) => {
     console.log('🚀 loadAssetsFromFigmaAPI called with:');
     console.log('  - fileKey:', fileKey);
@@ -774,6 +831,9 @@ export default function OutputPage() {
         }))
       });
 
+      // Load fonts from the document node
+      await loadFontsFromFigmaData(documentNode);
+      
       // Force re-render by setting frame node and incrementing version
       setFrameNode(null); // Clear first
       setDataVersion(prev => prev + 1); // Increment version to force re-render
@@ -1052,6 +1112,11 @@ export default function OutputPage() {
               {Object.keys(assetMap).length > 0 && (
                 <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">
                   🎨 {Object.keys(assetMap).length} assets
+                </span>
+              )}
+              {loadedFonts.size > 0 && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
+                  🔤 {loadedFonts.size} fonts
                 </span>
               )}
             </div>
