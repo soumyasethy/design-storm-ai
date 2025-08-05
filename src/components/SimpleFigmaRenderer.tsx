@@ -14,7 +14,6 @@ import {
   getLineStyles 
 } from '@/lib/utils';
 import { useFigmaScale } from '../lib/useFigmaScale';
-import { DynamicText } from './DynamicText';
 
 // Utility function for RGB to Hex conversion
 const rgbToHex = (r: number, g: number, b: number): string => {
@@ -316,191 +315,58 @@ const FigmaText: React.FC<{
   
   if (!characters) return null;
 
-  // Use the new DynamicText component for font loading
-  const textStyle = {
-    fontFamily: style?.fontFamily,
-    fontSize: style?.fontSize,
-    fontWeight: style?.fontWeight,
-    lineHeightPx: style?.lineHeightPx,
-    lineHeightPercent: style?.lineHeightPercent,
-    letterSpacing: style?.letterSpacing,
-    textAlignHorizontal: style?.textAlignHorizontal,
-    textAlignVertical: style?.textAlignVertical,
-    textDecoration: style?.textDecoration,
-    textCase: style?.textCase
+  // Load font if fontFamily is specified
+  useEffect(() => {
+    if (style?.fontFamily) {
+      // Load font using the font loader
+      import('@/lib/fontLoader').then(({ loadFont }) => {
+        loadFont(style.fontFamily, [style.fontWeight || 400, 700]).catch(console.warn);
+      });
+    }
+  }, [style?.fontFamily, style?.fontWeight]);
+
+  const textStyles: React.CSSProperties = {
+    // Font family with fallback
+    fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
+    
+    // Font size
+    fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
+    
+    // Font weight
+    fontWeight: style?.fontWeight || 'normal',
+    
+    // Text alignment
+    textAlign: style?.textAlignHorizontal ? getTextAlign(style.textAlignHorizontal) as any : 'left',
+    
+    // Line height
+    lineHeight: style?.lineHeightPx ? `${style.lineHeightPx}px` : 
+                style?.lineHeightPercent ? `${style.lineHeightPercent}%` : 'normal',
+    
+    // Letter spacing
+    letterSpacing: style?.letterSpacing ? `${style.letterSpacing}px` : 'normal',
+    
+    // Text decoration
+    textDecoration: style?.textDecoration ? style.textDecoration.toLowerCase() : 'none',
+    
+    // Text color from fills
+    color: node.fills?.[0]?.type === 'SOLID' && node.fills[0].color ? 
+           rgbaToCss(node.fills[0].color.r, node.fills[0].color.g, node.fills[0].color.b, node.fills[0].color.a) : 
+           'inherit',
+    
+    // Text wrapping and overflow
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'break-word',
+    wordBreak: 'break-word',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    
+    // Debug styling
+    ...(showDebug && {
+      border: '1px solid #3b82f6',
+      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    }),
   };
 
-  // Handle rich text with character style overrides
-  if (node.characterStyleOverrides && node.styleOverrideTable && node.characterStyleOverrides.length > 0) {
-    // For rich text, we'll use the existing processRichText function
-    // but wrap it in DynamicText for font loading
-    const processRichText = (text: string): React.ReactNode => {
-      // If no character style overrides, return plain text
-      if (!node.characterStyleOverrides || !node.styleOverrideTable || node.characterStyleOverrides.length === 0) {
-        return text;
-      }
-
-      const { characterStyleOverrides, styleOverrideTable } = node;
-      const characters = text.split('');
-      
-      // Debug logging
-      if (devMode) {
-        console.log('🔍 Rich Text Processing:', {
-          text,
-          characters: characters.length,
-          characterStyleOverrides: characterStyleOverrides?.slice(0, 20), // Show first 20
-          styleOverrideTable: Object.keys(styleOverrideTable),
-          styleOverrideDetails: Object.entries(styleOverrideTable).map(([key, style]: [string, any]) => ({
-            key,
-            textDecoration: style.textDecoration,
-            textDecorationLine: style.textDecorationLine,
-            hasUnderline: style.textDecoration === 'UNDERLINE' || style.textDecorationLine === 'UNDERLINE',
-            fontSize: style.fontSize,
-            fontWeight: style.fontWeight,
-            fills: style.fills
-          })),
-          nodeId: node.id,
-          nodeName: node.name,
-          hasUnderlines: Object.values(styleOverrideTable).some((style: any) => 
-            style.textDecoration === 'UNDERLINE' || style.textDecorationLine === 'UNDERLINE'
-          )
-        });
-      }
-
-      // Process each character individually and create JSX spans
-      const jsxElements = characters.map((char, index) => {
-        // Handle line breaks
-        if (char === '\n') {
-          return <br key={`br-${index}`} />;
-        }
-
-        // Get character style override
-        const styleOverrideIndex = characterStyleOverrides[index];
-        const characterStyle = styleOverrideIndex && styleOverrideTable[styleOverrideIndex] 
-          ? styleOverrideTable[styleOverrideIndex] 
-          : node.style;
-
-        // Build inline styles for this character
-        const inlineStyles: React.CSSProperties = {
-          fontFamily: characterStyle.fontFamily ? getFontFamilyWithFallback(characterStyle.fontFamily) : undefined,
-          fontSize: characterStyle.fontSize ? `${characterStyle.fontSize}px` : undefined,
-          fontWeight: characterStyle.fontWeight || undefined,
-          fontStyle: characterStyle.fontStyle || undefined,
-          letterSpacing: characterStyle.letterSpacing ? `${characterStyle.letterSpacing}px` : undefined,
-          lineHeight: characterStyle.lineHeightPx ? `${characterStyle.lineHeightPx}px` : 
-                     characterStyle.lineHeightPercent ? `${characterStyle.lineHeightPercent}%` : undefined,
-        };
-
-        // Handle color with fallback
-        if (characterStyle.fills && characterStyle.fills[0] && characterStyle.fills[0].color) {
-          inlineStyles.color = rgbaToCss(
-            characterStyle.fills[0].color.r, 
-            characterStyle.fills[0].color.g, 
-            characterStyle.fills[0].color.b, 
-            characterStyle.fills[0].color.a
-          );
-        } else if (node.fills && node.fills[0] && node.fills[0].color) {
-          inlineStyles.color = rgbaToCss(
-            node.fills[0].color.r, 
-            node.fills[0].color.g, 
-            node.fills[0].color.b, 
-            node.fills[0].color.a
-          );
-        }
-
-        // Handle text decoration (underline)
-        if (characterStyle.textDecoration === 'UNDERLINE' || characterStyle.textDecorationLine === 'UNDERLINE') {
-          inlineStyles.textDecoration = 'underline';
-          inlineStyles.textDecorationColor = 'currentColor';
-          inlineStyles.textDecorationThickness = '1px';
-          inlineStyles.textUnderlineOffset = '2px';
-          
-          if (devMode) {
-            console.log('🎯 Applied Underline:', {
-              char,
-              index,
-              styleOverrideIndex,
-              segmentStyle: characterStyle.textDecoration || characterStyle.textDecorationLine
-            });
-          }
-        }
-
-        // Handle text case
-        if (characterStyle.textCase) {
-          switch (characterStyle.textCase) {
-            case 'UPPER':
-              inlineStyles.textTransform = 'uppercase';
-              break;
-            case 'LOWER':
-              inlineStyles.textTransform = 'lowercase';
-              break;
-            case 'TITLE':
-              inlineStyles.textTransform = 'capitalize';
-              break;
-          }
-        }
-
-        // Only create span if there are styles to apply
-        if (Object.keys(inlineStyles).length > 0) {
-          return (
-            <span key={`char-${index}`} style={inlineStyles}>
-              {char}
-            </span>
-          );
-        }
-
-        return char;
-      });
-
-      return jsxElements;
-    };
-
-    // For rich text, render with DynamicText but use the processed content
-    return (
-      <div
-        title={`${node.name} (TEXT)`}
-        data-figma-node-id={node.id}
-        data-figma-node-type="TEXT"
-        data-figma-node-name={node.name}
-        style={{
-          ...baseStyles,
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'flex-start',
-          gap: '4px',
-          // Debug styling
-          ...(showDebug && {
-            border: '1px solid #3b82f6',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          }),
-        }}
-      >
-        <div style={{ display: 'inline' }}>
-          {processRichText(characters)}
-        </div>
-      </div>
-    );
-  }
-
-  // For simple text, use DynamicText component
-  return (
-    <DynamicText
-      text={characters}
-      style={textStyle}
-      showLoadingState={false}
-      onFontLoad={(fontFamily) => {
-        if (devMode) {
-          console.log(`✅ Font loaded for text "${node.name}": ${fontFamily}`);
-        }
-      }}
-      onFontError={(fontFamily, error) => {
-        console.error(`❌ Font loading failed for text "${node.name}": ${fontFamily} - ${error}`);
-      }}
-    />
-  );
-  
-
-  
   // Enhanced rich text processing with character style overrides
   const processRichText = (text: string): React.ReactNode => {
     // If no character style overrides, return plain text
@@ -691,6 +557,113 @@ const FigmaText: React.FC<{
 
     return jsxElements;
   };
+
+  // Get proper text alignment with visual design override
+  let textAlignment = getTextAlign(style?.textAlignHorizontal || 'LEFT');
+  
+  // Smart alignment override based on design patterns
+  // Main headings and content labels should be left-aligned despite JSON conflicts
+  const isMainHeading = style?.fontSize && style.fontSize >= 32; // Large font size indicates heading
+  const isContentLabel = style?.fontSize && style.fontSize >= 16 && style.fontSize <= 24; // Medium font size
+  const hasCenterConstraint = node.constraints?.horizontal === 'CENTER';
+  const hasCenterAlign = style?.textAlignHorizontal === 'CENTER';
+  
+  // Only override center alignment for specific cases, not for mission statements
+  const isMissionStatement = node.name && node.name.toLowerCase().includes('mission') || 
+                           node.name && node.name.toLowerCase().includes('vision') ||
+                           node.name && node.name.toLowerCase().includes('build india');
+  
+  // Preserve center alignment for mission statements and similar content
+  if (isMissionStatement && hasCenterAlign) {
+    textAlignment = 'center';
+    if (devMode) {
+      console.log('🎯 Preserved center alignment for mission statement:', node.name);
+    }
+  } else if (isMainHeading && hasCenterAlign && !hasCenterConstraint) {
+    // Override center alignment for main headings without center constraints
+    textAlignment = 'left';
+    if (devMode) {
+      console.log('🎯 Override center alignment for main heading:', node.name);
+    }
+  } else if (isContentLabel && hasCenterAlign && !hasCenterConstraint) {
+    // Override center alignment for content labels without center constraints
+    textAlignment = 'left';
+    if (devMode) {
+      console.log('🎯 Override center alignment for content label:', node.name);
+    }
+  }
+
+  // Debug logging for text alignment
+  if (devMode && hasCenterAlign && textAlignment !== 'center') {
+    console.log('🎯 Text Alignment Override:', {
+      nodeName: node.name,
+      originalAlign: style?.textAlignHorizontal,
+      finalAlign: textAlignment,
+      isMainHeading,
+      isContentLabel,
+      isMissionStatement,
+      hasCenterConstraint
+    });
+  }
+
+  // Extract baseStyles without width and height
+  const { width, height, ...baseStylesWithoutDimensions } = baseStyles;
+  
+  const combinedStyles = {
+    ...baseStylesWithoutDimensions,
+    ...textStyles,
+    display: 'flex',
+    alignItems: getVerticalAlign(style?.textAlignVertical || 'TOP'),
+    // Only use justifyContent for center alignment, let text-align handle left/right
+    justifyContent: textAlignment === 'center' ? 'center' : 'flex-start',
+    gap: '4px', // Add gap for inline elements
+    overflow: 'hidden',
+    // Ensure text alignment is properly applied
+    textAlign: textAlignment as any,
+    // Apply base text styles directly to container
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'break-word' as any,
+    wordBreak: 'break-word',
+    fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
+    fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
+    fontWeight: style?.fontWeight || 'normal',
+  } as React.CSSProperties;
+  
+  const processedText = processRichText(characters);
+  
+  return (
+    <div
+      style={combinedStyles}
+      title={`${node.name} (${node.type})`}
+      data-figma-node-id={node.id}
+      data-figma-node-type={node.type}
+      data-figma-node-name={node.name}
+    >
+      {showDebug && devMode && (
+        <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+          <div className="font-bold">{node.name}</div>
+          <div>{node.type} - {baseStyles.width}×{baseStyles.height}</div>
+          <div className="text-xs">{characters.substring(0, 20)}{characters.length > 20 ? '...' : ''}</div>
+          <div>Font: {style?.fontFamily} {style?.fontSize}px</div>
+          <div>Align: {style?.textAlignHorizontal} → {textAlignment}</div>
+          {textAlignment !== getTextAlign(style?.textAlignHorizontal || 'LEFT') && (
+            <div className="text-yellow-300">
+              ⚠️ Override: {isMainHeading ? 'Heading' : isContentLabel ? 'Content' : 'Other'} 
+              (CENTER→LEFT)
+            </div>
+          )}
+        </div>
+      )}
+      <div 
+        style={{
+          display: 'inline',
+          lineHeight: 'inherit',
+        }}
+      >
+        {processedText}
+      </div>
+    </div>
+
 
   // Get proper text alignment with visual design override
   let textAlignment = getTextAlign(style?.textAlignHorizontal || 'LEFT');
