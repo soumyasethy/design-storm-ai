@@ -303,7 +303,8 @@ const FigmaText: React.FC<{
   baseStyles: React.CSSProperties; 
   showDebug: boolean;
   devMode: boolean;
-}> = ({ node, baseStyles, showDebug, devMode }) => {
+  scale: number;
+}> = ({ node, baseStyles, showDebug, devMode, scale }) => {
   // Add null check to prevent runtime errors
   if (!node || typeof node !== 'object') {
     console.warn('FigmaText: Invalid node provided', node);
@@ -318,8 +319,8 @@ const FigmaText: React.FC<{
     // Font family
     fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
     
-    // Font size
-    fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
+    // Font size with scale consideration
+    fontSize: style?.fontSize ? `${style.fontSize * scale}px` : 'inherit',
     
     // Font weight
     fontWeight: style?.fontWeight || 'normal',
@@ -327,12 +328,12 @@ const FigmaText: React.FC<{
     // Text alignment
     textAlign: style?.textAlignHorizontal ? getTextAlign(style.textAlignHorizontal) as any : 'left',
     
-    // Line height
-    lineHeight: style?.lineHeightPx ? `${style.lineHeightPx}px` : 
+    // Line height with scale consideration
+    lineHeight: style?.lineHeightPx ? `${style.lineHeightPx * scale}px` : 
                 style?.lineHeightPercent ? `${style.lineHeightPercent}%` : 'normal',
     
-    // Letter spacing
-    letterSpacing: style?.letterSpacing ? `${style.letterSpacing}px` : 'normal',
+    // Letter spacing with scale consideration
+    letterSpacing: style?.letterSpacing ? `${style.letterSpacing * scale}px` : 'normal',
     
     // Text decoration
     textDecoration: style?.textDecoration ? style.textDecoration.toLowerCase() : 'none',
@@ -342,7 +343,7 @@ const FigmaText: React.FC<{
            rgbaToCss(node.fills[0].color.r, node.fills[0].color.g, node.fills[0].color.b, node.fills[0].color.a) : 
            'inherit',
     
-    // Text wrapping and overflow with 5% buffer for font family differences
+    // Text wrapping and overflow
     whiteSpace: 'pre-wrap',
     overflowWrap: 'break-word',
     wordBreak: 'break-word',
@@ -353,6 +354,10 @@ const FigmaText: React.FC<{
     maxWidth: '100%',
     maxHeight: '100%',
     width: '100%',
+    
+    // Scale-aware text rendering
+    transform: scale !== 1 ? `scale(${scale})` : 'none',
+    transformOrigin: 'top left',
     
     // Debug styling
     ...(showDebug && {
@@ -482,9 +487,9 @@ const FigmaText: React.FC<{
         spanStyles.push(`font-family: ${fontFamily}`);
       }
       
-      // Font size
+      // Font size with scale consideration
       if (segment.style.fontSize) {
-        spanStyles.push(`font-size: ${segment.style.fontSize}px`);
+        spanStyles.push(`font-size: ${segment.style.fontSize * scale}px`);
       }
       
       // Font weight
@@ -497,14 +502,14 @@ const FigmaText: React.FC<{
         spanStyles.push(`font-style: ${segment.style.fontStyle.toLowerCase()}`);
       }
       
-      // Letter spacing
+      // Letter spacing with scale consideration
       if (segment.style.letterSpacing) {
-        spanStyles.push(`letter-spacing: ${segment.style.letterSpacing}px`);
+        spanStyles.push(`letter-spacing: ${segment.style.letterSpacing * scale}px`);
       }
       
-      // Line height
+      // Line height with scale consideration
       if (segment.style.lineHeightPx) {
-        spanStyles.push(`line-height: ${segment.style.lineHeightPx}px`);
+        spanStyles.push(`line-height: ${segment.style.lineHeightPx * scale}px`);
       } else if (segment.style.lineHeightPercent) {
         spanStyles.push(`line-height: ${segment.style.lineHeightPercent}%`);
       }
@@ -650,6 +655,8 @@ const FigmaText: React.FC<{
       finalAlign: textAlignment,
       isMissionStatement,
       fontSize: style?.fontSize,
+      scaledFontSize: style?.fontSize ? style.fontSize * scale : null,
+      scale: scale,
       isMainHeading,
       isContentLabel,
       hasCenterConstraint,
@@ -2294,7 +2301,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   );
 
     case 'TEXT':
-      return renderWithScaling(<FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />);
+      return renderWithScaling(<FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} scale={scale} />);
 
     case 'RECTANGLE':
     case 'ELLIPSE':
