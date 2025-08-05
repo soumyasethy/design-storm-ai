@@ -310,7 +310,9 @@ const FigmaText: React.FC<{
     return <div>Invalid text node</div>;
   }
   
-  const { characters, style } = node;
+  const characters = node.characters?.replace(/\u2028/g, '\n') || '';
+  const style = node.style;
+  
   
   if (!characters) return null;
   
