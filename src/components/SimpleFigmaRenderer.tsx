@@ -377,9 +377,11 @@ const FigmaText: React.FC<{
     if (devMode) {
       console.log('🔍 Rich Text Processing:', {
         text,
-        characterStyleOverrides,
-        styleOverrideTable,
-        nodeId: node.id
+        characterStyleOverrides: characterStyleOverrides?.slice(0, 20), // Show first 20
+        styleOverrideTable: Object.keys(styleOverrideTable),
+        nodeId: node.id,
+        nodeName: node.name,
+        hasUnderlines: Object.values(styleOverrideTable).some((style: any) => style.textDecoration === 'UNDERLINE')
       });
     }
 
@@ -508,9 +510,17 @@ const FigmaText: React.FC<{
         }
       }
       
-      // Text decoration
+      // Text decoration with enhanced support
       if (segment.style.textDecoration) {
-        spanStyles.push(`text-decoration: ${segment.style.textDecoration.toLowerCase()}`);
+        const decoration = segment.style.textDecoration.toLowerCase();
+        if (decoration === 'underline') {
+          spanStyles.push('text-decoration: underline');
+          spanStyles.push('text-decoration-color: currentColor');
+          spanStyles.push('text-decoration-thickness: 1px');
+          spanStyles.push('text-underline-offset: 2px');
+        } else {
+          spanStyles.push(`text-decoration: ${decoration}`);
+        }
       }
       
       // Text case
@@ -558,19 +568,31 @@ const FigmaText: React.FC<{
   const hasCenterConstraint = node.constraints?.horizontal === 'CENTER';
   const hasCenterAlign = style?.textAlignHorizontal === 'CENTER';
   
+  // Only override center alignment for specific cases, not for mission statements
+  const isMissionStatement = node.name && node.name.toLowerCase().includes('mission') || 
+                           node.name && node.name.toLowerCase().includes('vision') ||
+                           node.name && node.name.toLowerCase().includes('build india');
+  
   // Override CENTER alignment for headings and content labels to match visual design
-  if ((isMainHeading || isContentLabel) && (hasCenterConstraint || hasCenterAlign)) {
+  // But preserve center alignment for mission statements and important text
+  if ((isMainHeading || isContentLabel) && (hasCenterConstraint || hasCenterAlign) && !isMissionStatement) {
     textAlignment = 'left';
   }
   
-  // Debug logging for width values
+  // Debug logging for text alignment and width values
   if (devMode) {
-    console.log('🔍 Width Debug:', {
+    console.log('🔍 Text Alignment Debug:', {
       nodeId: node.id,
       nodeName: node.name,
+      originalAlign: style?.textAlignHorizontal,
+      finalAlign: textAlignment,
+      isMissionStatement,
+      fontSize: style?.fontSize,
+      isMainHeading,
+      isContentLabel,
+      hasCenterConstraint,
+      hasCenterAlign,
       baseStylesWidth: baseStyles.width,
-      baseStylesWidthType: typeof baseStyles.width,
-      textStylesWidth: textStyles.width,
       absoluteBoundingBox: node.absoluteBoundingBox
     });
   }
