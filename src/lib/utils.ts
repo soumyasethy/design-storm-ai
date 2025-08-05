@@ -119,6 +119,135 @@ export async function getImageUrls(fileKey: string, nodeIds: string[], token: st
 // ✅ STEP-BY-STEP — EXPORT IMAGE LOGIC FROM Figma API
 // 🔁 Step 1: Collect All Image Node IDs
 // Traverse the Figma JSON tree to find all nodes with fills[].type === 'IMAGE', and collect their id.
+export async function loadFigmaAssetsFromNodes({
+  figmaFileKey,
+  figmaToken,
+  rootNode,
+  onProgress,
+}: {
+  figmaFileKey: string;
+  figmaToken: string;
+  rootNode: any;
+  onProgress?: (total: number, loaded: number) => void;
+}): Promise<Record<string, string>> {
+  console.log('🚀 Starting Figma assets export process...');
+  console.log('📁 File Key:', figmaFileKey);
+  console.log('🔑 Token available:', !!figmaToken);
+  console.log('📄 Root Node:', rootNode?.name, rootNode?.type);
+  
+  // Step 1: Collect all asset node IDs (images, vectors, lines, rectangles)
+  const imageNodeIds: string[] = [];
+  const svgNodeIds: string[] = [];
+  
+  function findAssetNodes(node: any) {
+    // Find image nodes
+    if (node?.fills?.some((f: any) => f.type === "IMAGE")) {
+      imageNodeIds.push(node.id);
+      console.log(`🖼️ Found image node: ${node.id} (${node.name})`);
+    }
+    
+    // Find vector, line, and rectangle nodes for SVG export
+    if (node?.type === 'VECTOR' || node?.type === 'LINE' || 
+        (node?.type === 'RECTANGLE' && (node?.strokes?.length > 0 || node?.fills?.some((f: any) => f.type === 'SOLID')))) {
+      svgNodeIds.push(node.id);
+      console.log(`📐 Found SVG node: ${node.id} (${node.name}) - ${node.type}`);
+    }
+    
+    node.children?.forEach(findAssetNodes);
+  }
+  
+  findAssetNodes(rootNode);
+  
+  const totalAssets = imageNodeIds.length + svgNodeIds.length;
+  console.log(`📊 Found ${imageNodeIds.length} image nodes and ${svgNodeIds.length} SVG nodes:`, { images: imageNodeIds, svgs: svgNodeIds });
+  
+  // Update progress with total count
+  onProgress?.(totalAssets, 0);
+  
+  if (totalAssets === 0) {
+    console.log('ℹ️ No assets found in the design');
+    return {};
+  }
+  
+  const assetMap: Record<string, string> = {};
+  let loadedCount = 0;
+  
+  // Step 2: Export images as PNG
+  if (imageNodeIds.length > 0) {
+    try {
+      console.log(`🖼️ Exporting ${imageNodeIds.length} images as PNG...`);
+      const idsParam = encodeURIComponent(imageNodeIds.join(","));
+      const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${idsParam}&format=png&scale=2`;
+      
+      console.log(`🔗 Calling Figma API for images: ${url}`);
+      
+      const res = await fetch(url, {
+        headers: {
+          "X-Figma-Token": figmaToken,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Figma API error for images: ${res.status} ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      const imageMap = data.images ?? {};
+      
+      // Add images to asset map
+      Object.assign(assetMap, imageMap);
+      loadedCount += Object.keys(imageMap).length;
+      onProgress?.(totalAssets, loadedCount);
+      
+      console.log(`✅ Successfully loaded ${Object.keys(imageMap).length} images from Figma API`);
+    } catch (error) {
+      console.error('❌ Error loading Figma images:', error);
+      // Continue with SVG export even if images fail
+    }
+  }
+  
+  // Step 3: Export vectors, lines, and rectangles as SVG
+  if (svgNodeIds.length > 0) {
+    try {
+      console.log(`📐 Exporting ${svgNodeIds.length} vectors/lines/rectangles as SVG...`);
+      const idsParam = encodeURIComponent(svgNodeIds.join(","));
+      const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${idsParam}&format=svg&scale=2`;
+      
+      console.log(`🔗 Calling Figma API for SVGs: ${url}`);
+      
+      const res = await fetch(url, {
+        headers: {
+          "X-Figma-Token": figmaToken,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Figma API error for SVGs: ${res.status} ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      const svgMap = data.images ?? {};
+      
+      // Add SVGs to asset map
+      Object.assign(assetMap, svgMap);
+      loadedCount += Object.keys(svgMap).length;
+      onProgress?.(totalAssets, loadedCount);
+      
+      console.log(`✅ Successfully loaded ${Object.keys(svgMap).length} SVGs from Figma API`);
+    } catch (error) {
+      console.error('❌ Error loading Figma SVGs:', error);
+    }
+  }
+  
+  console.log(`🎉 Total assets loaded: ${Object.keys(assetMap).length}/${totalAssets}`);
+  console.log('📦 Asset map:', assetMap);
+  
+  return assetMap;
+}
+
+// Backward compatibility function
 export async function loadFigmaImagesFromNodes({
   figmaFileKey,
   figmaToken,
@@ -130,66 +259,8 @@ export async function loadFigmaImagesFromNodes({
   rootNode: any;
   onProgress?: (total: number, loaded: number) => void;
 }): Promise<Record<string, string>> {
-  console.log('🚀 Starting Figma image export process...');
-  console.log('📁 File Key:', figmaFileKey);
-  console.log('🔑 Token available:', !!figmaToken);
-  console.log('📄 Root Node:', rootNode?.name, rootNode?.type);
-  
-  // Step 1: Collect all image node IDs
-  const imageNodeIds: string[] = [];
-  
-  function findImageNodes(node: any) {
-    if (node?.fills?.some((f: any) => f.type === "IMAGE")) {
-      imageNodeIds.push(node.id);
-      console.log(`🖼️ Found image node: ${node.id} (${node.name})`);
-    }
-    node.children?.forEach(findImageNodes);
-  }
-  
-  findImageNodes(rootNode);
-  
-  console.log(`📊 Found ${imageNodeIds.length} image nodes:`, imageNodeIds);
-  
-  // Update progress with total count
-  onProgress?.(imageNodeIds.length, 0);
-  
-  if (imageNodeIds.length === 0) {
-    console.log('ℹ️ No image nodes found in the design');
-    return {};
-  }
-  
-  // Step 2: Call the /images endpoint
-  try {
-    const idsParam = encodeURIComponent(imageNodeIds.join(","));
-    const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${idsParam}&format=png&scale=2`;
-    
-    console.log(`🔗 Calling Figma API: ${url}`);
-    
-    const res = await fetch(url, {
-      headers: {
-        "X-Figma-Token": figmaToken,
-        "Content-Type": "application/json",
-      },
-    });
-    
-    if (!res.ok) {
-      throw new Error(`Figma API error: ${res.status} ${res.statusText}`);
-    }
-    
-    const data = await res.json();
-    const imageMap = data.images ?? {};
-    
-    // Update progress with loaded count
-    onProgress?.(imageNodeIds.length, Object.keys(imageMap).length);
-    
-    console.log(`✅ Successfully loaded ${Object.keys(imageMap).length} images from Figma API`);
-    console.log('📦 Image map:', imageMap);
-    
-    return imageMap;
-  } catch (error) {
-    console.error('❌ Error loading Figma images:', error);
-    throw error;
-  }
+  console.log('🔄 Using backward compatibility function - consider using loadFigmaAssetsFromNodes instead');
+  return loadFigmaAssetsFromNodes({ figmaFileKey, figmaToken, rootNode, onProgress });
 }
 
 // Enhanced image loading with better error handling
@@ -264,20 +335,28 @@ export async function loadFigmaImages(node: any, fileKey: string, token: string)
 
 // Enhanced file key extraction
 export function extractFileKeyFromUrl(url: string): string | null {
+  console.log('🔍 Extracting file key from URL:', url);
+  
   // Extract file key from Figma URL patterns
   const patterns = [
     /figma\.com\/file\/([a-zA-Z0-9]+)/,
     /figma\.com\/proto\/([a-zA-Z0-9]+)/,
-    /figma\.com\/embed\?embed_host=share&url=.*?file%2F([a-zA-Z0-9]+)/
+    /figma\.com\/embed\?embed_host=share&url=.*?file%2F([a-zA-Z0-9]+)/,
+    /api\.figma\.com\/v1\/images\/([a-zA-Z0-9]+)/,
+    /api\.figma\.com\/v1\/files\/([a-zA-Z0-9]+)/
   ];
   
-  for (const pattern of patterns) {
+  for (let i = 0; i < patterns.length; i++) {
+    const pattern = patterns[i];
     const match = url.match(pattern);
     if (match) {
-      return match[1];
+      const fileKey = match[1];
+      console.log(`✅ Extracted file key "${fileKey}" using pattern ${i + 1}`);
+      return fileKey;
     }
   }
   
+  console.log('❌ No file key found in URL');
   return null;
 }
 

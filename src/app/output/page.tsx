@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import SimpleFigmaRenderer from '@/components/SimpleFigmaRenderer';
 
-import { extractFileKeyFromUrl, loadFigmaImagesFromNodes } from '@/lib/utils';
+import { extractFileKeyFromUrl, loadFigmaAssetsFromNodes } from '@/lib/utils';
 import { isPluginExport, parsePluginData, figmaPlugin } from '@/lib/figma-plugin';
 
 interface FigmaData {
@@ -86,9 +86,9 @@ export default function OutputPage() {
   const [fileKey, setFileKey] = useState<string>('');
   const [figmaToken, setFigmaToken] = useState<string>('');
   const [figmaUrl, setFigmaUrl] = useState<string>('');
-  const [imageMap, setImageMap] = useState<Record<string, string>>({});
-  const [imageLoadingStatus, setImageLoadingStatus] = useState<string>('Not started');
-  const [imageLoadingProgress, setImageLoadingProgress] = useState<{
+  const [assetMap, setAssetMap] = useState<Record<string, string>>({});
+  const [assetLoadingStatus, setAssetLoadingStatus] = useState<string>('Not started');
+  const [assetLoadingProgress, setAssetLoadingProgress] = useState<{
     total: number;
     loaded: number;
     isLoading: boolean;
@@ -104,48 +104,48 @@ export default function OutputPage() {
   const [enableScaling, setEnableScaling] = useState<boolean>(true);
   const [maxScale, setMaxScale] = useState<number>(1.2);
 
-  // Function to load images from Figma API
-  const loadImagesFromFigmaAPI = async (rootNode: any) => {
-    console.log('🚀 loadImagesFromFigmaAPI called with:');
+  // Function to load assets (images and SVGs) from Figma API
+  const loadAssetsFromFigmaAPI = async (rootNode: any) => {
+    console.log('🚀 loadAssetsFromFigmaAPI called with:');
     console.log('  - fileKey:', fileKey);
     console.log('  - figmaToken:', figmaToken ? '***' : 'missing');
     console.log('  - rootNode:', rootNode?.name, rootNode?.id);
     
     if (!fileKey || !figmaToken) {
-      console.log('⚠️ Missing file key or token, skipping API image loading');
+      console.log('⚠️ Missing file key or token, skipping API asset loading');
       console.log('  - fileKey missing:', !fileKey);
       console.log('  - figmaToken missing:', !figmaToken);
       return;
     }
 
     try {
-      console.log('🚀 Loading images from Figma API...');
-      setImageLoadingStatus('Loading images from Figma API...');
-      setImageLoadingProgress({ total: 0, loaded: 0, isLoading: true });
+      console.log('🚀 Loading assets from Figma API...');
+      setAssetLoadingStatus('Loading assets from Figma API...');
+      setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: true });
       
-      const apiImageMap = await loadFigmaImagesFromNodes({
+      const apiAssetMap = await loadFigmaAssetsFromNodes({
         figmaFileKey: fileKey,
         figmaToken: figmaToken,
         rootNode: rootNode,
         onProgress: (total, loaded) => {
-          setImageLoadingProgress({ total, loaded, isLoading: true });
+          setAssetLoadingProgress({ total, loaded, isLoading: true });
         },
       });
       
-      if (Object.keys(apiImageMap).length > 0) {
-        setImageMap(apiImageMap);
-        setImageLoadingStatus(`✅ Loaded ${Object.keys(apiImageMap).length} images from Figma API`);
-        setImageLoadingProgress({ total: Object.keys(apiImageMap).length, loaded: Object.keys(apiImageMap).length, isLoading: false });
-        console.log('✅ Images loaded from Figma API:', apiImageMap);
+      if (Object.keys(apiAssetMap).length > 0) {
+        setAssetMap(apiAssetMap);
+        setAssetLoadingStatus(`✅ Loaded ${Object.keys(apiAssetMap).length} assets from Figma API`);
+        setAssetLoadingProgress({ total: Object.keys(apiAssetMap).length, loaded: Object.keys(apiAssetMap).length, isLoading: false });
+        console.log('✅ Assets loaded from Figma API:', apiAssetMap);
       } else {
-        setImageLoadingStatus('ℹ️ No images found in design');
-        setImageLoadingProgress({ total: 0, loaded: 0, isLoading: false });
-        console.log('ℹ️ No images found in design');
+        setAssetLoadingStatus('ℹ️ No assets found in design');
+        setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: false });
+        console.log('ℹ️ No assets found in design');
       }
     } catch (error) {
-      console.error('❌ Error loading images from Figma API:', error);
-      setImageLoadingStatus(`❌ Failed to load images: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setImageLoadingProgress({ total: 0, loaded: 0, isLoading: false });
+      console.error('❌ Error loading assets from Figma API:', error);
+      setAssetLoadingStatus(`❌ Failed to load assets: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: false });
     }
   };
   const [transformOrigin, setTransformOrigin] = useState<string>('center top');
@@ -160,13 +160,13 @@ export default function OutputPage() {
     console.log('📄 Frame Node ID:', frameNode?.id);
     
     if (fileKey && figmaToken && frameNode) {
-      console.log('✅ All conditions met, triggering image loading...');
+      console.log('✅ All conditions met, triggering asset loading...');
       console.log('📁 File Key:', fileKey);
       console.log('🔑 Token available:', !!figmaToken);
       console.log('📄 Frame Node:', frameNode.name);
       console.log('📄 Frame Node ID:', frameNode.id);
       
-      loadImagesFromFigmaAPI(frameNode);
+      loadAssetsFromFigmaAPI(frameNode);
     } else {
       console.log('❌ Missing conditions:');
       if (!fileKey) console.log('  - Missing fileKey');
@@ -179,8 +179,8 @@ export default function OutputPage() {
   const clearAllData = () => {
     setFigmaData(null);
     setFrameNode(null);
-    setImageMap({});
-    setImageLoadingStatus('Not started');
+    setAssetMap({});
+    setAssetLoadingStatus('Not started');
     setFileKey('');
     setFigmaToken('');
     setFigmaUrl('');
@@ -201,8 +201,8 @@ export default function OutputPage() {
   const clearDataWithoutReload = () => {
     setFigmaData(null);
     setFrameNode(null);
-    setImageMap({});
-    setImageLoadingStatus('Not started');
+    setAssetMap({});
+    setAssetLoadingStatus('Not started');
     setFileKey('');
     setFigmaToken('');
     setFigmaUrl('');
@@ -249,8 +249,8 @@ export default function OutputPage() {
             
             // Use plugin image data
             if (pluginData.imageMap && Object.keys(pluginData.imageMap).length > 0) {
-              setImageMap(pluginData.imageMap);
-              setImageLoadingStatus(`✅ Loaded ${Object.keys(pluginData.imageMap).length} images from plugin`);
+              setAssetMap(pluginData.imageMap);
+              setAssetLoadingStatus(`✅ Loaded ${Object.keys(pluginData.imageMap).length} assets from plugin`);
             }
             
             // Parse the data last to trigger re-render
@@ -271,8 +271,8 @@ export default function OutputPage() {
           
           // Use plugin image data if available
           if (jsonData.imageMap && Object.keys(jsonData.imageMap).length > 0) {
-            setImageMap(jsonData.imageMap);
-            setImageLoadingStatus(`✅ Loaded ${Object.keys(jsonData.imageMap).length} images from plugin`);
+                          setAssetMap(jsonData.imageMap);
+              setAssetLoadingStatus(`✅ Loaded ${Object.keys(jsonData.imageMap).length} assets from plugin`);
           }
           
           // Parse the data last to trigger re-render
@@ -301,12 +301,12 @@ export default function OutputPage() {
   // Test function to manually call Figma API
   const testFigmaAPI = async () => {
     if (!fileKey || !figmaToken) {
-      setImageLoadingStatus('❌ Cannot test API: Missing file key or token');
+      setAssetLoadingStatus('❌ Cannot test API: Missing file key or token');
       return;
     }
     
     try {
-      setImageLoadingStatus('Testing API...');
+      setAssetLoadingStatus('Testing API...');
       const url = `https://api.figma.com/v1/images/${fileKey}?ids=55446:11667&format=png&scale=2`;
       console.log('🧪 Testing API call to:', url);
       
@@ -322,22 +322,22 @@ export default function OutputPage() {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ Test API Error:', errorText);
-        setImageLoadingStatus(`API Error: ${response.status} ${response.statusText}`);
+        setAssetLoadingStatus(`API Error: ${response.status} ${response.statusText}`);
         return;
       }
       
       const data = await response.json();
       console.log('✅ Test API Response:', data);
-      setImageLoadingStatus(`API Test Success: ${JSON.stringify(data)}`);
+              setAssetLoadingStatus(`API Test Success: ${JSON.stringify(data)}`);
       
       // If API test succeeds, update the image map
       if (data.images && data.images['55446:11667']) {
-        setImageMap(data.images);
+        setAssetMap(data.images);
       }
       
     } catch (error) {
       console.error('❌ Test API Error:', error);
-      setImageLoadingStatus(`Test Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+              setAssetLoadingStatus(`Test Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -711,7 +711,7 @@ export default function OutputPage() {
     };
     
     setFrameNode(bannerNode);
-    setImageLoadingStatus('Added sample banner design with footer');
+          setAssetLoadingStatus('Added sample banner design with footer');
   };
 
   // Parse Figma JSON and extract frame node
@@ -803,8 +803,8 @@ export default function OutputPage() {
           const figmaData = JSON.parse(decodedData);
           
           // Clear any existing data to ensure fresh start
-          setImageMap({});
-          setImageLoadingStatus('Processing new data...');
+                setAssetMap({});
+      setAssetLoadingStatus('Processing new data...');
           
           let dataSource = '';
           
@@ -826,43 +826,43 @@ export default function OutputPage() {
           setFigmaData(figmaData);
           parseFigmaData(figmaData);
           
-                        // Extract file key from URL if available
-              const urlParam = searchParams.get('url');
-              if (urlParam) {
-                setFigmaUrl(urlParam);
-                const extractedFileKey = extractFileKeyFromUrl(urlParam);
-                if (extractedFileKey) {
-                  setFileKey(extractedFileKey);
-                }
-              }
-              
-              // Load token from localStorage if available
-              const storedToken = localStorage.getItem('figmaToken');
-              if (storedToken) {
-                setFigmaToken(storedToken);
-                console.log('✅ Loaded Figma token from localStorage');
-              }
-              
-              // Check if we need to extract file key from stored URL
-              const storedUrl = localStorage.getItem('figmaUrl');
-              if (storedUrl) {
-                setFigmaUrl(storedUrl);
-                const extractedFileKey = extractFileKeyFromUrl(storedUrl);
-                if (extractedFileKey) {
-                  setFileKey(extractedFileKey);
-                  console.log('✅ Extracted file key from stored URL:', extractedFileKey);
-                } else {
-                  console.log('❌ Could not extract file key from stored URL:', storedUrl);
-                }
-              } else {
-                console.log('❌ No stored Figma URL found');
-              }
+          // Extract file key from URL if available
+          const urlParam = searchParams.get('url');
+          if (urlParam) {
+            setFigmaUrl(urlParam);
+            const extractedFileKey = extractFileKeyFromUrl(urlParam);
+            if (extractedFileKey) {
+              setFileKey(extractedFileKey);
+            }
+          }
           
-          // Use plugin image data if available
+          // Load token from localStorage if available
+          const storedToken = localStorage.getItem('figmaToken');
+          if (storedToken) {
+            setFigmaToken(storedToken);
+            console.log('✅ Loaded Figma token from localStorage');
+          }
+          
+          // Check if we need to extract file key from stored URL
+          const storedUrl = localStorage.getItem('figmaUrl');
+          if (storedUrl) {
+            setFigmaUrl(storedUrl);
+            const extractedFileKey = extractFileKeyFromUrl(storedUrl);
+            if (extractedFileKey) {
+              setFileKey(extractedFileKey);
+              console.log('✅ Extracted file key from stored URL:', extractedFileKey);
+            } else {
+              console.log('❌ Could not extract file key from stored URL:', storedUrl);
+            }
+          } else {
+            console.log('❌ No stored Figma URL found');
+          }
+      
+          // Use plugin asset data if available
           if (figmaData.imageMap && Object.keys(figmaData.imageMap).length > 0) {
-            setImageMap(figmaData.imageMap);
-            setImageLoadingStatus(`✅ Loaded ${Object.keys(figmaData.imageMap).length} images from plugin`);
-            console.log('🚀 Using plugin image data:', Object.keys(figmaData.imageMap).length, 'images');
+            setAssetMap(figmaData.imageMap);
+            setAssetLoadingStatus(`✅ Loaded ${Object.keys(figmaData.imageMap).length} assets from plugin`);
+            console.log('🚀 Using plugin asset data:', Object.keys(figmaData.imageMap).length, 'assets');
           }
         } else {
           // No URL data, try to load from localStorage (from upload page)
@@ -872,8 +872,8 @@ export default function OutputPage() {
               const figmaData = JSON.parse(storedData);
               console.log('📁 Loading data from localStorage (upload page)');
               
-              setImageMap({});
-              setImageLoadingStatus('Processing uploaded data...');
+              setAssetMap({});
+              setAssetLoadingStatus('Processing uploaded data...');
               
               let dataSource = 'File Upload';
               
@@ -910,11 +910,11 @@ export default function OutputPage() {
                 console.log('❌ No stored Figma URL found');
               }
               
-              // Use plugin image data if available
+              // Use plugin asset data if available
               if (figmaData.imageMap && Object.keys(figmaData.imageMap).length > 0) {
-                setImageMap(figmaData.imageMap);
-                setImageLoadingStatus(`✅ Loaded ${Object.keys(figmaData.imageMap).length} images from plugin`);
-                console.log('🚀 Using plugin image data:', Object.keys(figmaData.imageMap).length, 'images');
+                setAssetMap(figmaData.imageMap);
+                setAssetLoadingStatus(`✅ Loaded ${Object.keys(figmaData.imageMap).length} assets from plugin`);
+                console.log('🚀 Using plugin asset data:', Object.keys(figmaData.imageMap).length, 'assets');
               }
             } catch (err) {
               console.error('❌ Error loading from localStorage:', err);
@@ -1049,9 +1049,9 @@ export default function OutputPage() {
                   🚀
                 </span>
               )}
-              {Object.keys(imageMap).length > 0 && (
+              {Object.keys(assetMap).length > 0 && (
                 <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">
-                  🖼️ {Object.keys(imageMap).length} images
+                  🎨 {Object.keys(assetMap).length} assets
                 </span>
               )}
             </div>
@@ -1167,31 +1167,31 @@ export default function OutputPage() {
         </div>
       </div>
       
-      {/* Minimal Image Loading Progress Bar - Below Header */}
-      {imageLoadingProgress.isLoading && (
+      {/* Minimal Asset Loading Progress Bar - Below Header */}
+      {assetLoadingProgress.isLoading && (
         <div className="bg-blue-50/80 border-b border-blue-200/50 shadow-sm">
           <div className="h-8 flex items-center justify-between px-4">
             <div className="flex items-center space-x-2">
               <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
               <span className="text-blue-800 text-xs font-medium">
-                {imageLoadingProgress.total > 0 
-                  ? `${imageLoadingProgress.loaded}/${imageLoadingProgress.total} images`
+                {assetLoadingProgress.total > 0 
+                  ? `${assetLoadingProgress.loaded}/${assetLoadingProgress.total} assets`
                   : 'Searching...'
                 }
               </span>
             </div>
-            {imageLoadingProgress.total > 0 && (
+            {assetLoadingProgress.total > 0 && (
               <div className="flex items-center space-x-2">
                 <div className="w-24 bg-blue-200/50 rounded-full h-1.5">
                   <div 
                     className="bg-blue-600 h-1.5 rounded-full transition-all duration-300 ease-out"
                     style={{ 
-                      width: `${Math.round((imageLoadingProgress.loaded / imageLoadingProgress.total) * 100)}%` 
+                      width: `${Math.round((assetLoadingProgress.loaded / assetLoadingProgress.total) * 100)}%` 
                     }}
                   ></div>
                 </div>
                 <span className="text-blue-600 text-xs font-medium">
-                  {Math.round((imageLoadingProgress.loaded / imageLoadingProgress.total) * 100)}%
+                  {Math.round((assetLoadingProgress.loaded / assetLoadingProgress.total) * 100)}%
                 </span>
               </div>
             )}
@@ -1309,13 +1309,13 @@ export default function OutputPage() {
                       </h4>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Images Found:</span>
-                          <span className="font-medium">{Object.keys(imageMap).length}</span>
+                          <span className="text-gray-600">Assets Found:</span>
+                          <span className="font-medium">{Object.keys(assetMap).length}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Image Status:</span>
-                          <span className={`font-medium ${imageLoadingStatus === 'Not started' ? 'text-yellow-600' : 'text-green-600'}`}>
-                            {imageLoadingStatus}
+                          <span className="text-gray-600">Asset Status:</span>
+                                                      <span className={`font-medium ${assetLoadingStatus === 'Not started' ? 'text-yellow-600' : 'text-green-600'}`}>
+                              {assetLoadingStatus}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -1350,16 +1350,16 @@ export default function OutputPage() {
                         </button>
                         <button
                           onClick={() => {
-                            console.log('🔍 Manual Load Images button clicked');
+                            console.log('🔍 Manual Load Assets button clicked');
                             console.log('Current state:');
                             console.log('  - fileKey:', fileKey);
                             console.log('  - figmaToken:', figmaToken ? '***' : 'missing');
                             console.log('  - frameNode:', frameNode?.name, frameNode?.id);
-                            console.log('  - imageMap:', imageMap);
+                            console.log('  - assetMap:', assetMap);
                             if (frameNode && fileKey && figmaToken) {
-                              loadImagesFromFigmaAPI(frameNode);
+                              loadAssetsFromFigmaAPI(frameNode);
                             } else {
-                              console.log('❌ Cannot load images - missing required data');
+                              console.log('❌ Cannot load assets - missing required data');
                             }
                           }}
                           disabled={!fileKey || !figmaToken}
@@ -1369,7 +1369,7 @@ export default function OutputPage() {
                               : 'bg-gray-400 text-gray-200 cursor-not-allowed'
                           }`}
                         >
-                          Load Images from API
+                          Load Assets from API
                         </button>
                         <button
                           onClick={() => setEnableScaling(!enableScaling)}
@@ -1417,14 +1417,14 @@ export default function OutputPage() {
                   </div>
                 </div>
                 
-                {/* Image URLs Section (if images exist) */}
-                {Object.keys(imageMap).length > 0 && (
+                {/* Asset URLs Section (if assets exist) */}
+                {Object.keys(assetMap).length > 0 && (
                   <div className="mt-6 bg-gray-50 p-4 rounded-lg">
                     <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
-                      <span className="mr-2">🔗</span>Image URLs ({Object.keys(imageMap).length})
+                      <span className="mr-2">🔗</span>Asset URLs ({Object.keys(assetMap).length})
                     </h4>
                     <div className="max-h-32 overflow-y-auto text-xs font-mono bg-white p-3 rounded border">
-                      {Object.entries(imageMap).map(([nodeId, url]) => (
+                      {Object.entries(assetMap).map(([nodeId, url]) => (
                         <div key={nodeId} className="mb-1">
                           <span className="text-blue-600">{nodeId}:</span> {url}
                         </div>
@@ -1458,7 +1458,7 @@ export default function OutputPage() {
               figmaToken={figmaToken}
               showDebug={showDebug}
               isRoot={true}
-              imageMap={imageMap}
+              imageMap={assetMap}
               devMode={devMode}
               enableScaling={enableScaling}
               maxScale={maxScale}
@@ -1483,7 +1483,7 @@ export default function OutputPage() {
                 {imageLoadingStatus}
               </div>
               <div className="mt-1">
-                Images: {Object.keys(imageMap).length}
+                                        Assets: {Object.keys(assetMap).length}
               </div>
               <div className="mt-1">
                 Renderer: {renderMode}

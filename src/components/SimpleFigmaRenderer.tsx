@@ -192,12 +192,13 @@ const FigmaImage: React.FC<{
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   
-  console.log(`🖼️ FigmaImage component:`, {
+  console.log(`🎨 FigmaAsset component:`, {
     nodeId: node.id,
     nodeName: node.name,
-    imageUrl: imageUrl,
-    hasImageUrl: !!imageUrl,
-    imageUrlType: typeof imageUrl
+    nodeType: node.type,
+    assetUrl: imageUrl,
+    hasAssetUrl: !!imageUrl,
+    assetUrlType: typeof imageUrl
   });
   
   // Add null check to prevent runtime errors
@@ -229,13 +230,13 @@ const FigmaImage: React.FC<{
   };
   
   const handleImageError = () => {
-    console.error(`❌ Image failed to load: ${imageUrl}`);
+    console.error(`❌ Asset failed to load: ${imageUrl}`);
     setImageError(true);
     setImageLoading(false);
   };
   
   const handleImageLoad = () => {
-    console.log(`✅ Image loaded successfully: ${node.name}`);
+    console.log(`✅ Asset loaded successfully: ${node.name} (${node.type})`);
     setImageLoading(false);
   };
   
@@ -1679,20 +1680,24 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     return <div>Invalid node</div>;
   }
 
-  // Load image if this node has image fills
+  // Load asset (image or SVG) if this node has image fills or is a vector/line/rectangle
   useEffect(() => {
-    if (node.fills && node.fills.some((fill: any) => fill.type === 'IMAGE') && node.id) {
-      console.log(`🖼️ Image node detected: ${node.name} (${node.id})`);
-      console.log(`📦 Current imageMap:`, imageMap);
+    const isImageNode = node.fills && node.fills.some((fill: any) => fill.type === 'IMAGE');
+    const isSvgNode = node.type === 'VECTOR' || node.type === 'LINE' || 
+                     (node.type === 'RECTANGLE' && (node.strokes?.length > 0 || node.fills?.some((fill: any) => fill.type === 'SOLID')));
+    
+    if ((isImageNode || isSvgNode) && node.id) {
+      console.log(`🎨 Asset node detected: ${node.name} (${node.id}) - ${node.type}`);
+      console.log(`📦 Current assetMap:`, imageMap);
       
-      const url = imageMap?.[node.id] || node.fills.find((fill: any) => fill.type === 'IMAGE')?.imageUrl;
-      console.log(`🔗 Image URL for ${node.id}:`, url);
+      const url = imageMap?.[node.id];
+      console.log(`🔗 Asset URL for ${node.id}:`, url);
       
       if (url && typeof url === 'string' && url.length > 0) {
-        console.log(`✅ Setting image URL for ${node.id}:`, url);
+        console.log(`✅ Setting asset URL for ${node.id}:`, url);
         setImageUrl(url);
       } else {
-        console.log(`❌ No valid image URL found for ${node.id}`);
+        console.log(`❌ No valid asset URL found for ${node.id}`);
         setImageUrl(null);
       }
     }
@@ -1743,15 +1748,20 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   // Enhanced rotation support for all component types (excluding images)
   let transformParts: string[] = [];
   
-  // Skip rotation for image nodes and groups containing images since they come pre-rotated from Figma
+  // Skip rotation for asset nodes (images, SVGs) and groups containing assets since they come pre-rotated from Figma
   const isImageNode = fills && fills.some((fill: any) => fill.type === 'IMAGE');
-  const hasImageChildren = children && children.some((child: any) => 
-    child.fills && child.fills.some((fill: any) => fill.type === 'IMAGE')
-  );
-  const shouldSkipRotation = isImageNode || (type === 'GROUP' && hasImageChildren);
+  const isSvgNode = type === 'VECTOR' || type === 'LINE' || 
+                   (type === 'RECTANGLE' && (strokes?.length > 0 || fills?.some((fill: any) => fill.type === 'SOLID')));
+  const hasAssetChildren = children && children.some((child: any) => {
+    const childHasImage = child.fills && child.fills.some((fill: any) => fill.type === 'IMAGE');
+    const childIsSvg = child.type === 'VECTOR' || child.type === 'LINE' || 
+                      (child.type === 'RECTANGLE' && (child.strokes?.length > 0 || child.fills?.some((fill: any) => fill.type === 'SOLID')));
+    return childHasImage || childIsSvg;
+  });
+  const shouldSkipRotation = isImageNode || isSvgNode || (type === 'GROUP' && hasAssetChildren);
   
   if (shouldSkipRotation && (node.rotation !== undefined || node.vectorRotation !== undefined)) {
-    console.log(`🖼️ Skipping rotation for ${type} node: ${node.name} (${node.id}) - contains images that come pre-rotated from Figma`);
+    console.log(`🎨 Skipping rotation for ${type} node: ${node.name} (${node.id}) - contains assets that come pre-rotated from Figma`);
   }
   
   // Handle vector-specific rotation with priority (only for non-image nodes)
@@ -2287,7 +2297,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     case 'RECTANGLE':
     case 'ELLIPSE':
     case 'VECTOR':
-      // Handle image fills
+    case 'LINE':
+      // Handle assets (images and SVGs) first
       if (imageUrl) {
         return renderWithScaling(
           <div
@@ -2301,7 +2312,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
                 <div className="font-bold">{name}</div>
                 <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
-                <div className="text-green-300">🖼️ Image loaded</div>
+                <div className="text-green-300">🎨 Asset loaded</div>
               </div>
             )}
             
@@ -2310,33 +2321,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
         );
       }
       
-      // Handle regular shapes
+      // Handle regular shapes (fallback to CSS rendering)
       return renderWithScaling(<FigmaShape node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />);
-
-    case 'LINE':
-    case 'VECTOR':
-      // Handle lines and vectors with proper stroke rendering
-      return renderWithScaling(
-        <div
-          style={positionStyles}
-          title={`${name} (${type})`}
-          data-figma-node-id={node.id}
-          data-figma-node-type={type}
-          data-figma-node-name={name}
-        >
-          {showDebug && devMode && (
-            <div className="absolute -top-8 left-0 bg-pink-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
-              <div className="font-bold">{name}</div>
-              <div>{type} - Vector Stroke</div>
-              <div className="text-pink-300">📐 {node.strokes?.[0]?.color ? `#${rgbToHex(node.strokes[0].color.r, node.strokes[0].color.g, node.strokes[0].color.b)}` : 'default'}</div>
-              {isIconElement(node) && <div className="text-yellow-300">🎯 Icon detected</div>}
-              {(node.strokes?.[0]?.dashPattern || node.dashPattern) && <div className="text-blue-300">〰️ Dashed line</div>}
-            </div>
-          )}
-          
-          {renderSimpleVectorStroke(node, positionStyles)}
-        </div>
-      );
 
     case 'INSTANCE':
     case 'COMPONENT':
