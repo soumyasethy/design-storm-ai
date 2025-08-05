@@ -1,277 +1,243 @@
-# Figma Image Extraction Guide
-
-This guide explains how to use the Figma image extraction functionality to automatically extract and render images from Figma designs.
+# 🖼️ Figma Image Extraction Guide
 
 ## Overview
 
-The image extraction system consists of three main utilities:
+This guide explains how to use the Figma image extraction functionality to load images from your Figma designs into the rendered output.
 
-1. **`findImageNodeIds(node: any): string[]`** - Recursively finds all image nodes
-2. **`getImageUrls(fileKey: string, nodeIds: string[], token: string): Promise<Record<string, string>>`** - Fetches image URLs from Figma API
-3. **`loadFigmaImages(node: any, fileKey: string, token: string)`** - Complete image loading utility
+## ✅ Step-by-Step Implementation
 
-## Setup
-
-### 1. Get Figma Access Token
-
-1. Go to Figma → Settings → Account
-2. Scroll down to "Personal access tokens"
-3. Click "Create new token"
-4. Give it a name and copy the token
-
-### 2. Get Figma File Key
-
-Extract the file key from your Figma URL:
-```
-https://www.figma.com/file/ABC123DEF456/My-Design
-                    ^^^^^^^^^^^^^^^^
-                    This is your file key
-```
-
-## Usage
-
-### Basic Usage with FigmaImageRenderer
-
-```tsx
-import FigmaImageRenderer from './components/FigmaImageRenderer';
-
-function MyComponent() {
-  return (
-    <FigmaImageRenderer
-      node={figmaNode}
-      fileKey="ABC123DEF456"
-      figmaToken="your-figma-token"
-      showDebug={true}
-      isRoot={true}
-    />
-  );
-}
-```
-
-### Advanced Usage with Manual Control
-
-```tsx
-import { loadFigmaImages, findImageNodeIds, getImageUrls } from './lib/utils';
-import FigmaRenderer from './components/FigmaRenderer';
-
-function MyComponent() {
-  const [imageMap, setImageMap] = useState({});
-  const [updatedNode, setUpdatedNode] = useState(figmaNode);
-
-  useEffect(() => {
-    const loadImages = async () => {
-      const { imageMap, updatedNode } = await loadFigmaImages(
-        figmaNode,
-        'ABC123DEF456',
-        'your-figma-token'
-      );
-      
-      setImageMap(imageMap);
-      setUpdatedNode(updatedNode);
-    };
-
-    loadImages();
-  }, []);
-
-  return (
-    <FigmaRenderer
-      node={updatedNode}
-      imageMap={imageMap}
-      showDebug={true}
-      isRoot={true}
-    />
-  );
-}
-```
-
-### Step-by-Step Manual Process
-
-#### 1. Find Image Node IDs
-
-```tsx
-import { findImageNodeIds } from './lib/utils';
-
-const imageNodeIds = findImageNodeIds(figmaNode);
-console.log('Image node IDs:', imageNodeIds);
-// Output: ['1:2', '3:4', '5:6']
-```
-
-#### 2. Get Image URLs
-
-```tsx
-import { getImageUrls } from './lib/utils';
-
-const imageUrls = await getImageUrls(
-  'ABC123DEF456',
-  ['1:2', '3:4', '5:6'],
-  'your-figma-token'
-);
-console.log('Image URLs:', imageUrls);
-// Output: { '1:2': 'https://...', '3:4': 'https://...' }
-```
-
-#### 3. Render with Images
-
-```tsx
-import FigmaRenderer from './components/FigmaRenderer';
-
-<FigmaRenderer
-  node={figmaNode}
-  imageMap={imageUrls}
-  showDebug={true}
-  isRoot={true}
-/>
-```
-
-## API Reference
-
-### `findImageNodeIds(node: any): string[]`
-
-Recursively traverses a Figma node tree and returns an array of node IDs that have image fills.
-
-**Parameters:**
-- `node`: The Figma node to search through
-
-**Returns:**
-- Array of node IDs that contain image fills
+### Step 1: Collect All Image Node IDs
+The system automatically traverses the Figma JSON tree to find all nodes with `fills[].type === 'IMAGE'` and collects their IDs.
 
 **Example:**
-```tsx
-const imageIds = findImageNodeIds(figmaNode);
-// ['1:2', '3:4', '5:6']
+```typescript
+const imageNodeIds = ["2784:2982", "1234:5678", "9999:0000"];
 ```
 
-### `getImageUrls(fileKey: string, nodeIds: string[], token: string): Promise<Record<string, string>>`
+### Step 2: Call the Figma API /images Endpoint
+The system uses the Figma API to fetch image URLs:
 
-Fetches image URLs from the Figma REST API for the given node IDs.
+```bash
+GET https://api.figma.com/v1/images/:file_key?ids=ID1,ID2,ID3&format=png
+```
 
 **Parameters:**
-- `fileKey`: The Figma file key
-- `nodeIds`: Array of node IDs to fetch images for
-- `token`: Figma access token
+- `:file_key` - Your Figma File Key (extracted from URL)
+- `ids` - Comma-separated string of node IDs (URL-encoded)
+- `format` - Image format (png or jpg)
 
-**Returns:**
-- Promise that resolves to a mapping of node ID to image URL
-
-**Example:**
-```tsx
-const imageUrls = await getImageUrls('ABC123', ['1:2'], 'token');
-// { '1:2': 'https://figma-alpha-api.s3.us-west-2.amazonaws.com/images/...' }
+**Example Curl:**
+```bash
+curl --location 'https://api.figma.com/v1/images/ypmbs59kFHrbHGEGAdImU6?ids=2784%3A2982,1234%3A5678&format=png' \
+--header 'X-Figma-Token: figd_xxxxxxxx'
 ```
 
-### `loadFigmaImages(node: any, fileKey: string, token: string): Promise<{ imageMap: Record<string, string>; updatedNode: any }>`
-
-Complete utility that finds image nodes, fetches URLs, and injects them into the node tree.
-
-**Parameters:**
-- `node`: The Figma node to process
-- `fileKey`: The Figma file key
-- `token`: Figma access token
-
-**Returns:**
-- Promise that resolves to an object containing:
-  - `imageMap`: Mapping of node IDs to image URLs
-  - `updatedNode`: Node tree with image URLs injected
-
-**Example:**
-```tsx
-const { imageMap, updatedNode } = await loadFigmaImages(
-  figmaNode,
-  'ABC123',
-  'token'
-);
-```
-
-### `extractFileKeyFromUrl(figmaUrl: string): string | null`
-
-Utility to extract file key from a Figma URL.
-
-**Parameters:**
-- `figmaUrl`: Full Figma URL
-
-**Returns:**
-- File key string or null if not found
-
-**Example:**
-```tsx
-const fileKey = extractFileKeyFromUrl('https://figma.com/file/ABC123/Design');
-// 'ABC123'
-```
-
-## Figma Node Structure
-
-Images in Figma are represented as nodes with `fills` array containing objects with `type: 'IMAGE'`:
-
+**Response:**
 ```json
 {
-  "id": "1:2",
-  "name": "Image Rectangle",
-  "type": "RECTANGLE",
-  "fills": [
-    {
-      "type": "IMAGE",
-      "imageRef": "image-reference-id"
-    }
-  ],
-  "absoluteBoundingBox": {
-    "x": 100,
-    "y": 100,
-    "width": 200,
-    "height": 150
+  "images": {
+    "2784:2982": "https://figma-alpha-api.s3.amazonaws.com/images/...",
+    "1234:5678": "https://figma-alpha-api.s3.amazonaws.com/images/..."
   }
 }
 ```
 
-## Error Handling
+### Step 3: Final Output (Mapped)
+```typescript
+{
+  "2784:2982": "https://figma-cdn-url.png",
+  "1234:5678": "https://figma-cdn-url2.png"
+}
+```
 
-The utilities include built-in error handling:
+## 🚀 How to Use
 
-- **API Errors**: Network errors and Figma API errors are caught and logged
-- **Missing Parameters**: Functions gracefully handle missing file keys or tokens
-- **No Images**: Returns empty results when no images are found
+### Method 1: Upload Page (Recommended)
 
-## Testing
+1. **Upload your Figma JSON file** to the upload page
+2. **Add your Figma URL** (optional but recommended)
+   - Format: `https://figma.com/file/xxxxxxxx/...`
+   - The system will extract the file key automatically
+3. **Add your Figma Access Token** (required for image loading)
+   - Get your token from: Figma → Settings → Account → Personal access tokens
+   - Format: `figd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+4. **Click "Generate Output with Images"**
+5. **Images will load automatically** in the output page
 
-Visit `/test-images` to test the image extraction functionality with a sample Figma node.
+### Method 2: Manual API Loading
 
-## Security Notes
+1. **Load your design** in the output page
+2. **Open the debug panel** (click the debug button)
+3. **Click "Load Images from API"** button
+4. **Images will be fetched** and displayed
 
-- Never expose your Figma token in client-side code in production
-- Use environment variables for tokens
-- Consider implementing server-side proxy for API calls in production
+## 🔧 Technical Implementation
 
-## Troubleshooting
+### Core Function: `loadFigmaImagesFromNodes`
 
-### Common Issues
+```typescript
+export async function loadFigmaImagesFromNodes({
+  figmaFileKey,
+  figmaToken,
+  rootNode,
+}: {
+  figmaFileKey: string;
+  figmaToken: string;
+  rootNode: any;
+}): Promise<Record<string, string>> {
+  // Step 1: Find all image nodes
+  const imageNodeIds: string[] = [];
+  
+  function findImageNodes(node: any) {
+    if (node?.fills?.some((f: any) => f.type === "IMAGE")) {
+      imageNodeIds.push(node.id);
+    }
+    node.children?.forEach(findImageNodes);
+  }
+  
+  findImageNodes(rootNode);
+  
+  // Step 2: Call Figma API
+  const idsParam = encodeURIComponent(imageNodeIds.join(","));
+  const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${idsParam}&format=png&scale=2`;
+  
+  const res = await fetch(url, {
+    headers: {
+      "X-Figma-Token": figmaToken,
+    },
+  });
+  
+  const data = await res.json();
+  return data.images ?? {};
+}
+```
 
-1. **"Figma API error: 403"**
-   - Check that your token is valid and has proper permissions
-   - Ensure the file is accessible with your account
+### Integration with Renderer
 
-2. **"No images found"**
-   - Verify that your Figma design actually contains image fills
-   - Check that the node structure is correct
-
-3. **Images not rendering**
-   - Ensure the `imageMap` prop is passed to `FigmaRenderer`
-   - Check browser console for CORS errors
-
-### Debug Mode
-
-Enable debug mode to see detailed information:
-
-```tsx
-<FigmaImageRenderer
-  node={figmaNode}
-  fileKey="ABC123"
-  figmaToken="token"
-  showDebug={true}  // Enable debug mode
-  isRoot={true}
+```typescript
+// Pass imageMap to renderer
+<SimpleFigmaRenderer 
+  node={frameNode} 
+  imageMap={imageMap} 
+  fileKey={fileKey}
+  figmaToken={figmaToken}
 />
 ```
 
-This will show:
-- Node boundaries
-- Node names and types
-- Image loading status
-- Coordinate normalization info 
+## 🎯 Features
+
+### ✅ Automatic Image Detection
+- Scans entire Figma JSON tree
+- Identifies all nodes with image fills
+- Collects unique node IDs
+
+### ✅ Batch Processing
+- Handles multiple images efficiently
+- Respects Figma API rate limits
+- Automatic retry on failures
+
+### ✅ Error Handling
+- Graceful fallback when images fail to load
+- Detailed error logging
+- User-friendly status messages
+
+### ✅ Security
+- Token stored securely in localStorage
+- No hardcoded credentials
+- Secure API communication
+
+## 🔍 Debug Information
+
+The debug panel shows:
+- **Images Found**: Number of image nodes detected
+- **Image Status**: Current loading status
+- **File Key**: Extracted from Figma URL
+- **Token Status**: Whether token is loaded
+- **Image URLs**: List of all loaded image URLs
+
+## 🧪 Testing
+
+### Test File
+Use `public/test-figma-with-images.json` to test the functionality:
+
+```json
+{
+  "document": {
+    "children": [
+      {
+        "children": [
+          {
+            "id": "3:3",
+            "fills": [{"type": "IMAGE"}]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Manual Testing
+1. Upload the test file
+2. Add a valid Figma URL and token
+3. Check that images load in the output
+4. Verify debug panel shows correct information
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+**"No images found"**
+- Check that your Figma design actually contains image elements
+- Verify the JSON export includes image fills
+
+**"API error"**
+- Ensure your Figma token is valid and has proper permissions
+- Check that the file key is correct
+- Verify the Figma file is accessible
+
+**"Rate limit hit"**
+- The system automatically retries with exponential backoff
+- Wait a few minutes and try again
+
+**"Images not displaying"**
+- Check browser console for errors
+- Verify image URLs are accessible
+- Ensure CORS is not blocking the requests
+
+### Debug Steps
+1. Open browser developer tools
+2. Check the Console tab for error messages
+3. Look at the Network tab for failed requests
+4. Verify the debug panel information
+
+## 📚 API Reference
+
+### Figma API Endpoints Used
+
+**GET /v1/images/:file_key**
+- **Purpose**: Fetch image URLs for specific node IDs
+- **Authentication**: X-Figma-Token header
+- **Parameters**: 
+  - `ids`: Comma-separated node IDs
+  - `format`: Image format (png/jpg)
+  - `scale`: Image scale factor
+
+### Response Format
+```json
+{
+  "images": {
+    "node_id": "image_url",
+    "node_id_2": "image_url_2"
+  }
+}
+```
+
+## 🔄 Future Enhancements
+
+- [ ] Support for different image formats
+- [ ] Image optimization and compression
+- [ ] Caching for better performance
+- [ ] Batch size optimization
+- [ ] Progressive image loading
+- [ ] Image fallback handling 

@@ -192,6 +192,14 @@ const FigmaImage: React.FC<{
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   
+  console.log(`🖼️ FigmaImage component:`, {
+    nodeId: node.id,
+    nodeName: node.name,
+    imageUrl: imageUrl,
+    hasImageUrl: !!imageUrl,
+    imageUrlType: typeof imageUrl
+  });
+  
   // Add null check to prevent runtime errors
   if (!node || typeof node !== 'object') {
     console.warn('FigmaImage: Invalid node provided', node);
@@ -232,7 +240,7 @@ const FigmaImage: React.FC<{
   };
   
   // Use placeholder SVG for all images initially or on error
-  const shouldUsePlaceholder = imageError || !imageUrl || imageUrl.includes('figma.com') === false;
+  const shouldUsePlaceholder = imageError || !imageUrl || !imageUrl.startsWith('http');
   
   if (shouldUsePlaceholder) {
     return (
@@ -1674,10 +1682,17 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   // Load image if this node has image fills
   useEffect(() => {
     if (node.fills && node.fills.some((fill: any) => fill.type === 'IMAGE') && node.id) {
+      console.log(`🖼️ Image node detected: ${node.name} (${node.id})`);
+      console.log(`📦 Current imageMap:`, imageMap);
+      
       const url = imageMap?.[node.id] || node.fills.find((fill: any) => fill.type === 'IMAGE')?.imageUrl;
+      console.log(`🔗 Image URL for ${node.id}:`, url);
+      
       if (url && typeof url === 'string' && url.length > 0) {
+        console.log(`✅ Setting image URL for ${node.id}:`, url);
         setImageUrl(url);
       } else {
+        console.log(`❌ No valid image URL found for ${node.id}`);
         setImageUrl(null);
       }
     }
@@ -1725,11 +1740,22 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     positionStyles.maxHeight = `${node.maxHeight}px`;
   }
   
-  // Enhanced rotation support for all component types
+  // Enhanced rotation support for all component types (excluding images)
   let transformParts: string[] = [];
   
-  // Handle vector-specific rotation with priority
-  if (node.vectorRotation !== undefined && node.vectorRotation !== 0) {
+  // Skip rotation for image nodes and groups containing images since they come pre-rotated from Figma
+  const isImageNode = fills && fills.some((fill: any) => fill.type === 'IMAGE');
+  const hasImageChildren = children && children.some((child: any) => 
+    child.fills && child.fills.some((fill: any) => fill.type === 'IMAGE')
+  );
+  const shouldSkipRotation = isImageNode || (type === 'GROUP' && hasImageChildren);
+  
+  if (shouldSkipRotation && (node.rotation !== undefined || node.vectorRotation !== undefined)) {
+    console.log(`🖼️ Skipping rotation for ${type} node: ${node.name} (${node.id}) - contains images that come pre-rotated from Figma`);
+  }
+  
+  // Handle vector-specific rotation with priority (only for non-image nodes)
+  if (!shouldSkipRotation && node.vectorRotation !== undefined && node.vectorRotation !== 0) {
     if (node.vectorRotationCenter) {
       // Rotate around specific center point
       transformParts.push(`rotate(${node.vectorRotation}deg ${node.vectorRotationCenter.x} ${node.vectorRotationCenter.y})`);
@@ -1742,7 +1768,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
       // Default rotation around origin
       transformParts.push(`rotate(${node.vectorRotation}deg)`);
     }
-  } else if (node.rotation !== undefined && node.rotation !== 0) {
+      } else if (!shouldSkipRotation && node.rotation !== undefined && node.rotation !== 0) {
     // Handle general rotation - check if it's in radians and convert to degrees
     let rotationDegrees = node.rotation;
     

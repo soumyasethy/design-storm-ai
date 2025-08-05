@@ -116,6 +116,82 @@ export async function getImageUrls(fileKey: string, nodeIds: string[], token: st
   }
 }
 
+// ✅ STEP-BY-STEP — EXPORT IMAGE LOGIC FROM Figma API
+// 🔁 Step 1: Collect All Image Node IDs
+// Traverse the Figma JSON tree to find all nodes with fills[].type === 'IMAGE', and collect their id.
+export async function loadFigmaImagesFromNodes({
+  figmaFileKey,
+  figmaToken,
+  rootNode,
+  onProgress,
+}: {
+  figmaFileKey: string;
+  figmaToken: string;
+  rootNode: any;
+  onProgress?: (total: number, loaded: number) => void;
+}): Promise<Record<string, string>> {
+  console.log('🚀 Starting Figma image export process...');
+  console.log('📁 File Key:', figmaFileKey);
+  console.log('🔑 Token available:', !!figmaToken);
+  console.log('📄 Root Node:', rootNode?.name, rootNode?.type);
+  
+  // Step 1: Collect all image node IDs
+  const imageNodeIds: string[] = [];
+  
+  function findImageNodes(node: any) {
+    if (node?.fills?.some((f: any) => f.type === "IMAGE")) {
+      imageNodeIds.push(node.id);
+      console.log(`🖼️ Found image node: ${node.id} (${node.name})`);
+    }
+    node.children?.forEach(findImageNodes);
+  }
+  
+  findImageNodes(rootNode);
+  
+  console.log(`📊 Found ${imageNodeIds.length} image nodes:`, imageNodeIds);
+  
+  // Update progress with total count
+  onProgress?.(imageNodeIds.length, 0);
+  
+  if (imageNodeIds.length === 0) {
+    console.log('ℹ️ No image nodes found in the design');
+    return {};
+  }
+  
+  // Step 2: Call the /images endpoint
+  try {
+    const idsParam = encodeURIComponent(imageNodeIds.join(","));
+    const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${idsParam}&format=png&scale=2`;
+    
+    console.log(`🔗 Calling Figma API: ${url}`);
+    
+    const res = await fetch(url, {
+      headers: {
+        "X-Figma-Token": figmaToken,
+        "Content-Type": "application/json",
+      },
+    });
+    
+    if (!res.ok) {
+      throw new Error(`Figma API error: ${res.status} ${res.statusText}`);
+    }
+    
+    const data = await res.json();
+    const imageMap = data.images ?? {};
+    
+    // Update progress with loaded count
+    onProgress?.(imageNodeIds.length, Object.keys(imageMap).length);
+    
+    console.log(`✅ Successfully loaded ${Object.keys(imageMap).length} images from Figma API`);
+    console.log('📦 Image map:', imageMap);
+    
+    return imageMap;
+  } catch (error) {
+    console.error('❌ Error loading Figma images:', error);
+    throw error;
+  }
+}
+
 // Enhanced image loading with better error handling
 export async function loadFigmaImages(node: any, fileKey: string, token: string): Promise<{ imageMap: Record<string, string>; updatedNode: any }> {
   try {

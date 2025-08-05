@@ -53,6 +53,7 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'preview' | 'json' | 'layout'>('layout');
   const [figmaUrl, setFigmaUrl] = useState<string>('');
+  const [figmaToken, setFigmaToken] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const parseFigmaJSON = useCallback((jsonString: string) => {
@@ -144,10 +145,35 @@ export default function UploadPage() {
   }, [parseFigmaJSON]);
 
   const handleGenerateOutput = useCallback(() => {
-    if (!figmaData) return;
+    console.log('🚀 handleGenerateOutput called with:');
+    console.log('  - figmaData:', !!figmaData);
+    console.log('  - figmaUrl:', figmaUrl);
+    console.log('  - figmaToken:', !!figmaToken);
+    
+    if (!figmaData) {
+      console.log('❌ No figmaData, returning early');
+      return;
+    }
     
     // Store data in localStorage for the output page
     localStorage.setItem('figmaData', JSON.stringify(figmaData));
+    console.log('✅ Stored figmaData in localStorage');
+    
+    // Store token in localStorage for the output page
+    if (figmaToken) {
+      localStorage.setItem('figmaToken', figmaToken);
+      console.log('✅ Stored figmaToken in localStorage');
+    } else {
+      console.log('❌ No figmaToken to store');
+    }
+    
+    // Store Figma URL in localStorage for the output page
+    if (figmaUrl) {
+      localStorage.setItem('figmaUrl', figmaUrl);
+      console.log('✅ Stored Figma URL in localStorage:', figmaUrl);
+    } else {
+      console.log('❌ No Figma URL to store');
+    }
     
     // Create URL parameters
     const params = new URLSearchParams();
@@ -157,7 +183,7 @@ export default function UploadPage() {
     
     // Navigate to output page
     router.push(`/output?${params.toString()}`);
-  }, [figmaData, figmaUrl, router]);
+  }, [figmaData, figmaUrl, figmaToken, router]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -464,12 +490,33 @@ export default function UploadPage() {
                 <input
                   type="url"
                   value={figmaUrl}
-                  onChange={(e) => setFigmaUrl(e.target.value)}
+                  onChange={(e) => {
+                    console.log('🔗 Figma URL input changed:', e.target.value);
+                    setFigmaUrl(e.target.value);
+                  }}
                   placeholder="https://figma.com/file/..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Add your Figma file URL to enable image loading in the output
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Figma Access Token (optional - for image loading)
+                </label>
+                <input
+                  type="password"
+                  value={figmaToken}
+                  onChange={(e) => {
+                    console.log('🔑 Figma token input changed:', e.target.value ? '***' : '');
+                    setFigmaToken(e.target.value);
+                  }}
+                  placeholder="figd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Get your token from Figma → Settings → Account → Personal access tokens
                 </p>
               </div>
               <button
