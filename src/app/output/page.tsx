@@ -99,7 +99,7 @@ export default function OutputPage() {
   const [overflowHidden, setOverflowHidden] = useState<boolean>(true);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState<number>(0);
-  const [devMode, setDevMode] = useState<boolean>(false);
+  const [devMode, setDevMode] = useState<boolean>(true);
   const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
   const [enableScaling, setEnableScaling] = useState<boolean>(true);
   const [maxScale, setMaxScale] = useState<number>(1.2);

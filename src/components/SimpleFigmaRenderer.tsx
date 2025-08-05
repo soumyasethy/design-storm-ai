@@ -382,11 +382,17 @@ const FigmaText: React.FC<{
         styleOverrideDetails: Object.entries(styleOverrideTable).map(([key, style]: [string, any]) => ({
           key,
           textDecoration: style.textDecoration,
-          hasUnderline: style.textDecoration === 'UNDERLINE'
+          hasUnderline: style.textDecoration === 'UNDERLINE',
+          textDecorationLine: style.textDecorationLine,
+          hasUnderlineLine: style.textDecorationLine === 'UNDERLINE'
         })),
         nodeId: node.id,
         nodeName: node.name,
-        hasUnderlines: Object.values(styleOverrideTable).some((style: any) => style.textDecoration === 'UNDERLINE')
+        hasUnderlines: Object.values(styleOverrideTable).some((style: any) => 
+          style.textDecoration === 'UNDERLINE' || style.textDecorationLine === 'UNDERLINE'
+        ),
+        totalCharacters: text.length,
+        overrideCount: characterStyleOverrides?.length || 0
       });
     }
 
@@ -450,7 +456,11 @@ const FigmaText: React.FC<{
         fillColor: s.style?.fills?.[0]?.color,
         styleKey: s.style ? Object.keys(s.style).filter(k => k !== 'fills') : [],
         textDecoration: s.style?.textDecoration,
-        hasUnderline: s.style?.textDecoration === 'UNDERLINE'
+        textDecorationLine: s.style?.textDecorationLine,
+        hasUnderline: s.style?.textDecoration === 'UNDERLINE',
+        hasUnderlineLine: s.style?.textDecorationLine === 'UNDERLINE',
+        fontSize: s.style?.fontSize,
+        fontWeight: s.style?.fontWeight
       })));
     }
 
@@ -531,7 +541,8 @@ const FigmaText: React.FC<{
             console.log('🎯 Applied Underline:', {
               text: segment.text,
               decoration: decoration,
-              spanStyles: spanStyles
+              spanStyles: spanStyles,
+              segmentStyle: segment.style
             });
           }
         } else {
@@ -552,7 +563,8 @@ const FigmaText: React.FC<{
             console.log('🎯 Applied Underline (Fallback):', {
               text: segment.text,
               decoration: decoration,
-              spanStyles: spanStyles
+              spanStyles: spanStyles,
+              segmentStyle: segment.style
             });
           }
         }
