@@ -659,7 +659,7 @@ const FigmaText: React.FC<{
           display: 'inline',
           lineHeight: 'inherit',
         }}
-            >
+      >
         {processedText}
       </div>
     </div>
