@@ -14,6 +14,7 @@ import {
   getLineStyles 
 } from '@/lib/utils';
 import { useFigmaScale } from '../lib/useFigmaScale';
+import { DynamicText } from './DynamicText';
 
 // Utility function for RGB to Hex conversion
 const rgbToHex = (r: number, g: number, b: number): string => {
@@ -313,50 +314,192 @@ const FigmaText: React.FC<{
   const characters = node.characters?.replace(/\u2028/g, '\n') || '';
   const style = node.style;
   
-  
   if (!characters) return null;
-  
-  const textStyles: React.CSSProperties = {
-    // Font family
-    fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
-    
-    // Font size
-    fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
-    
-    // Font weight
-    fontWeight: style?.fontWeight || 'normal',
-    
-    // Text alignment
-    textAlign: style?.textAlignHorizontal ? getTextAlign(style.textAlignHorizontal) as any : 'left',
-    
-    // Line height
-    lineHeight: style?.lineHeightPx ? `${style.lineHeightPx}px` : 
-                style?.lineHeightPercent ? `${style.lineHeightPercent}%` : 'normal',
-    
-    // Letter spacing
-    letterSpacing: style?.letterSpacing ? `${style.letterSpacing}px` : 'normal',
-    
-    // Text decoration
-    textDecoration: style?.textDecoration ? style.textDecoration.toLowerCase() : 'none',
-    
-    // Text color from fills
-    color: node.fills?.[0]?.type === 'SOLID' && node.fills[0].color ? 
-           rgbaToCss(node.fills[0].color.r, node.fills[0].color.g, node.fills[0].color.b, node.fills[0].color.a) : 
-           'inherit',
-    
-    // Text wrapping and overflow
-    whiteSpace: 'pre-wrap',
-    overflowWrap: 'break-word',
-    wordBreak: 'break-word',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    
-    // Debug styling
-    ...(showDebug && {
-      border: '1px solid #3b82f6',
-      backgroundColor: 'rgba(59, 130, 246, 0.1)',
-    }),
+
+  // Use the new DynamicText component for font loading
+  const textStyle = {
+    fontFamily: style?.fontFamily,
+    fontSize: style?.fontSize,
+    fontWeight: style?.fontWeight,
+    lineHeightPx: style?.lineHeightPx,
+    lineHeightPercent: style?.lineHeightPercent,
+    letterSpacing: style?.letterSpacing,
+    textAlignHorizontal: style?.textAlignHorizontal,
+    textAlignVertical: style?.textAlignVertical,
+    textDecoration: style?.textDecoration,
+    textCase: style?.textCase
   };
+
+  // Handle rich text with character style overrides
+  if (node.characterStyleOverrides && node.styleOverrideTable && node.characterStyleOverrides.length > 0) {
+    // For rich text, we'll use the existing processRichText function
+    // but wrap it in DynamicText for font loading
+    const processRichText = (text: string): React.ReactNode => {
+      // If no character style overrides, return plain text
+      if (!node.characterStyleOverrides || !node.styleOverrideTable || node.characterStyleOverrides.length === 0) {
+        return text;
+      }
+
+      const { characterStyleOverrides, styleOverrideTable } = node;
+      const characters = text.split('');
+      
+      // Debug logging
+      if (devMode) {
+        console.log('🔍 Rich Text Processing:', {
+          text,
+          characters: characters.length,
+          characterStyleOverrides: characterStyleOverrides?.slice(0, 20), // Show first 20
+          styleOverrideTable: Object.keys(styleOverrideTable),
+          styleOverrideDetails: Object.entries(styleOverrideTable).map(([key, style]: [string, any]) => ({
+            key,
+            textDecoration: style.textDecoration,
+            textDecorationLine: style.textDecorationLine,
+            hasUnderline: style.textDecoration === 'UNDERLINE' || style.textDecorationLine === 'UNDERLINE',
+            fontSize: style.fontSize,
+            fontWeight: style.fontWeight,
+            fills: style.fills
+          })),
+          nodeId: node.id,
+          nodeName: node.name,
+          hasUnderlines: Object.values(styleOverrideTable).some((style: any) => 
+            style.textDecoration === 'UNDERLINE' || style.textDecorationLine === 'UNDERLINE'
+          )
+        });
+      }
+
+      // Process each character individually and create JSX spans
+      const jsxElements = characters.map((char, index) => {
+        // Handle line breaks
+        if (char === '\n') {
+          return <br key={`br-${index}`} />;
+        }
+
+        // Get character style override
+        const styleOverrideIndex = characterStyleOverrides[index];
+        const characterStyle = styleOverrideIndex && styleOverrideTable[styleOverrideIndex] 
+          ? styleOverrideTable[styleOverrideIndex] 
+          : node.style;
+
+        // Build inline styles for this character
+        const inlineStyles: React.CSSProperties = {
+          fontFamily: characterStyle.fontFamily ? getFontFamilyWithFallback(characterStyle.fontFamily) : undefined,
+          fontSize: characterStyle.fontSize ? `${characterStyle.fontSize}px` : undefined,
+          fontWeight: characterStyle.fontWeight || undefined,
+          fontStyle: characterStyle.fontStyle || undefined,
+          letterSpacing: characterStyle.letterSpacing ? `${characterStyle.letterSpacing}px` : undefined,
+          lineHeight: characterStyle.lineHeightPx ? `${characterStyle.lineHeightPx}px` : 
+                     characterStyle.lineHeightPercent ? `${characterStyle.lineHeightPercent}%` : undefined,
+        };
+
+        // Handle color with fallback
+        if (characterStyle.fills && characterStyle.fills[0] && characterStyle.fills[0].color) {
+          inlineStyles.color = rgbaToCss(
+            characterStyle.fills[0].color.r, 
+            characterStyle.fills[0].color.g, 
+            characterStyle.fills[0].color.b, 
+            characterStyle.fills[0].color.a
+          );
+        } else if (node.fills && node.fills[0] && node.fills[0].color) {
+          inlineStyles.color = rgbaToCss(
+            node.fills[0].color.r, 
+            node.fills[0].color.g, 
+            node.fills[0].color.b, 
+            node.fills[0].color.a
+          );
+        }
+
+        // Handle text decoration (underline)
+        if (characterStyle.textDecoration === 'UNDERLINE' || characterStyle.textDecorationLine === 'UNDERLINE') {
+          inlineStyles.textDecoration = 'underline';
+          inlineStyles.textDecorationColor = 'currentColor';
+          inlineStyles.textDecorationThickness = '1px';
+          inlineStyles.textUnderlineOffset = '2px';
+          
+          if (devMode) {
+            console.log('🎯 Applied Underline:', {
+              char,
+              index,
+              styleOverrideIndex,
+              segmentStyle: characterStyle.textDecoration || characterStyle.textDecorationLine
+            });
+          }
+        }
+
+        // Handle text case
+        if (characterStyle.textCase) {
+          switch (characterStyle.textCase) {
+            case 'UPPER':
+              inlineStyles.textTransform = 'uppercase';
+              break;
+            case 'LOWER':
+              inlineStyles.textTransform = 'lowercase';
+              break;
+            case 'TITLE':
+              inlineStyles.textTransform = 'capitalize';
+              break;
+          }
+        }
+
+        // Only create span if there are styles to apply
+        if (Object.keys(inlineStyles).length > 0) {
+          return (
+            <span key={`char-${index}`} style={inlineStyles}>
+              {char}
+            </span>
+          );
+        }
+
+        return char;
+      });
+
+      return jsxElements;
+    };
+
+    // For rich text, render with DynamicText but use the processed content
+    return (
+      <div
+        title={`${node.name} (TEXT)`}
+        data-figma-node-id={node.id}
+        data-figma-node-type="TEXT"
+        data-figma-node-name={node.name}
+        style={{
+          ...baseStyles,
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'flex-start',
+          gap: '4px',
+          // Debug styling
+          ...(showDebug && {
+            border: '1px solid #3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          }),
+        }}
+      >
+        <div style={{ display: 'inline' }}>
+          {processRichText(characters)}
+        </div>
+      </div>
+    );
+  }
+
+  // For simple text, use DynamicText component
+  return (
+    <DynamicText
+      text={characters}
+      style={textStyle}
+      showLoadingState={false}
+      onFontLoad={(fontFamily) => {
+        if (devMode) {
+          console.log(`✅ Font loaded for text "${node.name}": ${fontFamily}`);
+        }
+      }}
+      onFontError={(fontFamily, error) => {
+        console.error(`❌ Font loading failed for text "${node.name}": ${fontFamily} - ${error}`);
+      }}
+    />
+  );
+  
+
   
   // Enhanced rich text processing with character style overrides
   const processRichText = (text: string): React.ReactNode => {
