@@ -159,8 +159,18 @@ export async function loadFigmaAssetsFromNodes({
     if ((node?.type === 'VECTOR' || node?.type === 'LINE' || 
         (node?.type === 'RECTANGLE' && (node?.strokes?.length > 0 || node?.fills?.some((f: any) => f.type === 'SOLID')))) && 
         !isPartOfMaskGroup(node)) {
-      svgNodeIds.push(node.id);
-      console.log(`📐 Found SVG node: ${node.id} (${node.name}) - ${node.type}`);
+      
+      // Check if the node has valid dimensions for export
+      const hasValidDimensions = hasValidBoundingBox(node);
+      
+      if (hasValidDimensions) {
+        svgNodeIds.push(node.id);
+        console.log(`📐 Found SVG node: ${node.id} (${node.name}) - ${node.type}`);
+      } else {
+        console.log(`⚠️ Skipping SVG node with invalid dimensions: ${node.id} (${node.name}) - ${node.type}`);
+        console.log(`   BoundingBox: ${JSON.stringify(node.absoluteBoundingBox)}`);
+        console.log(`   RenderBounds: ${JSON.stringify(node.absoluteRenderBounds)}`);
+      }
     }
     
     node.children?.forEach(findAssetNodes);
@@ -189,6 +199,29 @@ export async function loadFigmaAssetsFromNodes({
       // Move up to parent (this is a simplified check - in real implementation you'd need parent references)
       current = current.parent;
     }
+    return false;
+  }
+  
+  // Helper function to check if a node has valid dimensions for export
+  function hasValidBoundingBox(node: any): boolean {
+    const bbox = node.absoluteBoundingBox;
+    const renderBounds = node.absoluteRenderBounds;
+    
+    // Check if bounding box has valid dimensions
+    if (bbox && bbox.width > 0 && bbox.height > 0) {
+      return true;
+    }
+    
+    // Fallback to render bounds if bounding box is invalid
+    if (renderBounds && renderBounds.width > 0 && renderBounds.height > 0) {
+      console.log(`🔄 Using render bounds for ${node.id} (${node.name}):`, {
+        bbox: bbox,
+        renderBounds: renderBounds
+      });
+      return true;
+    }
+    
+    // If both are invalid, skip this node
     return false;
   }
   
