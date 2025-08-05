@@ -326,9 +326,29 @@ const FigmaText: React.FC<{
     }
   }, [style?.fontFamily, style?.fontWeight]);
 
+  // Debug font family for emoji support
+  const fontFamilyWithEmoji = style?.fontFamily ? createReactFontFamily(style.fontFamily) : 'inherit';
+  
+  // Force emoji fonts for text containing emojis
+  const hasEmojis = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(characters);
+  const finalFontFamily = hasEmojis ? 
+    `${fontFamilyWithEmoji}, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", "Symbola", "Twemoji Mozilla", "EmojiOne Mozilla", "Noto Emoji", "JoyPixels", "OpenSans Emoji", "Emoji"` : 
+    fontFamilyWithEmoji;
+  
+  if (devMode && characters.includes('🏀')) {
+    console.log('🏀 Emoji Debug:', {
+      originalFont: style?.fontFamily,
+      fontFamilyWithEmoji,
+      finalFontFamily,
+      hasEmojis,
+      characters,
+      nodeName: node.name
+    });
+  }
+
   const textStyles: React.CSSProperties = {
     // Font family with emoji support
-    fontFamily: style?.fontFamily ? createReactFontFamily(style.fontFamily) : 'inherit',
+    fontFamily: finalFontFamily,
     
     // Font size
     fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
@@ -440,7 +460,18 @@ const FigmaText: React.FC<{
       
       // Font family with emoji support
       if (characterStyle?.fontFamily) {
-        inlineStyles.fontFamily = createReactFontFamily(characterStyle.fontFamily);
+        const charFontFamily = createReactFontFamily(characterStyle.fontFamily);
+        // Force emoji fonts for emoji characters
+        const isEmoji = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(char);
+        inlineStyles.fontFamily = isEmoji ? 
+          `${charFontFamily}, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", "Symbola", "Twemoji Mozilla", "EmojiOne Mozilla", "Noto Emoji", "JoyPixels", "OpenSans Emoji", "Emoji"` : 
+          charFontFamily;
+      } else {
+        // Fallback: check if this character is an emoji and needs emoji fonts
+        const isEmoji = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(char);
+        if (isEmoji) {
+          inlineStyles.fontFamily = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", "Symbola", "Twemoji Mozilla", "EmojiOne Mozilla", "Noto Emoji", "JoyPixels", "OpenSans Emoji", "Emoji"';
+        }
       }
       
       // Font size
