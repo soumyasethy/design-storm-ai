@@ -96,6 +96,9 @@ export default function OutputPage() {
   const [dataVersion, setDataVersion] = useState<number>(0);
   const [devMode, setDevMode] = useState<boolean>(false);
   const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
+  const [enableScaling, setEnableScaling] = useState<boolean>(true);
+  const [maxScale, setMaxScale] = useState<number>(1.2);
+  const [transformOrigin, setTransformOrigin] = useState<string>('center top');
 
   // Function to clear all data and reset state
   const clearAllData = () => {
@@ -882,6 +885,18 @@ export default function OutputPage() {
               </p>
             </div>
           </div>
+          <div className="pt-4 border-t border-gray-200">
+            <p className="text-sm text-gray-600 mb-3">Test the scaling functionality:</p>
+            <button 
+              onClick={addSampleBanner}
+              className="w-full bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
+            >
+              🎯 Load Sample Banner (Test Scaling)
+            </button>
+            <p className="text-xs text-gray-500 mt-2">
+              This will load a sample 1200px wide banner to test the universal scaling system.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -997,6 +1012,18 @@ export default function OutputPage() {
               {showLayoutDebug ? 'Hide' : 'Show'} Layout
             </button>
             
+            {/* Scaling Toggle */}
+            <button
+              onClick={() => setEnableScaling(!enableScaling)}
+              className={`px-2 py-1 text-xs rounded transition-colors font-medium ${
+                enableScaling 
+                  ? 'bg-blue-100 hover:bg-blue-200 text-blue-800' 
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              }`}
+            >
+              {enableScaling ? '📏' : '📐'} Scale
+            </button>
+            
             {/* Clear Data */}
             <button
               onClick={clearAllData}
@@ -1093,6 +1120,24 @@ export default function OutputPage() {
                           </span>
                         </div>
                         <div className="flex justify-between">
+                          <span className="text-gray-600">Scaling:</span>
+                          <span className={`font-medium ${enableScaling ? 'text-blue-600' : 'text-gray-600'}`}>
+                            {enableScaling ? 'On' : 'Off'}
+                          </span>
+                        </div>
+                        {enableScaling && (
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Max Scale:</span>
+                              <span className="font-medium">{maxScale}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Transform Origin:</span>
+                              <span className="font-medium">{transformOrigin}</span>
+                            </div>
+                          </>
+                        )}
+                        <div className="flex justify-between">
                           <span className="text-gray-600">Overflow:</span>
                           <span className={`font-medium ${overflowHidden ? 'text-orange-600' : 'text-purple-600'}`}>
                             {overflowHidden ? 'Hidden' : 'Visible'}
@@ -1149,6 +1194,32 @@ export default function OutputPage() {
                         >
                           Test API Connection
                         </button>
+                        <button
+                          onClick={() => setEnableScaling(!enableScaling)}
+                          className={`w-full px-3 py-2 text-xs rounded-md transition-colors font-medium ${
+                            enableScaling 
+                              ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                              : 'bg-gray-600 hover:bg-gray-700 text-white'
+                          }`}
+                        >
+                          {enableScaling ? 'Disable' : 'Enable'} Scaling
+                        </button>
+                        {enableScaling && (
+                          <>
+                            <button
+                              onClick={() => setMaxScale(Math.max(0.5, maxScale - 0.1))}
+                              className="w-full px-3 py-2 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded-md transition-colors font-medium"
+                            >
+                              Scale -
+                            </button>
+                            <button
+                              onClick={() => setMaxScale(Math.min(3.0, maxScale + 0.1))}
+                              className="w-full px-3 py-2 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded-md transition-colors font-medium"
+                            >
+                              Scale +
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={() => {
                             console.log('Current frame node:', frameNode);
@@ -1212,6 +1283,9 @@ export default function OutputPage() {
               isRoot={true}
               imageMap={imageMap}
               devMode={devMode}
+              enableScaling={enableScaling}
+              maxScale={maxScale}
+              transformOrigin={transformOrigin}
             />
           )}
           

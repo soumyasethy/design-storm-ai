@@ -13,6 +13,7 @@ import {
   isNodeVisible, 
   getLineStyles 
 } from '@/lib/utils';
+import { useFigmaScale } from '../lib/useFigmaScale';
 
 // Utility function for RGB to Hex conversion
 const rgbToHex = (r: number, g: number, b: number): string => {
@@ -175,6 +176,9 @@ interface SimpleFigmaRendererProps {
   fileKey?: string;
   figmaToken?: string;
   devMode?: boolean;
+  enableScaling?: boolean;
+  maxScale?: number;
+  transformOrigin?: string;
 }
 
 // Enhanced image rendering with footer icon support
@@ -1650,9 +1654,16 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   parentMaskType = 'ALPHA',
   fileKey,
   figmaToken,
-  devMode = false
+  devMode = false,
+  enableScaling = false,
+  maxScale = 2,
+  transformOrigin = 'center center'
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+
+  // Calculate design width for scaling
+  const designWidth = node?.absoluteBoundingBox?.width ?? 1440; // fallback
+  const scale = useFigmaScale(designWidth, maxScale);
 
   // Add null check to prevent runtime errors
   if (!node || typeof node !== 'object') {
@@ -1910,11 +1921,75 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     }
   }
 
+  // Scaling wrapper function
+  const renderWithScaling = (content: React.ReactElement) => {
+    const shouldApplyScaling = enableScaling && isRoot;
+
+    if (isRoot && devMode) {
+      console.log('🎯 Scaling Wrapper Debug:', {
+        shouldApplyScaling,
+        enableScaling,
+        isRoot,
+        scale,
+        designWidth,
+        transformOrigin,
+        nodeType: type
+      });
+    }
+
+    return shouldApplyScaling ? (
+      <div
+        style={{
+          width: '100vw',
+          minHeight: '100vh',
+          overflow: 'auto',
+          position: 'relative',
+          // Add visual indicator for scaling
+          ...(devMode && {
+            border: '2px solid #ff6b6b',
+            backgroundColor: 'rgba(255, 107, 107, 0.1)',
+          })
+        }}
+      >
+        <div
+          style={{
+            width: `${designWidth}px`,
+            minHeight: `${absoluteBoundingBox?.height || 800}px`,
+            transform: `scale(${scale})`,
+            transformOrigin: 'top center',
+            margin: '0 auto',
+            // Ensure the scaled content maintains its original dimensions
+            flexShrink: 0,
+          }}
+        >
+          {devMode && (
+            <div style={{
+              position: 'absolute',
+              top: '-30px',
+              left: '0',
+              background: '#ff6b6b',
+              color: 'white',
+              padding: '4px 8px',
+              fontSize: '12px',
+              borderRadius: '4px',
+              zIndex: 1000
+            }}>
+              🎯 SCALED: {scale.toFixed(2)}x (Design: {designWidth}px)
+            </div>
+          )}
+          {content}
+        </div>
+        {/* Add spacer to ensure scrolling works properly */}
+        <div style={{ height: `${(absoluteBoundingBox?.height || 800) * scale}px` }} />
+      </div>
+    ) : content;
+  };
+
   // Render based on node type
   switch (type) {
     case 'CANVAS':
     case 'PAGE':
-      return (
+      return renderWithScaling(
         <div 
           className="relative"
           style={{
@@ -1944,6 +2019,9 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               fileKey={fileKey}
               figmaToken={figmaToken}
               devMode={devMode}
+              enableScaling={enableScaling}
+              maxScale={maxScale}
+              transformOrigin={transformOrigin}
             />
           ))}
         </div>
@@ -1975,7 +2053,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
         }
       }
       
-      return (
+      return renderWithScaling(
         <div
           className="relative"
           style={frameStyles}
@@ -1984,21 +2062,21 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
           data-figma-node-type={type}
           data-figma-node-name={name}
         >
-                                    {showDebug && devMode && (
-                <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
-                  <div className="font-bold">{name}</div>
-                  <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
-                  {node.isMask && <div className="text-yellow-300">🔒 Mask</div>}
-                  {isMaskGroupNode(node) && <div className="text-purple-300">🎭 Mask Group ({getMaskGroupMode(node)})</div>}
-                  {node.isGroup && <div className="text-green-300">👥 Group</div>}
-                  {node.layoutMode && <div className="text-purple-300">📐 {node.layoutMode}</div>}
-                  {node.primaryAxisAlignItems && <div className="text-indigo-300">↔️ {node.primaryAxisAlignItems}</div>}
-                  {node.counterAxisAlignItems && <div className="text-indigo-300">↕️ {node.counterAxisAlignItems}</div>}
-                  {node.itemSpacing && <div className="text-cyan-300">📏 {node.itemSpacing}px</div>}
-                  {(node.backgroundColor || (node.fills && node.fills.some((fill: any) => fill.type === 'SOLID'))) && 
-                    <div className="text-orange-300">🎨 Background color</div>}
-        </div>
-              )}
+          {showDebug && devMode && (
+            <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
+              <div className="font-bold">{name}</div>
+              <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
+              {node.isMask && <div className="text-yellow-300">🔒 Mask</div>}
+              {isMaskGroupNode(node) && <div className="text-purple-300">🎭 Mask Group ({getMaskGroupMode(node)})</div>}
+              {node.isGroup && <div className="text-green-300">👥 Group</div>}
+              {node.layoutMode && <div className="text-purple-300">📐 {node.layoutMode}</div>}
+              {node.primaryAxisAlignItems && <div className="text-indigo-300">↔️ {node.primaryAxisAlignItems}</div>}
+              {node.counterAxisAlignItems && <div className="text-indigo-300">↕️ {node.counterAxisAlignItems}</div>}
+              {node.itemSpacing && <div className="text-cyan-300">📏 {node.itemSpacing}px</div>}
+              {(node.backgroundColor || (node.fills && node.fills.some((fill: any) => fill.type === 'SOLID'))) && 
+                <div className="text-orange-300">🎨 Background color</div>}
+            </div>
+          )}
           
           {/* Handle mask group children with enhanced image + rectangle + ellipse support */}
           {isMaskGroupNode(node) ? (
@@ -2168,6 +2246,9 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 fileKey={fileKey}
                 figmaToken={figmaToken}
                 devMode={devMode}
+                enableScaling={enableScaling}
+                maxScale={maxScale}
+                transformOrigin={transformOrigin}
               />
             ))
       )}
@@ -2175,14 +2256,14 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   );
 
     case 'TEXT':
-      return <FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />;
+      return renderWithScaling(<FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />);
 
     case 'RECTANGLE':
     case 'ELLIPSE':
     case 'VECTOR':
       // Handle image fills
       if (imageUrl) {
-    return (
+        return renderWithScaling(
           <div
             style={positionStyles}
             title={`${name} (${type})`}
@@ -2195,62 +2276,21 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 <div className="font-bold">{name}</div>
                 <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
                 <div className="text-green-300">🖼️ Image loaded</div>
-        </div>
-            )}
-            
-            <FigmaImage node={node} imageUrl={imageUrl} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />
-      </div>
-    );
-  }
-
-      // Handle nodes that should be images but don't have imageUrl (show placeholder)
-      if (node.fills?.some((fill: any) => fill.type === 'IMAGE') || 
-          node.name?.toLowerCase().includes('image') ||
-          node.name?.toLowerCase().includes('photo') ||
-          node.name?.toLowerCase().includes('picture') ||
-          node.name?.toLowerCase().includes('img')) {
-  return (
-    <div 
-            style={positionStyles}
-            title={`${name} (${type})`}
-      data-figma-node-id={node.id}
-            data-figma-node-type={type}
-            data-figma-node-name={name}
-          >
-            {showDebug && devMode && (
-              <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 whitespace-nowrap shadow-lg">
-                <div className="font-bold">{name}</div>
-                <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
-                <div className="text-yellow-300">🖼️ Placeholder</div>
               </div>
             )}
             
-            <div 
-              style={{
-                width: '100%',
-                height: '100%',
-                backgroundImage: 'url(/placeholder.svg)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-                borderRadius: positionStyles.borderRadius,
-                // Apply Figma's default styling as if it were a real image
-                ...getFillStyles(node.fills || [], node.id, imageMap),
-                ...getEnhancedStrokeStyles(node),
-                ...getEnhancedEffectStyles(node),
-              }}
-            />
+            <FigmaImage node={node} imageUrl={imageUrl} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />
           </div>
         );
       }
       
       // Handle regular shapes
-      return <FigmaShape node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />;
+      return renderWithScaling(<FigmaShape node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />);
 
     case 'LINE':
     case 'VECTOR':
       // Handle lines and vectors with proper stroke rendering
-    return (
+      return renderWithScaling(
         <div
           style={positionStyles}
           title={`${name} (${type})`}
@@ -2269,16 +2309,16 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
           )}
           
           {renderSimpleVectorStroke(node, positionStyles)}
-      </div>
-    );
+        </div>
+      );
 
     case 'INSTANCE':
     case 'COMPONENT':
-  return (
-    <div 
+      return renderWithScaling(
+        <div 
           style={positionStyles}
           title={`${name} (${type})`}
-      data-figma-node-id={node.id}
+          data-figma-node-id={node.id}
           data-figma-node-type={type}
           data-figma-node-name={name}
         >
@@ -2300,6 +2340,9 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
               fileKey={fileKey}
               figmaToken={figmaToken}
               devMode={devMode}
+              enableScaling={enableScaling}
+              maxScale={maxScale}
+              transformOrigin={transformOrigin}
             />
           ))}
         </div>
@@ -2308,7 +2351,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     default:
       // Handle any other node types
       if (absoluteBoundingBox) {
-        return (
+        return renderWithScaling(
           <div
             style={positionStyles}
             title={`${name} (${type})`}
@@ -2321,8 +2364,8 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 <div className="font-bold">{name}</div>
                 <div>{type} - {positionStyles.width}×{positionStyles.height}</div>
                 <div className="text-gray-300">❓ Unknown type</div>
-        </div>
-      )}
+              </div>
+            )}
             
             {children?.map((child: any, index: number) => (
               <SimpleFigmaRenderer
@@ -2334,10 +2377,13 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 fileKey={fileKey}
                 figmaToken={figmaToken}
                 devMode={devMode}
+                enableScaling={enableScaling}
+                maxScale={maxScale}
+                transformOrigin={transformOrigin}
               />
             ))}
-    </div>
-  );
+          </div>
+        );
       }
       
       // Handle nodes without bounding box but with children
@@ -2354,6 +2400,9 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 fileKey={fileKey}
                 figmaToken={figmaToken}
                 devMode={devMode}
+                enableScaling={enableScaling}
+                maxScale={maxScale}
+                transformOrigin={transformOrigin}
               />
             ))}
           </>
