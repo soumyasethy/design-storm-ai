@@ -793,8 +793,6 @@ export default function OutputPage() {
     const loadFigmaData = async () => {
       try {
         setLoading(true);
-        console.log('🔄 Starting to load Figma data...');
-        console.log('🔍 Search params:', Object.fromEntries(searchParams.entries()));
         
         // First try to load from URL parameters
         const dataParam = searchParams.get('data');
@@ -868,9 +866,7 @@ export default function OutputPage() {
           }
         } else {
           // No URL data, try to load from localStorage (from upload page)
-          console.log('📁 No URL data, checking localStorage...');
           const storedData = localStorage.getItem('figmaData');
-          console.log('📁 Stored data exists:', !!storedData);
           if (storedData) {
             try {
               const figmaData = JSON.parse(storedData);
@@ -969,24 +965,9 @@ export default function OutputPage() {
           <p className="text-gray-600 mb-4">{error}</p>
           <button 
             onClick={() => window.history.back()} 
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors mr-2"
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
           >
             Go Back
-          </button>
-          <button 
-            onClick={async () => {
-              try {
-                const response = await fetch('/figma-home.json');
-                const data = await response.json();
-                localStorage.setItem('figmaData', JSON.stringify(data));
-                window.location.reload();
-              } catch (err) {
-                console.error('Error loading sample data:', err);
-              }
-            }}
-            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-          >
-            Load Sample Data
           </button>
         </div>
       </div>
@@ -995,17 +976,6 @@ export default function OutputPage() {
 
   // No data state - show upload interface
   if (!figmaData || !frameNode) {
-    console.log('📤 No Figma data found, showing upload interface');
-    console.log('🔍 Current state:', {
-      figmaData: !!figmaData,
-      frameNode: !!frameNode,
-      localStorage: {
-        figmaData: !!localStorage.getItem('figmaData'),
-        figmaToken: !!localStorage.getItem('figmaToken'),
-        figmaUrl: localStorage.getItem('figmaUrl')
-      }
-    });
-    
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-4xl mx-auto px-4 py-8">
@@ -1035,32 +1005,15 @@ export default function OutputPage() {
             </div>
           </div>
           <div className="pt-4 border-t border-gray-200">
-            <p className="text-sm text-gray-600 mb-3">Test with sample data:</p>
-            <div className="space-y-2">
-              <button 
-                onClick={async () => {
-                  try {
-                    const response = await fetch('/figma-home.json');
-                    const data = await response.json();
-                    localStorage.setItem('figmaData', JSON.stringify(data));
-                    window.location.reload();
-                  } catch (err) {
-                    console.error('Error loading sample data:', err);
-                  }
-                }}
-                className="w-full bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
-              >
-              📄 Load Sample Figma Data
-              </button>
-              <button 
-                onClick={addSampleBanner}
-                className="w-full bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
-              >
-                🎯 Load Sample Banner (Test Scaling)
-              </button>
-            </div>
+            <p className="text-sm text-gray-600 mb-3">Test the scaling functionality:</p>
+            <button 
+              onClick={addSampleBanner}
+              className="w-full bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
+            >
+              🎯 Load Sample Banner (Test Scaling)
+            </button>
             <p className="text-xs text-gray-500 mt-2">
-              Load sample Figma data to test the rendering system, or use the banner to test scaling.
+              This will load a sample 1200px wide banner to test the universal scaling system.
             </p>
           </div>
         </div>
