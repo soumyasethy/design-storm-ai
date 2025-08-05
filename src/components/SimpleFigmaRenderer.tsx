@@ -586,8 +586,11 @@ const FigmaText: React.FC<{
     });
   }
 
+  // Extract baseStyles without width and height
+  const { width, height, ...baseStylesWithoutDimensions } = baseStyles;
+  
   const combinedStyles = {
-    ...baseStyles,
+    ...baseStylesWithoutDimensions,
     ...textStyles,
     display: 'flex',
     alignItems: getVerticalAlign(style?.textAlignVertical || 'TOP'),
