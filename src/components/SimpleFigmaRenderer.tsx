@@ -303,8 +303,7 @@ const FigmaText: React.FC<{
   baseStyles: React.CSSProperties; 
   showDebug: boolean;
   devMode: boolean;
-  scale: number;
-}> = ({ node, baseStyles, showDebug, devMode, scale }) => {
+}> = ({ node, baseStyles, showDebug, devMode }) => {
   // Add null check to prevent runtime errors
   if (!node || typeof node !== 'object') {
     console.warn('FigmaText: Invalid node provided', node);
@@ -319,8 +318,8 @@ const FigmaText: React.FC<{
     // Font family
     fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
     
-    // Font size with scale consideration
-    fontSize: style?.fontSize ? `${style.fontSize * scale}px` : 'inherit',
+    // Font size
+    fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
     
     // Font weight
     fontWeight: style?.fontWeight || 'normal',
@@ -328,12 +327,12 @@ const FigmaText: React.FC<{
     // Text alignment
     textAlign: style?.textAlignHorizontal ? getTextAlign(style.textAlignHorizontal) as any : 'left',
     
-    // Line height with scale consideration
-    lineHeight: style?.lineHeightPx ? `${style.lineHeightPx * scale}px` : 
+    // Line height
+    lineHeight: style?.lineHeightPx ? `${style.lineHeightPx}px` : 
                 style?.lineHeightPercent ? `${style.lineHeightPercent}%` : 'normal',
     
-    // Letter spacing with scale consideration
-    letterSpacing: style?.letterSpacing ? `${style.letterSpacing * scale}px` : 'normal',
+    // Letter spacing
+    letterSpacing: style?.letterSpacing ? `${style.letterSpacing}px` : 'normal',
     
     // Text decoration
     textDecoration: style?.textDecoration ? style.textDecoration.toLowerCase() : 'none',
@@ -343,7 +342,7 @@ const FigmaText: React.FC<{
            rgbaToCss(node.fills[0].color.r, node.fills[0].color.g, node.fills[0].color.b, node.fills[0].color.a) : 
            'inherit',
     
-    // Text wrapping and overflow
+    // Text wrapping and overflow with 5% buffer for font family differences
     whiteSpace: 'pre-wrap',
     overflowWrap: 'break-word',
     wordBreak: 'break-word',
@@ -355,10 +354,6 @@ const FigmaText: React.FC<{
     maxHeight: '100%',
     width: '100%',
     
-    // Scale-aware text rendering
-    transform: scale !== 1 ? `scale(${scale})` : 'none',
-    transformOrigin: 'top left',
-    
     // Debug styling
     ...(showDebug && {
       border: '1px solid #3b82f6',
@@ -367,262 +362,194 @@ const FigmaText: React.FC<{
   };
   
   // Enhanced rich text processing with character style overrides
-  const processRichText = (text: string) => {
+  const processRichText = (text: string): React.ReactNode => {
     // If no character style overrides, return plain text
     if (!node.characterStyleOverrides || !node.styleOverrideTable || node.characterStyleOverrides.length === 0) {
       return text;
     }
 
     const { characterStyleOverrides, styleOverrideTable } = node;
-    const segments: Array<{ text: string; style: any; classes: string[] }> = [];
-    let currentStyle = characterStyleOverrides[0] || 0;
-    let currentText = '';
-
+    const characters = text.split('');
+    
     // Debug logging
     if (devMode) {
       console.log('🔍 Rich Text Processing:', {
         text,
+        characters: characters.length,
         characterStyleOverrides: characterStyleOverrides?.slice(0, 20), // Show first 20
         styleOverrideTable: Object.keys(styleOverrideTable),
         styleOverrideDetails: Object.entries(styleOverrideTable).map(([key, style]: [string, any]) => ({
           key,
           textDecoration: style.textDecoration,
-          hasUnderline: style.textDecoration === 'UNDERLINE',
           textDecorationLine: style.textDecorationLine,
-          hasUnderlineLine: style.textDecorationLine === 'UNDERLINE'
+          hasUnderline: style.textDecoration === 'UNDERLINE' || style.textDecorationLine === 'UNDERLINE',
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          fills: style.fills
         })),
         nodeId: node.id,
         nodeName: node.name,
         hasUnderlines: Object.values(styleOverrideTable).some((style: any) => 
           style.textDecoration === 'UNDERLINE' || style.textDecorationLine === 'UNDERLINE'
-        ),
-        totalCharacters: text.length,
-        overrideCount: characterStyleOverrides?.length || 0
+        )
       });
     }
 
-    // Process each character and group consecutive characters with same style
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      const styleOverride = characterStyleOverrides[i] || 0;
-      
+    // Process each character individually and create JSX spans
+    const jsxElements = characters.map((char, index) => {
       // Handle line breaks
       if (char === '\n') {
-        if (currentText) {
-          const styleKey = currentStyle.toString();
-          const styleData = styleOverrideTable[styleKey] || style;
-          segments.push({
-            text: currentText,
-            style: styleData,
-            classes: []
-          });
-          currentText = '';
-        }
-        segments.push({
-          text: '<br>',
-          style: null,
-          classes: []
-        });
-        continue;
+        return <br key={`br-${index}`} />;
       }
 
-      // If style changes, create a new segment
-      if (styleOverride !== currentStyle && currentText) {
-        const styleKey = currentStyle.toString();
-        const styleData = styleOverrideTable[styleKey] || style;
-        segments.push({
-          text: currentText,
-          style: styleData,
-          classes: []
-        });
-        currentText = '';
-        currentStyle = styleOverride;
-      }
-
-      currentText += char;
-    }
-
-    // Add the last segment
-    if (currentText) {
-      const styleKey = currentStyle.toString();
-      const styleData = styleOverrideTable[styleKey] || style;
-      segments.push({
-        text: currentText,
-        style: styleData,
-        classes: []
-      });
-    }
-
-    // Debug logging for segments
-    if (devMode) {
-      console.log('📝 Text Segments:', segments.map(s => ({
-        text: s.text,
-        hasFills: !!s.style?.fills,
-        fillColor: s.style?.fills?.[0]?.color,
-        styleKey: s.style ? Object.keys(s.style).filter(k => k !== 'fills') : [],
-        textDecoration: s.style?.textDecoration,
-        textDecorationLine: s.style?.textDecorationLine,
-        hasUnderline: s.style?.textDecoration === 'UNDERLINE',
-        hasUnderlineLine: s.style?.textDecorationLine === 'UNDERLINE',
-        fontSize: s.style?.fontSize,
-        fontWeight: s.style?.fontWeight
-      })));
-    }
-
-    // Generate HTML with inline styles
-    const html = segments.map(segment => {
-      if (segment.text === '<br>') {
-        return '<br>';
-      }
+      // Get style override for this character index
+      const styleOverrideIndex = characterStyleOverrides[index] || 0;
+      const styleKey = styleOverrideIndex.toString();
+      const characterStyle = styleOverrideTable[styleKey] || node.style;
       
-      if (!segment.style) {
-        return segment.text;
+      // Debug logging for character
+      if (devMode && index < 10) { // Log first 10 characters
+        console.log(`📝 Character ${index}:`, {
+          char,
+          styleOverrideIndex,
+          styleKey,
+          hasStyle: !!characterStyle,
+          textDecoration: characterStyle?.textDecoration,
+          textDecorationLine: characterStyle?.textDecorationLine,
+          fontSize: characterStyle?.fontSize,
+          fontWeight: characterStyle?.fontWeight,
+          hasFills: !!characterStyle?.fills
+        });
       }
 
-      const spanStyles: string[] = [];
+      // Build inline styles for this character
+      const inlineStyles: React.CSSProperties = {};
       
       // Font family
-      if (segment.style.fontFamily) {
-        const fontFamily = getFontFamilyWithFallback(segment.style.fontFamily);
-        spanStyles.push(`font-family: ${fontFamily}`);
+      if (characterStyle?.fontFamily) {
+        inlineStyles.fontFamily = getFontFamilyWithFallback(characterStyle.fontFamily);
       }
       
-      // Font size with scale consideration
-      if (segment.style.fontSize) {
-        spanStyles.push(`font-size: ${segment.style.fontSize * scale}px`);
+      // Font size
+      if (characterStyle?.fontSize) {
+        inlineStyles.fontSize = `${characterStyle.fontSize}px`;
       }
       
       // Font weight
-      if (segment.style.fontWeight) {
-        spanStyles.push(`font-weight: ${segment.style.fontWeight}`);
+      if (characterStyle?.fontWeight) {
+        inlineStyles.fontWeight = characterStyle.fontWeight;
       }
       
       // Font style
-      if (segment.style.fontStyle) {
-        spanStyles.push(`font-style: ${segment.style.fontStyle.toLowerCase()}`);
+      if (characterStyle?.fontStyle) {
+        inlineStyles.fontStyle = characterStyle.fontStyle.toLowerCase();
       }
       
-      // Letter spacing with scale consideration
-      if (segment.style.letterSpacing) {
-        spanStyles.push(`letter-spacing: ${segment.style.letterSpacing * scale}px`);
+      // Letter spacing
+      if (characterStyle?.letterSpacing) {
+        inlineStyles.letterSpacing = `${characterStyle.letterSpacing}px`;
       }
       
-      // Line height with scale consideration
-      if (segment.style.lineHeightPx) {
-        spanStyles.push(`line-height: ${segment.style.lineHeightPx * scale}px`);
-      } else if (segment.style.lineHeightPercent) {
-        spanStyles.push(`line-height: ${segment.style.lineHeightPercent}%`);
+      // Line height
+      if (characterStyle?.lineHeightPx) {
+        inlineStyles.lineHeight = `${characterStyle.lineHeightPx}px`;
+      } else if (characterStyle?.lineHeightPercent) {
+        inlineStyles.lineHeight = `${characterStyle.lineHeightPercent}%`;
       }
       
-      // Text color from fills
-      if (segment.style.fills && segment.style.fills.length > 0) {
-        const fill = segment.style.fills[0];
-      if (fill.type === 'SOLID' && fill.color) {
-          const color = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
-          spanStyles.push(`color: ${color}`);
-          
-          // Debug logging for color
-          if (devMode) {
-            console.log('🎨 Applied Color:', {
-              text: segment.text,
-              color: color,
-              fill: fill
-            });
-          }
+      // Text color from fills - prioritize character-level fills, fallback to node-level
+      let textColor = null;
+      if (characterStyle?.fills && characterStyle.fills.length > 0) {
+        const fill = characterStyle.fills[0];
+        if (fill.type === 'SOLID' && fill.color) {
+          textColor = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
+        }
+      } else if (node.fills && node.fills.length > 0) {
+        const fill = node.fills[0];
+        if (fill.type === 'SOLID' && fill.color) {
+          textColor = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
         }
       }
       
-      // Text decoration with enhanced support
-      if (segment.style.textDecoration) {
-        const decoration = segment.style.textDecoration.toLowerCase();
-        if (decoration === 'underline') {
-          spanStyles.push('text-decoration: underline');
-          spanStyles.push('text-decoration-color: currentColor');
-          spanStyles.push('text-decoration-thickness: 1px');
-          spanStyles.push('text-underline-offset: 2px');
-          
-          // Debug logging for underline
-          if (devMode) {
-            console.log('🎯 Applied Underline:', {
-              text: segment.text,
-              decoration: decoration,
-              spanStyles: spanStyles,
-              segmentStyle: segment.style
-            });
-          }
-        } else {
-          spanStyles.push(`text-decoration: ${decoration}`);
-        }
-      }
-      
-      // Fallback: Check for underline in other properties
-      if (!segment.style.textDecoration && segment.style.textDecorationLine) {
-        const decoration = segment.style.textDecorationLine.toLowerCase();
-        if (decoration === 'underline') {
-          spanStyles.push('text-decoration: underline');
-          spanStyles.push('text-decoration-color: currentColor');
-          spanStyles.push('text-decoration-thickness: 1px');
-          spanStyles.push('text-underline-offset: 2px');
-          
-          if (devMode) {
-            console.log('🎯 Applied Underline (Fallback):', {
-              text: segment.text,
-              decoration: decoration,
-              spanStyles: spanStyles,
-              segmentStyle: segment.style
-            });
-          }
-        }
-      }
-      
-      // Text case
-      if (segment.style.textCase) {
-        if (segment.style.textCase === 'UPPER') {
-          spanStyles.push('text-transform: uppercase');
-        } else if (segment.style.textCase === 'LOWER') {
-          spanStyles.push('text-transform: lowercase');
-        } else if (segment.style.textCase === 'TITLE') {
-          spanStyles.push('text-transform: capitalize');
-        }
-      }
-      
-      const result = spanStyles.length > 0 
-        ? `<span style="${spanStyles.join('; ')}">${segment.text}</span>`
-        : segment.text;
+      if (textColor) {
+        inlineStyles.color = textColor;
         
-      // Debug logging for final HTML
-      if (devMode && spanStyles.length > 0) {
-        console.log('🏷️ Generated HTML:', {
-          text: segment.text,
-          styles: spanStyles,
-          html: result
+        // Debug logging for color
+        if (devMode && index < 10) {
+          console.log('🎨 Applied Color:', {
+            char,
+            index,
+            color: textColor,
+            source: characterStyle?.fills ? 'character' : 'node'
+          });
+        }
+      }
+      
+      // Text decoration - check both textDecoration and textDecorationLine
+      let hasUnderline = false;
+      if (characterStyle?.textDecoration) {
+        const decoration = characterStyle.textDecoration.toLowerCase();
+        if (decoration === 'underline') {
+          inlineStyles.textDecoration = 'underline';
+          inlineStyles.textDecorationColor = 'currentColor';
+          inlineStyles.textDecorationThickness = '1px';
+          inlineStyles.textUnderlineOffset = '2px';
+          hasUnderline = true;
+        } else {
+          inlineStyles.textDecoration = decoration;
+        }
+      } else if (characterStyle?.textDecorationLine) {
+        const decoration = characterStyle.textDecorationLine.toLowerCase();
+        if (decoration === 'underline') {
+          inlineStyles.textDecoration = 'underline';
+          inlineStyles.textDecorationColor = 'currentColor';
+          inlineStyles.textDecorationThickness = '1px';
+          inlineStyles.textUnderlineOffset = '2px';
+          hasUnderline = true;
+        }
+      }
+      
+      // Debug logging for underline
+      if (hasUnderline && devMode) {
+        console.log('🎯 Applied Underline:', {
+          char,
+          index,
+          textDecoration: characterStyle?.textDecoration,
+          textDecorationLine: characterStyle?.textDecorationLine,
+          inlineStyles: inlineStyles
         });
       }
       
-      return result;
-    }).join('');
-
-    // Debug logging for final HTML
-    if (devMode) {
-      console.log('🎯 Final Rich Text HTML:', html);
-    }
-
-    // Fallback: Force underlines for specific words if no underlines detected
-    const hasUnderlines = html.includes('text-decoration: underline');
-    if (!hasUnderlines && devMode) {
-      console.log('⚠️ No underlines detected in rich text, checking for fallback...');
-      
-      // Check if this looks like a mission statement with key words
-      const keyWords = ['largest', 'futuristic', 'vertically', 'integrated', 'sports', 'company'];
-      const hasKeyWords = keyWords.some(word => text.toLowerCase().includes(word));
-      
-      if (hasKeyWords) {
-        console.log('🎯 Mission statement detected, applying fallback underlines...');
-        // This is where we could apply fallback underlines if needed
+      // Text case
+      if (characterStyle?.textCase) {
+        if (characterStyle.textCase === 'UPPER') {
+          inlineStyles.textTransform = 'uppercase';
+        } else if (characterStyle.textCase === 'LOWER') {
+          inlineStyles.textTransform = 'lowercase';
+        } else if (characterStyle.textCase === 'TITLE') {
+          inlineStyles.textTransform = 'capitalize';
+        }
       }
+      
+      // Only create span if we have styles to apply
+      if (Object.keys(inlineStyles).length > 0) {
+        return (
+          <span key={`char-${index}`} style={inlineStyles}>
+            {char}
+          </span>
+        );
+      }
+      
+      // Return plain character if no styles
+      return char;
+    });
+
+    // Debug logging for final JSX
+    if (devMode) {
+      console.log('🎯 Final Rich Text JSX:', jsxElements);
     }
 
-    return html;
+    return jsxElements;
   };
 
   // Get proper text alignment with visual design override
@@ -655,8 +582,6 @@ const FigmaText: React.FC<{
       finalAlign: textAlignment,
       isMissionStatement,
       fontSize: style?.fontSize,
-      scaledFontSize: style?.fontSize ? style.fontSize * scale : null,
-      scale: scale,
       isMainHeading,
       isContentLabel,
       hasCenterConstraint,
@@ -714,12 +639,13 @@ const FigmaText: React.FC<{
         </div>
       )}
       <div 
-        dangerouslySetInnerHTML={{ __html: processedText }}
         style={{
           display: 'inline',
           lineHeight: 'inherit',
         }}
-      />
+      >
+        {processedText}
+      </div>
     </div>
   );
 };
@@ -2301,7 +2227,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   );
 
     case 'TEXT':
-      return renderWithScaling(<FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} scale={scale} />);
+      return renderWithScaling(<FigmaText node={node} baseStyles={positionStyles} showDebug={showDebug} devMode={devMode} />);
 
     case 'RECTANGLE':
     case 'ELLIPSE':
