@@ -135,20 +135,30 @@ export async function loadFigmaAssetsFromNodes({
   console.log('🔑 Token available:', !!figmaToken);
   console.log('📄 Root Node:', rootNode?.name, rootNode?.type);
   
-  // Step 1: Collect all asset node IDs (images, vectors, lines, rectangles)
+  // Step 1: Collect all asset node IDs (images, vectors, lines, rectangles, mask groups)
   const imageNodeIds: string[] = [];
   const svgNodeIds: string[] = [];
+  const maskGroupIds: string[] = [];
   
   function findAssetNodes(node: any) {
-    // Find image nodes
-    if (node?.fills?.some((f: any) => f.type === "IMAGE")) {
+    // Smart mask group detection
+    if (isMaskGroup(node)) {
+      maskGroupIds.push(node.id);
+      console.log(`🎭 Found mask group: ${node.id} (${node.name}) - treating as single asset`);
+      // Skip individual children of mask groups - we'll export the whole group
+      return;
+    }
+    
+    // Find image nodes (but skip if they're part of a mask group)
+    if (node?.fills?.some((f: any) => f.type === "IMAGE") && !isPartOfMaskGroup(node)) {
       imageNodeIds.push(node.id);
       console.log(`🖼️ Found image node: ${node.id} (${node.name})`);
     }
     
-    // Find vector, line, and rectangle nodes for SVG export
-    if (node?.type === 'VECTOR' || node?.type === 'LINE' || 
-        (node?.type === 'RECTANGLE' && (node?.strokes?.length > 0 || node?.fills?.some((f: any) => f.type === 'SOLID')))) {
+    // Find vector, line, and rectangle nodes for SVG export (but skip if they're part of a mask group)
+    if ((node?.type === 'VECTOR' || node?.type === 'LINE' || 
+        (node?.type === 'RECTANGLE' && (node?.strokes?.length > 0 || node?.fills?.some((f: any) => f.type === 'SOLID')))) && 
+        !isPartOfMaskGroup(node)) {
       svgNodeIds.push(node.id);
       console.log(`📐 Found SVG node: ${node.id} (${node.name}) - ${node.type}`);
     }
@@ -156,10 +166,40 @@ export async function loadFigmaAssetsFromNodes({
     node.children?.forEach(findAssetNodes);
   }
   
+  // Helper function to detect mask groups
+  function isMaskGroup(node: any): boolean {
+    if (node?.type !== 'GROUP') return false;
+    
+    // Check if it's a mask group by name or structure
+    const isMaskByName = node.name?.toLowerCase().includes('mask');
+    const hasMaskChildren = node.children?.some((child: any) => child.isMask === true);
+    const hasExportSettings = node.exportSettings && node.exportSettings.length > 0;
+    
+    return isMaskByName || hasMaskChildren || hasExportSettings;
+  }
+  
+  // Helper function to check if a node is part of a mask group
+  function isPartOfMaskGroup(node: any): boolean {
+    // Check if any parent is a mask group
+    let current = node;
+    while (current) {
+      if (isMaskGroup(current)) {
+        return true;
+      }
+      // Move up to parent (this is a simplified check - in real implementation you'd need parent references)
+      current = current.parent;
+    }
+    return false;
+  }
+  
   findAssetNodes(rootNode);
   
-  const totalAssets = imageNodeIds.length + svgNodeIds.length;
-  console.log(`📊 Found ${imageNodeIds.length} image nodes and ${svgNodeIds.length} SVG nodes:`, { images: imageNodeIds, svgs: svgNodeIds });
+  const totalAssets = imageNodeIds.length + svgNodeIds.length + maskGroupIds.length;
+  console.log(`📊 Found ${imageNodeIds.length} image nodes, ${svgNodeIds.length} SVG nodes, and ${maskGroupIds.length} mask groups:`, { 
+    images: imageNodeIds, 
+    svgs: svgNodeIds, 
+    maskGroups: maskGroupIds 
+  });
   
   // Update progress with total count
   onProgress?.(totalAssets, 0);
@@ -238,6 +278,40 @@ export async function loadFigmaAssetsFromNodes({
       console.log(`✅ Successfully loaded ${Object.keys(svgMap).length} SVGs from Figma API`);
     } catch (error) {
       console.error('❌ Error loading Figma SVGs:', error);
+    }
+  }
+  
+  // Step 4: Export mask groups as PNG (complete masked content)
+  if (maskGroupIds.length > 0) {
+    try {
+      console.log(`🎭 Exporting ${maskGroupIds.length} mask groups as PNG...`);
+      const idsParam = encodeURIComponent(maskGroupIds.join(","));
+      const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${idsParam}&format=png&scale=2`;
+      
+      console.log(`🔗 Calling Figma API for mask groups: ${url}`);
+      
+      const res = await fetch(url, {
+        headers: {
+          "X-Figma-Token": figmaToken,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Figma API error for mask groups: ${res.status} ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      const maskGroupMap = data.images ?? {};
+      
+      // Add mask groups to asset map
+      Object.assign(assetMap, maskGroupMap);
+      loadedCount += Object.keys(maskGroupMap).length;
+      onProgress?.(totalAssets, loadedCount);
+      
+      console.log(`✅ Successfully loaded ${Object.keys(maskGroupMap).length} mask groups from Figma API`);
+    } catch (error) {
+      console.error('❌ Error loading Figma mask groups:', error);
     }
   }
   

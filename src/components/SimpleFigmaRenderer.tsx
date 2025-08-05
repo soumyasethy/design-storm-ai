@@ -817,10 +817,15 @@ const getEnhancedEffectStyles = (node: any): React.CSSProperties => {
 
 // Detect if a node is part of a mask group (for SimpleFigmaRenderer)
 const isMaskGroupNode = (node: any): boolean => {
-  return node.isMaskGroup || 
-         node.maskGroupId || 
-         node.maskGroupParent ||
-         (node.name && node.name.toLowerCase().includes('mask group'));
+  if (node?.type !== 'GROUP') return false;
+  
+  // Check if it's a mask group by name or structure
+  const isMaskByName = node.name?.toLowerCase().includes('mask');
+  const hasMaskChildren = node.children?.some((child: any) => child.isMask === true);
+  const hasExportSettings = node.exportSettings && node.exportSettings.length > 0;
+  const isMaskGroup = node.isMaskGroup || node.maskGroupId || node.maskGroupParent;
+  
+  return isMaskByName || hasMaskChildren || hasExportSettings || isMaskGroup;
 };
 
 // Get mask group operation mode (for SimpleFigmaRenderer)
@@ -2114,160 +2119,54 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
             </div>
           )}
           
-          {/* Handle mask group children with enhanced image + rectangle + ellipse support */}
+          {/* Handle mask groups as exported images */}
           {isMaskGroupNode(node) ? (
-            <svg
-              width={absoluteBoundingBox?.width || 100}
-              height={absoluteBoundingBox?.height || 100}
-              style={{ position: 'absolute', top: 0, left: 0 }}
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: absoluteBoundingBox?.width || 100,
+                height: absoluteBoundingBox?.height || 100,
+                backgroundImage: imageMap[node.id] ? `url(${imageMap[node.id]})` : 'none',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                ...(devMode && {
+                  border: '2px solid purple',
+                  backgroundColor: 'rgba(128, 0, 128, 0.1)'
+                })
+              }}
+              title={`Mask Group: ${node.name} (${node.id})`}
             >
               {devMode && (
-                <text x="10" y="20" fill="red" fontSize="12">
-                  Mask Group: {node.name} ({node.id})
-                </text>
+                <div style={{
+                  position: 'absolute',
+                  top: -20,
+                  left: 0,
+                  background: 'purple',
+                  color: 'white',
+                  padding: '2px 6px',
+                  fontSize: '10px',
+                  borderRadius: '3px'
+                }}>
+                  🎭 Mask Group: {node.name}
+                </div>
               )}
-              <defs>
-                <mask id={`mask-group-${node.id}`}>
-                  {/* Black background - hides everything by default */}
-                  <rect width="100%" height="100%" fill="black" />
-                  {children?.map((child: any, index: number) => {
-                    // Only render mask elements (isMask: true) in the mask definition
-                    if (!child.isMask) return null;
-                    
-                    // Debug logging for mask elements
-                    if (devMode) {
-                      console.log('🎭 Mask Element:', {
-                        nodeId: node.id,
-                        childId: child.id,
-                        childType: child.type,
-                        childName: child.name,
-                        isMask: child.isMask,
-                        bounds: child.absoluteBoundingBox
-                      });
-                    }
-                    
-                    // Calculate relative position within the mask group
-                    const maskGroupBounds = node.absoluteBoundingBox || { x: 0, y: 0, width: 100, height: 100 };
-                    const childBounds = child.absoluteBoundingBox || { x: 0, y: 0, width: 100, height: 100 };
-                    
-                    // Convert absolute coordinates to relative coordinates within the mask group
-                    const relativeX = childBounds.x - maskGroupBounds.x;
-                    const relativeY = childBounds.y - maskGroupBounds.y;
-                    const childWidth = childBounds.width;
-                    const childHeight = childBounds.height;
-                    
-                    if (child.type === 'ELLIPSE') {
-                      // Create circular mask - white circle reveals the content
-                      const centerX = childWidth / 2;
-                      const centerY = childHeight / 2;
-                      const radiusX = childWidth / 2;
-                      const radiusY = childHeight / 2;
-                      const ellipsePath = `M ${centerX - radiusX} ${centerY} A ${radiusX} ${radiusY} 0 1 1 ${centerX + radiusX} ${centerY} A ${radiusX} ${radiusY} 0 1 1 ${centerX - radiusX} ${centerY} Z`;
-                      
-                      return (
-                        <path
-                          key={child.id || index}
-                          d={ellipsePath}
-                          fill="white"
-                          transform={`translate(${relativeX}, ${relativeY})`}
-                        />
-                      );
-                    } else if (child.type === 'RECTANGLE' || child.type === 'VECTOR') {
-                      // Create rectangular mask - white rectangle reveals the content
-                      const borderRadius = getIndividualCornerRadius(child);
-                      const radius = borderRadius !== '0px' ? parseFloat(borderRadius) : 0;
-                      
-                      return (
-                        <rect
-                          key={child.id || index}
-                          x={relativeX}
-                          y={relativeY}
-                          width={childWidth}
-                          height={childHeight}
-                          fill="white"
-                          rx={radius}
-                          ry={radius}
-                        />
-                      );
-                    }
-                    
-                    return null;
-                  })}
-                </mask>
-              </defs>
-              
-              {/* Render the actual content (non-mask elements) */}
-              {children?.map((child: any, index: number) => {
-                // Skip mask elements, they're already handled in the mask definition
-                if (child.isMask) return null;
-                
-                // Debug logging for content elements
-                if (devMode) {
-                  console.log('🖼️ Content Element:', {
-                    nodeId: node.id,
-                    childId: child.id,
-                    childType: child.type,
-                    childName: child.name,
-                    hasImageFill: child.fills?.some((fill: any) => fill.type === 'IMAGE'),
-                    fills: child.fills
-                  });
-                }
-                
-                // Handle image content
-                if (child.fills?.some((fill: any) => fill.type === 'IMAGE')) {
-                  const imageFill = child.fills?.find((fill: any) => fill.type === 'IMAGE');
-                  const imageUrl = imageFill?.imageUrl || imageMap[child.id];
-                  
-                  if (imageUrl) {
-                    return (
-                      <image
-                        key={child.id || index}
-                        href={imageUrl}
-                        x="0"
-                        y="0"
-                        width="100%"
-                        height="100%"
-                        preserveAspectRatio="xMidYMid slice"
-                        mask={`url(#mask-group-${node.id})`}
-                      />
-                    );
-                  } else {
-                    // Use placeholder if no image URL
-                    if (devMode) {
-                      console.log('🖼️ Using Placeholder:', {
-                        nodeId: node.id,
-                        childId: child.id,
-                        childName: child.name
-                      });
-                    }
-                    return (
-                      <image
-                        key={child.id || index}
-                        href="/placeholder.svg"
-                        x="0"
-                        y="0"
-                        width="100%"
-                        height="100%"
-                        preserveAspectRatio="xMidYMid slice"
-                        mask={`url(#mask-group-${node.id})`}
-                      />
-                    );
-                  }
-                }
-                
-                return null;
-              })}
-              
-              {/* Fallback if no content child found */}
-              {!children?.some((child: any) => !child.isMask && child.fills?.some((fill: any) => fill.type === 'IMAGE')) && (
-                <rect 
-                  width="100%" 
-                  height="100%" 
-                  fill="rgba(200, 200, 200, 0.5)"
-                  mask={`url(#mask-group-${node.id})`}
-                />
+              {!imageMap[node.id] && devMode && (
+                <div style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  color: 'red',
+                  fontSize: '12px',
+                  textAlign: 'center'
+                }}>
+                  ❌ No mask group image found
+                </div>
               )}
-            </svg>
+            </div>
           ) : (
             /* Regular children rendering */
             children?.map((child: any, index: number) => (
@@ -2287,7 +2186,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
                 transformOrigin={transformOrigin}
               />
             ))
-      )}
+          )}
     </div>
   );
 
