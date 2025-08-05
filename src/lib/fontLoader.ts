@@ -63,7 +63,7 @@ class FontLoader {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = url;
-      link.crossOrigin = 'anonymous';
+      // Remove crossOrigin to avoid CORS issues with Google Fonts
 
       // Wait for font to load
       await new Promise<void>((resolve, reject) => {
@@ -84,6 +84,9 @@ class FontLoader {
       // Still mark as loaded to prevent infinite retries
       this.loadedFonts.add(fontKey);
       this.loadingPromises.delete(fontKey);
+      
+      // Don't throw error to prevent app crashes
+      return Promise.resolve();
     }
   }
 

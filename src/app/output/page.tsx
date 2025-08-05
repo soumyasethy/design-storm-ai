@@ -195,14 +195,17 @@ export default function OutputPage() {
         setAssetLoadingProgress({ total: Object.keys(apiAssetMap).length, loaded: Object.keys(apiAssetMap).length, isLoading: false });
         console.log('✅ Assets loaded from Figma API:', apiAssetMap);
       } else {
-        setAssetLoadingStatus('ℹ️ No assets found in design');
+        setAssetLoadingStatus('ℹ️ No assets found in design - continuing without images');
         setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: false });
-        console.log('ℹ️ No assets found in design');
+        console.log('ℹ️ No assets found in design - continuing without images');
       }
     } catch (error) {
       console.error('❌ Error loading assets from Figma API:', error);
-      setAssetLoadingStatus(`❌ Failed to load assets: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setAssetLoadingStatus('⚠️ Could not load images - continuing without assets');
       setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: false });
+      
+      // Don't let API errors prevent the app from working
+      console.log('🔄 Continuing with design rendering without assets');
     }
   };
   const [transformOrigin, setTransformOrigin] = useState<string>('center top');
