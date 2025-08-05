@@ -342,17 +342,12 @@ const FigmaText: React.FC<{
            rgbaToCss(node.fills[0].color.r, node.fills[0].color.g, node.fills[0].color.b, node.fills[0].color.a) : 
            'inherit',
     
-    // Text wrapping and overflow with 5% buffer for font family differences
+    // Text wrapping and overflow
     whiteSpace: 'pre-wrap',
     overflowWrap: 'break-word',
     wordBreak: 'break-word',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    
-    // Ensure text fits within bounding box exactly
-    maxWidth: '100%',
-    maxHeight: '100%',
-    width: '100%',
     
     // Debug styling
     ...(showDebug && {
@@ -600,8 +595,6 @@ const FigmaText: React.FC<{
     justifyContent: textAlignment === 'center' ? 'center' : 'flex-start',
     gap: '4px', // Add gap for inline elements
     overflow: 'hidden',
-    // Use exact width from Figma without buffer
-    width: baseStyles.width || '100%',
     // Ensure text alignment is properly applied
     textAlign: textAlignment as any,
     // Apply base text styles directly to container
