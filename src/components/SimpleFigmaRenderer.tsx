@@ -354,6 +354,12 @@ const FigmaText: React.FC<{
            rgbaToCss(node.fills[0].color.r, node.fills[0].color.g, node.fills[0].color.b, node.fills[0].color.a) : 
            'inherit',
     
+    // Width and height for Figma matching
+    width: baseStyles.width || '100%',
+    height: baseStyles.height || 'auto',
+    maxWidth: '100%',
+    maxHeight: '100%',
+    
     // Text wrapping and overflow
     whiteSpace: 'pre-wrap',
     overflowWrap: 'break-word',
@@ -607,11 +613,9 @@ const FigmaText: React.FC<{
     });
   }
 
-  // Extract baseStyles without width and height
-  const { width, height, ...baseStylesWithoutDimensions } = baseStyles;
-  
+  // Include width and height from baseStyles for Figma matching
   const combinedStyles = {
-    ...baseStylesWithoutDimensions,
+    ...baseStyles,
     ...textStyles,
     display: 'flex',
     alignItems: getVerticalAlign(style?.textAlignVertical || 'TOP'),
