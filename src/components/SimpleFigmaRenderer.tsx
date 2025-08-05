@@ -1993,14 +1993,15 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     return shouldApplyScaling ? (
       <div
         style={{
-          width: '100%',
+          width: '100vw',
           minHeight: '100vh',
           overflow: 'auto',
           position: 'relative',
           display: 'flex',
           alignItems: 'flex-start',
           justifyContent: 'center',
-          padding: '20px 0',
+          padding: '0',
+          margin: '0',
           // Add visual indicator for scaling
           ...(devMode && {
             border: '2px solid #ff6b6b',

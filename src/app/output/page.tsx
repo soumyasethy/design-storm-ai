@@ -1022,9 +1022,9 @@ export default function OutputPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" style={{ margin: 0, padding: 0 }}>
       {/* Compact Single-Line Header with All Tools */}
-      <div className="bg-white border-b border-gray-200 px-4 py-2 sticky top-0 z-50 shadow-sm">
+      <div className="bg-white border-b border-gray-200 py-2 sticky top-0 z-50 shadow-sm" style={{ paddingLeft: '20px', paddingRight: '20px' }}>
         <div className="flex items-center justify-between space-x-4">
           {/* Left Section - Title & Info */}
           <div className="flex items-center space-x-3 min-w-0 flex-1">
@@ -1200,8 +1200,8 @@ export default function OutputPage() {
       )}
 
       {/* Main render area */}
-      <div className="bg-white w-full figma-renderer-container">
-        <div className={`relative mx-auto w-full figma-renderer-container ${overflowHidden ? 'overflow-hidden' : 'overflow-hidden'}`}>
+      <div className="bg-white w-screen figma-renderer-container" style={{ margin: 0, padding: 0 }}>
+        <div className={`relative w-screen figma-renderer-container ${overflowHidden ? 'overflow-hidden' : 'overflow-hidden'}`} style={{ margin: 0, padding: 0 }}>
           
           {/* Smart Debug Panel Overlay */}
           {showDebugPanel && (

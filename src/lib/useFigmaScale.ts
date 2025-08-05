@@ -6,14 +6,14 @@ export function useFigmaScale(designWidth: number, maxScale = 1.2) {
     if (typeof window === 'undefined') return 1;
     // Calculate scale to use full viewport width
     const viewportWidth = window.innerWidth;
-    const calculatedScale = Math.min(viewportWidth / designWidth, maxScale);
+    const calculatedScale = viewportWidth / designWidth;
     return Math.max(calculatedScale, 0.1); // Minimum scale of 0.1
   });
 
   useEffect(() => {
     const onResize = () => {
       const viewportWidth = window.innerWidth;
-      const calculatedScale = Math.min(viewportWidth / designWidth, maxScale);
+      const calculatedScale = viewportWidth / designWidth;
       setScale(Math.max(calculatedScale, 0.1)); // Minimum scale of 0.1
     };
     
