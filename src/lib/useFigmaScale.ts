@@ -4,19 +4,17 @@ export function useFigmaScale(designWidth: number, maxScale = 1.2) {
   const [scale, setScale] = useState(() => {
     // Handle SSR by checking if window exists
     if (typeof window === 'undefined') return 1;
-    // Calculate scale to fill viewport width completely
+    // Calculate scale to use full viewport width
     const viewportWidth = window.innerWidth;
-    const calculatedScale = viewportWidth / designWidth;
-    // Don't limit by maxScale - let it fill the full width
-    return calculatedScale;
+    const calculatedScale = Math.min(viewportWidth / designWidth, maxScale);
+    return Math.max(calculatedScale, 0.1); // Minimum scale of 0.1
   });
 
   useEffect(() => {
     const onResize = () => {
       const viewportWidth = window.innerWidth;
-      const calculatedScale = viewportWidth / designWidth;
-      // Don't limit by maxScale - let it fill the full width
-      setScale(calculatedScale);
+      const calculatedScale = Math.min(viewportWidth / designWidth, maxScale);
+      setScale(Math.max(calculatedScale, 0.1)); // Minimum scale of 0.1
     };
     
     window.addEventListener('resize', onResize);

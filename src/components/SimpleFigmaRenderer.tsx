@@ -349,10 +349,10 @@ const FigmaText: React.FC<{
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     
-    // Ensure text fits within bounding box with 5% buffer
-               maxWidth: 'calc(100% + 4px)', // Add 4px buffer for font family differences
-           maxHeight: '100%',
-           width: 'calc(100% + 4px)', // Ensure container is slightly wider
+    // Ensure text fits within bounding box exactly
+    maxWidth: '100%',
+    maxHeight: '100%',
+    width: '100%',
     
     // Debug styling
     ...(showDebug && {
@@ -563,6 +563,18 @@ const FigmaText: React.FC<{
     textAlignment = 'left';
   }
   
+  // Debug logging for width values
+  if (devMode) {
+    console.log('🔍 Width Debug:', {
+      nodeId: node.id,
+      nodeName: node.name,
+      baseStylesWidth: baseStyles.width,
+      baseStylesWidthType: typeof baseStyles.width,
+      textStylesWidth: textStyles.width,
+      absoluteBoundingBox: node.absoluteBoundingBox
+    });
+  }
+
   const combinedStyles = {
     ...baseStyles,
     ...textStyles,
@@ -572,8 +584,8 @@ const FigmaText: React.FC<{
     justifyContent: textAlignment === 'center' ? 'center' : 'flex-start',
     gap: '4px', // Add gap for inline elements
     overflow: 'hidden',
-    // Add 4px buffer to container width for font family differences
-    width: baseStyles.width ? `calc(${baseStyles.width} + 4px)` : 'calc(100% + 4px)',
+    // Use exact width from Figma without buffer
+    width: baseStyles.width || '100%',
     // Ensure text alignment is properly applied
     textAlign: textAlignment as any,
     // Apply base text styles directly to container
@@ -1669,7 +1681,7 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
   fileKey,
   figmaToken,
   devMode = false,
-  enableScaling = false,
+  enableScaling = true,
   maxScale = 2,
   transformOrigin = 'center center'
 }) => {
@@ -1981,10 +1993,14 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
     return shouldApplyScaling ? (
       <div
         style={{
-          width: '100vw',
+          width: '100%',
           minHeight: '100vh',
           overflow: 'auto',
           position: 'relative',
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          padding: '20px 0',
           // Add visual indicator for scaling
           ...(devMode && {
             border: '2px solid #ff6b6b',
@@ -1995,32 +2011,34 @@ const SimpleFigmaRenderer: React.FC<SimpleFigmaRendererProps> = ({
         <div
           style={{
             width: `${designWidth}px`,
-            minHeight: `${absoluteBoundingBox?.height || 800}px`,
+            height: `${absoluteBoundingBox?.height || 800}px`,
             transform: `scale(${scale})`,
             transformOrigin: 'top center',
-            margin: '0 auto',
             // Ensure the scaled content maintains its original dimensions
             flexShrink: 0,
+            position: 'relative',
           }}
         >
           {devMode && (
             <div style={{
               position: 'absolute',
               top: '-30px',
-              left: '0',
+              left: '50%',
+              transform: 'translateX(-50%)',
               background: '#ff6b6b',
               color: 'white',
               padding: '4px 8px',
               fontSize: '12px',
               borderRadius: '4px',
-              zIndex: 1000
+              zIndex: 1000,
+              whiteSpace: 'nowrap'
             }}>
               🎯 SCALED: {scale.toFixed(2)}x (Design: {designWidth}px)
             </div>
           )}
           {content}
         </div>
-        {/* Add spacer to ensure scrolling works properly */}
+        {/* Add spacer to ensure full height is scrollable */}
         <div style={{ height: `${(absoluteBoundingBox?.height || 800) * scale}px` }} />
       </div>
     ) : content;

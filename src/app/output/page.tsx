@@ -1200,8 +1200,8 @@ export default function OutputPage() {
       )}
 
       {/* Main render area */}
-      <div className="bg-white p-4">
-        <div className={`relative mx-auto ${overflowHidden ? 'overflow-hidden' : 'overflow-visible'}`}>
+      <div className="bg-white w-full figma-renderer-container">
+        <div className={`relative mx-auto w-full figma-renderer-container ${overflowHidden ? 'overflow-hidden' : 'overflow-hidden'}`}>
           
           {/* Smart Debug Panel Overlay */}
           {showDebugPanel && (
