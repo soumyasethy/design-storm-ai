@@ -130,6 +130,14 @@ export async function loadFigmaAssetsFromNodes({
   rootNode: any;
   onProgress?: (total: number, loaded: number) => void;
 }): Promise<Record<string, string>> {
+  // Validate required parameters
+  if (!figmaFileKey || !figmaToken) {
+    console.warn('⚠️ Missing required parameters for Figma API call:', {
+      hasFileKey: !!figmaFileKey,
+      hasToken: !!figmaToken
+    });
+    return {};
+  }
   console.log('🚀 Starting Figma assets export process...');
   console.log('📁 File Key:', figmaFileKey);
   console.log('🔑 Token available:', !!figmaToken);
@@ -221,12 +229,19 @@ export async function loadFigmaAssetsFromNodes({
       
       console.log(`🔗 Calling Figma API for images: ${url}`);
       
+      // Add timeout and better error handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
       const res = await fetch(url, {
         headers: {
           "X-Figma-Token": figmaToken,
           "Content-Type": "application/json",
         },
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
       
       if (!res.ok) {
         throw new Error(`Figma API error for images: ${res.status} ${res.statusText}`);
@@ -243,6 +258,15 @@ export async function loadFigmaAssetsFromNodes({
       console.log(`✅ Successfully loaded ${Object.keys(imageMap).length} images from Figma API`);
     } catch (error) {
       console.error('❌ Error loading Figma images:', error);
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          console.warn('⏰ Request timed out for Figma images');
+        } else if (error.message.includes('Failed to fetch')) {
+          console.warn('🌐 Network error - check internet connection and Figma API status');
+        } else {
+          console.warn('🔧 API error - check file key and token validity');
+        }
+      }
       // Continue with SVG export even if images fail
     }
   }

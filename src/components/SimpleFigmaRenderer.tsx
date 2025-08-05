@@ -12,8 +12,8 @@ import {
   getImageScaleMode, 
   isNodeVisible, 
   getLineStyles 
-} from '@/lib/utils';
-import { createReactFontFamily } from '@/lib/fontUtils';
+} from '../lib/utils';
+import { createReactFontFamily } from '../lib/fontUtils';
 import { useFigmaScale } from '../lib/useFigmaScale';
 
 // Utility function for RGB to Hex conversion
@@ -320,7 +320,7 @@ const FigmaText: React.FC<{
   useEffect(() => {
     if (style?.fontFamily) {
       // Load font using the font loader
-      import('@/lib/fontLoader').then(({ loadFont }) => {
+      import('../lib/fontLoader').then(({ loadFont }) => {
         loadFont(style.fontFamily, [style.fontWeight || 400, 700]).catch(console.warn);
       });
     }
