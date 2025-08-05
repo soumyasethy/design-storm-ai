@@ -615,62 +615,9 @@ export const getFontFamilyWithFallback = (family: string): string => {
   // Load Google Font if needed
   loadGoogleFont(family);
   
-  // Enhanced font mapping with better fallbacks
-  const fontMap: Record<string, string> = {
-    // Sans-serif fonts
-    'Inter': 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    'Roboto': 'Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Open Sans': '"Open Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Lato': 'Lato, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Poppins': 'Poppins, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Montserrat': 'Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Source Sans Pro': '"Source Sans Pro", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Raleway': 'Raleway, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Ubuntu': 'Ubuntu, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Nunito': 'Nunito, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Work Sans': 'Work Sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'DM Sans': 'DM Sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Noto Sans': 'Noto Sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Fira Sans': 'Fira Sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'PT Sans': 'PT Sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Oswald': 'Oswald, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    'Bebas Neue': 'Bebas Neue, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-    
-    // Serif fonts
-    'Playfair Display': 'Playfair Display, Georgia, serif',
-    'Merriweather': 'Merriweather, Georgia, serif',
-    'Lora': 'Lora, Georgia, serif',
-    
-    // System fonts
-    'Arial': 'Arial, Helvetica, sans-serif',
-    'Helvetica': 'Helvetica, Arial, sans-serif',
-    'Georgia': 'Georgia, serif',
-    'Times New Roman': '"Times New Roman", Times, serif',
-    'Verdana': 'Verdana, Geneva, sans-serif',
-  };
-  
-  // Check if the font family exists in our map
-  if (fontMap[family]) {
-    return fontMap[family];
-  }
-  
-  // For unknown fonts, provide a reasonable fallback
-  const familyLower = family.toLowerCase();
-  
-  if (familyLower.includes('serif') || familyLower.includes('times') || familyLower.includes('georgia')) {
-    return `${family}, Georgia, serif`;
-  }
-  
-  if (familyLower.includes('mono') || familyLower.includes('courier') || familyLower.includes('consolas')) {
-    return `${family}, Consolas, monospace`;
-  }
-  
-  if (familyLower.includes('script') || familyLower.includes('hand') || familyLower.includes('brush')) {
-    return `${family}, cursive, sans-serif`;
-  }
-  
-  // Default fallback for sans-serif fonts
-  return `${family}, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
+  // Use the new comprehensive font utility with emoji support
+  const { createReactFontFamily } = require('./fontUtils');
+  return createReactFontFamily(family);
 };
 
 // Enhanced corner radius utilities with improved circular detection

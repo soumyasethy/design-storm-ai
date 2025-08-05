@@ -13,6 +13,7 @@ import {
   isNodeVisible, 
   getLineStyles 
 } from '@/lib/utils';
+import { createReactFontFamily } from '@/lib/fontUtils';
 import { useFigmaScale } from '../lib/useFigmaScale';
 
 // Utility function for RGB to Hex conversion
@@ -326,8 +327,8 @@ const FigmaText: React.FC<{
   }, [style?.fontFamily, style?.fontWeight]);
 
   const textStyles: React.CSSProperties = {
-    // Font family with fallback
-    fontFamily: style?.fontFamily ? getFontFamilyWithFallback(style.fontFamily) : 'inherit',
+    // Font family with emoji support
+    fontFamily: style?.fontFamily ? createReactFontFamily(style.fontFamily) : 'inherit',
     
     // Font size
     fontSize: style?.fontSize ? `${style.fontSize}px` : 'inherit',
@@ -431,9 +432,9 @@ const FigmaText: React.FC<{
       // Build inline styles for this character
       const inlineStyles: React.CSSProperties = {};
       
-      // Font family
+      // Font family with emoji support
       if (characterStyle?.fontFamily) {
-        inlineStyles.fontFamily = getFontFamilyWithFallback(characterStyle.fontFamily);
+        inlineStyles.fontFamily = createReactFontFamily(characterStyle.fontFamily);
       }
       
       // Font size
