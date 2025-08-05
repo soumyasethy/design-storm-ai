@@ -311,8 +311,8 @@ export default function OutputPage() {
             }
             
             // Parse the data last to trigger re-render
-            setTimeout(() => {
-              parseFigmaData(pluginData);
+            setTimeout(async () => {
+              await parseFigmaData(pluginData);
             }, 100);
             
             console.log('🚀 Plugin data uploaded and parsed successfully');
@@ -333,8 +333,8 @@ export default function OutputPage() {
           }
           
           // Parse the data last to trigger re-render
-          setTimeout(() => {
-            parseFigmaData(jsonData);
+          setTimeout(async () => {
+            await parseFigmaData(jsonData);
           }, 100);
           
           console.log('✅ File uploaded and parsed successfully');
@@ -772,7 +772,7 @@ export default function OutputPage() {
   };
 
   // Parse Figma JSON and extract frame node
-  const parseFigmaData = (data: FigmaData) => {
+  const parseFigmaData = async (data: FigmaData) => {
     try {
       console.log('🔍 Parsing Figma data:', data);
       
@@ -884,7 +884,7 @@ export default function OutputPage() {
           console.log(`✅ Figma data loaded successfully from ${dataSource}`);
           setDataSource(dataSource);
           setFigmaData(figmaData);
-          parseFigmaData(figmaData);
+          await parseFigmaData(figmaData);
           
           // Extract file key from URL if available
           const urlParam = searchParams.get('url');
@@ -946,7 +946,7 @@ export default function OutputPage() {
               console.log(`✅ Figma data loaded successfully from ${dataSource}`);
               setDataSource(dataSource);
               setFigmaData(figmaData);
-              parseFigmaData(figmaData);
+              await parseFigmaData(figmaData);
               
               // Load token from localStorage if available
               const storedToken = localStorage.getItem('figmaToken');
