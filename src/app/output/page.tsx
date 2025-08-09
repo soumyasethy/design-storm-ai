@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import SimpleFigmaRenderer from '@/components/SimpleFigmaRenderer';
 
 import { extractFileKeyFromUrl, loadFigmaAssetsFromNodes } from '@/lib/utils';
-import { isPluginExport, parsePluginData, figmaPlugin } from '@/lib/figma-plugin';
+import { isPluginExport, parsePluginData } from '@/lib/figma-plugin';
 import { fontLoader } from '@/lib/fontLoader';
-import { useMultipleFonts } from '@/lib/useFontLoader';
+import { FigmaTreeBuilder, getGlobalTreeBuilder, resetGlobalTreeBuilder } from '@/lib/figmaTree';
+import { generateProjectFiles } from '@/lib/nextjsExporter';
 
 interface FigmaData {
   name?: string;
@@ -78,7 +79,13 @@ interface FigmaNode {
   visible?: boolean;
 }
 
-export default function OutputPage() {
+interface PageInfo {
+  id: string;
+  name: string;
+  node: FigmaNode;
+}
+
+function OutputPageContent() {
   const searchParams = useSearchParams();
   const [figmaData, setFigmaData] = useState<FigmaData | null>(null);
   const [frameNode, setFrameNode] = useState<FigmaNode | null>(null);
@@ -95,18 +102,438 @@ export default function OutputPage() {
     loaded: number;
     isLoading: boolean;
   }>({ total: 0, loaded: 0, isLoading: false });
-  const [renderMode, setRenderMode] = useState<'simple' | 'enhanced'>('enhanced');
-  const [showLayoutDebug, setShowLayoutDebug] = useState(false);
+  // Removed render mode dropdown/state
   const [dataSource, setDataSource] = useState<string>('');
-  const [overflowHidden, setOverflowHidden] = useState<boolean>(true);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState<number>(0);
-  const [devMode, setDevMode] = useState<boolean>(true);
+  const [devMode, setDevMode] = useState<boolean>(false);
   const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
   const [enableScaling, setEnableScaling] = useState<boolean>(true);
   const [fontLoadingStatus, setFontLoadingStatus] = useState<string>('Not started');
   const [loadedFonts, setLoadedFonts] = useState<Set<string>>(new Set());
   const [maxScale, setMaxScale] = useState<number>(1.2);
+  const [transformOrigin, setTransformOrigin] = useState<string>('center top');
+  
+  // Multi-page support state
+  const [availablePages, setAvailablePages] = useState<PageInfo[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+  const [isMultiPageDesign, setIsMultiPageDesign] = useState<boolean>(false);
+
+  // Simple downloader helper for Export
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Export function that generates a minimal Next.js project with static TSX files
+  const handleExport = async () => {
+    try {
+      if (!frameNode) {
+        console.error('❌ No frame selected for export');
+        return;
+      }
+
+      // -------- helpers --------
+      const pascal = (s: string) =>
+        (s || 'ExportedComponent')
+          .replace(/[^a-zA-Z0-9]+/g, ' ')
+          .trim()
+          .split(/\s+/)
+          .map((x) => x.charAt(0).toUpperCase() + x.slice(1))
+          .join('')
+          .replace(/^\d/, '_$&');
+
+      const slug = (s: string) =>
+        (s || 'exported-design')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+
+      const componentName = pascal(frameNode.name || 'ExportedDesign');
+      const projectSlug = slug(frameNode.name || 'figma-export');
+
+      // Local map for assets copied into /public/assets
+      const localAssetMap: Record<string, string> = {};
+
+      // Build asset candidates: prefer fill.imageRef hashes, fall back to node ids
+      type AssetCandidate = { key: string; aliasKeys: string[] };
+      const assetCandidates: AssetCandidate[] = [];
+      const seenKeys = new Set<string>();
+      const addCandidate = (key: string, aliasKeys: string[] = []) => {
+        if (!key || seenKeys.has(key)) return;
+        seenKeys.add(key);
+        assetCandidates.push({ key, aliasKeys });
+      };
+      const walkForAssets = (n: any) => {
+        if (!n) return;
+        if (Array.isArray(n.fills)) {
+          for (const f of n.fills) {
+            if (f?.type === 'IMAGE') {
+              if (f.imageRef) addCandidate(f.imageRef, [n.id]);
+              else addCandidate(n.id);
+            }
+          }
+        }
+        if (n.type === 'GROUP') {
+          const hasMaskChild = Array.isArray(n.children) && n.children.some((c: any) => c?.isMask && (c.maskType || c.mask));
+          const hasTextChild = Array.isArray(n.children) && n.children.some((c: any) => c?.type === 'TEXT');
+          const hasExport = Array.isArray(n.exportSettings) && n.exportSettings.length > 0;
+          // If group has a mask child and contains no text, export the GROUP bitmap (captures mask + effects)
+          if ((hasMaskChild && !hasTextChild) || hasExport) {
+            addCandidate(n.id);
+          }
+        }
+        (n.children || []).forEach(walkForAssets);
+      };
+      walkForAssets(frameNode);
+
+      // Sanitize filenames for cross-platform safety
+      const sanitizeFilename = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, '-');
+
+      // Prepare project files container
+      const files = new Map<string, string>();
+
+      // ---------- fonts: collect families from the frame ----------
+      const fontFamilies: string[] = Array.from(extractFontFamilies(frameNode));
+      const googleFontHrefs = fontFamilies.map((f) =>
+        `https://fonts.googleapis.com/css2?family=${encodeURIComponent(f).replace(/%20/g, '+')}:wght@400;500;600;700&display=swap`
+      );
+      const headLinks = [
+        `<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" />`,
+        `<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossOrigin=\"anonymous\" />`,
+        ...googleFontHrefs.map((h) => `<link href=\"${h}\" rel=\"stylesheet\" />`)
+      ].join('\n    ');
+      const defaultFont = fontFamilies[0] || 'Inter';
+      const defaultFontCSS = `'${defaultFont}', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+
+      // ---------- minimal project files ----------
+      files.set(
+        'package.json',
+        JSON.stringify(
+          {
+            name: projectSlug,
+            version: '0.1.0',
+            private: true,
+            scripts: {
+              dev: 'next dev',
+              build: 'next build',
+              start: 'next start'
+            },
+            dependencies: {
+              next: '15.4.4',
+              react: '19.1.0',
+              'react-dom': '19.1.0',
+              typescript: '^5.6.0'
+            }
+          },
+          null,
+          2
+        )
+      );
+
+      files.set('next.config.js', `/** @type {import('next').NextConfig} */\nconst nextConfig = {};\nmodule.exports = nextConfig;\n`);
+
+      files.set(
+        'src/app/layout.tsx',
+        `import './globals.css';\n\nexport const metadata = { title: '${componentName}', description: 'Exported from DesignStorm' };\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang=\"en\">\n      <head>\n        ${headLinks}\n      </head>\n      <body style={{ margin: 0 }}>${'${children}'}</body>\n    </html>\n  );\n}\n`
+      );
+
+      // global CSS with default font
+      files.set(
+        'src/app/globals.css',
+        `:root{}\n*{box-sizing:border-box}\nhtml,body{margin:0;padding:0;overflow-x:hidden;max-width:100vw}\nbody{font-family:${defaultFontCSS};}\nimg{display:block;max-width:100%}\n`
+      );
+
+      files.set(
+        'src/app/page.tsx',
+        `'use client';\n\nimport React from 'react';\nimport ${componentName} from '../components/${componentName}';\n\nexport default function Page() {\n  return <${componentName} />;\n}\n`
+      );
+
+      // Minimal scaling hook
+      files.set(
+        'src/lib/useFigmaScale.ts',
+        `import { useEffect, useState } from 'react';\n\nexport function useFigmaScale(designWidth: number, maxScale = 1.2) {\n  const [scale, setScale] = useState(() => {\n    if (typeof window === 'undefined') return 1;\n    const vw = window.innerWidth;\n    const s = vw / Math.max(1, designWidth);\n    return Math.min(Math.max(s, 0.1), maxScale);\n  });\n\n  useEffect(() => {\n    const onResize = () => {\n      const vw = window.innerWidth;\n      const s = vw / Math.max(1, designWidth);\n      setScale(Math.min(Math.max(s, 0.1), maxScale));\n    };\n    window.addEventListener('resize', onResize);\n    return () => window.removeEventListener('resize', onResize);\n  }, [designWidth, maxScale]);\n\n  return scale;\n}\n`
+      );
+
+      // ---------- component code generation ----------
+      const esc = (txt: string) =>
+        (txt || '')
+          .replace(/`/g, '\\`')
+          .replace(/\$/g, '\\$')
+          .replace(/\{/g, '{"{"}')
+          .replace(/\}/g, '{"}"}');
+
+      const toStyleJSX = (obj: Record<string, any>) => {
+        // returns a string like {{ key: value, key2: 'value2' }} with double braces
+        const parts: string[] = [];
+        for (const [k, v] of Object.entries(obj)) {
+          if (v === undefined || v === null || v === '') continue;
+          const key = k;
+          const value = typeof v === 'number' ? String(v) : JSON.stringify(v);
+          parts.push(`${key}: ${value}`);
+        }
+        return `{{ ${parts.join(', ')} }}`;
+      };
+
+      const rgba = (c: any) =>
+        `rgba(${Math.round((c?.r || 0) * 255)}, ${Math.round((c?.g || 0) * 255)}, ${Math.round(
+          (c?.b || 0) * 255
+        )}, ${c?.a ?? 1})`;
+
+      const getLocalImagePath = (nodeId: string) => localAssetMap[nodeId] || '';
+      const getLocalImagePathByRef = (ref?: string) => (ref ? localAssetMap[ref] : '') || '';
+
+      const styleFor = (node: any, parentBB?: any) => {
+        const s: any = {};
+        const bb = node.absoluteBoundingBox;
+        if (bb) {
+          if (parentBB) {
+            s.position = 'absolute';
+            s.left = `${bb.x - parentBB.x}px`;
+            s.top = `${bb.y - parentBB.y}px`;
+            s.width = `${bb.width}px`;
+            s.height = `${bb.height}px`;
+          } else {
+            s.position = 'relative';
+            s.width = `${bb.width}px`;
+            s.height = `${bb.height}px`;
+          }
+        }
+        // Background color from node.backgroundColor
+        if (node.backgroundColor) s.backgroundColor = rgba(node.backgroundColor);
+        // Fills
+        if (node.fills?.[0]) {
+          const f = node.fills[0];
+          if (f.type === 'SOLID' && f.color) s.backgroundColor = rgba(f.color);
+          if (f.type === 'IMAGE') {
+            const p = (f.imageRef && getLocalImagePathByRef(f.imageRef)) || getLocalImagePath(node.id);
+            if (p) {
+              s.backgroundImage = `url('${p}')`;
+              s.backgroundSize = 'cover';
+              s.backgroundPosition = 'center';
+              s.backgroundRepeat = 'no-repeat';
+            }
+          }
+          if (f.type?.startsWith('GRADIENT') && Array.isArray(f.gradientStops) && f.gradientStops.length) {
+            const stops = f.gradientStops
+              .map((st: any) => `${rgba(st.color)} ${st.position * 100}%`)
+              .join(', ');
+            let dir = '';
+            if (Array.isArray(f.gradientTransform)) {
+              const t = f.gradientTransform.flat();
+              const ang = (Math.atan2(t[1], t[0]) * 180) / Math.PI;
+              dir = `${Math.round(ang * 100) / 100}deg`;
+            }
+            if (f.type === 'GRADIENT_LINEAR') s.background = `linear-gradient(${dir || 'to bottom'}, ${stops})`;
+            else if (f.type === 'GRADIENT_RADIAL') s.background = `radial-gradient(circle at center, ${stops})`;
+            else if (f.type === 'GRADIENT_ANGULAR') s.background = `conic-gradient(from ${dir || '0deg'}, ${stops})`;
+            else if (f.type === 'GRADIENT_DIAMOND') {
+              s.background = `radial-gradient(ellipse at center, ${stops})`;
+            }
+          }
+        }
+        // Corner radii (individual if present)
+        const tl = node.cornerRadiusTopLeft, tr = node.cornerRadiusTopRight, bl = node.cornerRadiusBottomLeft, br = node.cornerRadiusBottomRight;
+        if ([tl, tr, bl, br].some((v: any) => v !== undefined)) {
+          const cr = node.cornerRadius ?? 0;
+          const TL = tl ?? cr ?? 0, TR = tr ?? cr ?? 0, BL = bl ?? cr ?? 0, BR = br ?? cr ?? 0;
+          s.borderRadius = `${TL}px ${TR}px ${BR}px ${BL}px`;
+        } else if (node.cornerRadius) {
+          s.borderRadius = `${node.cornerRadius}px`;
+        }
+        // Strokes
+        if (node.strokes?.[0]) {
+          const st = node.strokes[0];
+          const color = st.color ? rgba(st.color) : undefined;
+          const w = st.strokeWeight || node.strokeWeight || 0;
+          const align = st.strokeAlign || 'CENTER';
+          if (w > 0 && color) {
+            if (align === 'OUTSIDE') {
+              s.outline = `${w}px solid ${color}`;
+              s.outlineOffset = '0px';
+            } else {
+              s.border = `${w}px ${Array.isArray(st.dashPattern) && st.dashPattern.length ? 'dashed' : 'solid'} ${color}`;
+            }
+          }
+        }
+        // Effects (shadows)
+        if (Array.isArray(node.effects) && node.effects.length) {
+          const drops: string[] = [];
+          const inners: string[] = [];
+          for (const e of node.effects) {
+            if (!e?.visible) continue;
+            if (e.type === 'DROP_SHADOW') {
+              drops.push(`${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${rgba(e.color || {})}`);
+            } else if (e.type === 'INNER_SHADOW') {
+              inners.push(`inset ${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${rgba(e.color || {})}`);
+            }
+          }
+          if (drops.length) s.boxShadow = drops.join(', ');
+          if (inners.length) s.boxShadow = s.boxShadow ? `${s.boxShadow}, ${inners.join(', ')}` : inners.join(', ');
+        }
+        if (node.opacity !== undefined && node.opacity !== 1) s.opacity = node.opacity;
+        if (node.clipContent) s.overflow = 'hidden';
+        // Transforms
+        const t: string[] = [];
+        if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
+        else if (node.rotation && Math.abs(node.rotation) > 0) {
+          let deg = node.rotation;
+          if (Math.abs(deg) <= Math.PI) deg = (deg * 180) / Math.PI;
+          t.push(`rotate(${Math.round(deg * 100) / 100}deg)`);
+        }
+        if (node.scale && (node.scale.x !== 1 || node.scale.y !== 1)) t.push(`scale(${node.scale.x}, ${node.scale.y})`);
+        if (node.skew) t.push(`skew(${node.skew}deg)`);
+        if (Array.isArray(node.relativeTransform)) t.push(`matrix(${node.relativeTransform.flat().join(', ')})`);
+        if (Array.isArray(node.transform)) t.push(`matrix(${node.transform.join(', ')})`);
+        if (node.isMirrored) {
+          if (node.mirrorAxis === 'HORIZONTAL') t.push('scaleX(-1)');
+          else if (node.mirrorAxis === 'VERTICAL') t.push('scaleY(-1)');
+          else if (node.mirrorAxis === 'BOTH') t.push('scale(-1,-1)');
+        }
+        if (t.length) {
+          s.transform = t.join(' ');
+          s.transformOrigin = 'center center';
+        }
+        return s;
+      };
+
+      const groupHasMaskChild = (n: any) => n?.type === 'GROUP' && n?.children?.some((c: any) => c?.isMask);
+      const genNode = (node: any, parentBB?: any, indent = 2): string => {
+        if (!node) return '';
+        const pad = ' '.repeat(indent);
+        const s = toStyleJSX(styleFor(node, parentBB));
+        const type = node.type;
+
+        switch (type) {
+          case 'TEXT': {
+            const text = esc(String(node.characters || ''));
+            const st = (node.style || {}) as any; // font properties
+            const align = st.textAlignHorizontal === 'CENTER' ? 'center' : st.textAlignHorizontal === 'RIGHT' ? 'right' : st.textAlignHorizontal === 'JUSTIFIED' ? 'justify' : 'left';
+            const mappedGoogle = (name?: string) => {
+              const wl = new Set(['Inter','Roboto','Open Sans','Lato','Poppins','Montserrat','Source Sans Pro','Raleway','Ubuntu','Nunito','Work Sans','DM Sans','Noto Sans','Fira Sans','PT Sans','Oswald','Bebas Neue','Playfair Display','Merriweather','Lora','Space Grotesk','Rubik','Roboto Slab','Nunito Sans','Karla','Manrope']);
+              const alias: Record<string,string> = { 'SF Pro Text':'Inter','SF Pro Display':'Inter','Helvetica Neue':'Inter','Helvetica':'Inter','Arial':'Inter','System':'Inter' };
+              const n = (alias[name || ''] || name || '').trim();
+              return wl.has(n) ? n : 'Inter';
+            };
+            const mapped = mappedGoogle(st.fontFamily);
+            const t: Record<string, any> = {
+              whiteSpace: 'pre-wrap',
+              fontFamily: `'${mapped}', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`,
+              fontSize: st.fontSize ? `${st.fontSize}px` : undefined,
+              fontWeight: st.fontWeight || undefined,
+              lineHeight: st.lineHeightPx ? `${st.lineHeightPx}px` : st.lineHeightPercent ? `${st.lineHeightPercent}%` : undefined,
+              letterSpacing: st.letterSpacing ? `${st.letterSpacing}px` : undefined,
+              textAlign: align,
+            };
+            // text color from fills
+            const fill = node.fills?.[0];
+            if (fill?.type === 'SOLID' && fill.color) t.color = rgba(fill.color);
+            const tStyle = toStyleJSX(t);
+            return `${pad}<div style=${s} data-figma-node-id=\"${node.id}\">\n${pad}  <span style=${tStyle}>${text}</span>\n${pad}</div>`;
+          }
+          case 'RECTANGLE':
+          case 'ELLIPSE':
+          case 'VECTOR':
+          case 'LINE': {
+            // Prefer img if we have a local asset; else a styled div
+            const p = getLocalImagePath(node.id);
+            if (p) {
+              return `${pad}<div style=${s}>\n${pad}  <img src=\"${p}\" alt=\"${(node.name || 'image').replace(/"/g, '&quot;')}\" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />\n${pad}</div>`;
+            }
+            return `${pad}<div style=${s} data-figma-node-id=\"${node.id}\" />`;
+          }
+          case 'GROUP': {
+            const hasMaskChild = Array.isArray(node.children) && node.children.some((c: any) => c?.isMask && (c.maskType || c.mask));
+            const hasTextChild = Array.isArray(node.children) && node.children.some((c: any) => c?.type === 'TEXT');
+            // If group has mask and no text, render as a single flattened image background
+            if (hasMaskChild && !hasTextChild) {
+              let p = getLocalImagePath(node.id);
+              if (!p && Array.isArray(node.children)) {
+                for (const c of node.children) {
+                  if (Array.isArray(c?.fills)) {
+                    const imgFill = c.fills.find((f: any) => f?.type === 'IMAGE');
+                    if (imgFill) {
+                      p = (imgFill.imageRef && getLocalImagePathByRef(imgFill.imageRef)) || getLocalImagePath(c.id) || '';
+                      if (p) break;
+                    }
+                  }
+                }
+              }
+              if (p) {
+                const mergedStyle = styleFor(node, parentBB);
+                mergedStyle.backgroundImage = `url('${p}')`;
+                mergedStyle.backgroundSize = 'cover';
+                mergedStyle.backgroundPosition = 'center';
+                mergedStyle.backgroundRepeat = 'no-repeat';
+                const s2 = toStyleJSX(mergedStyle);
+                return `${pad}<div style=${s2} data-figma-node-id=\"${node.id}\" />`;
+              }
+            }
+            // fallthrough to default container rendering
+          }
+          default: {
+            const children = (node.children || [])
+              .map((c: any) => genNode(c, node.absoluteBoundingBox, indent + 2))
+              .filter(Boolean)
+              .join('\n');
+            if (children)
+              return `${pad}<div style=${s} data-figma-node-id=\"${node.id}\">\n${children}\n${pad}</div>`;
+            return `${pad}<div style=${s} data-figma-node-id=\"${node.id}\" />`;
+          }
+        }
+      };
+
+      const rootBB = frameNode.absoluteBoundingBox || { width: 1200, height: 800 };
+      // ---------- copy assets into zip and rewrite references ----------
+      // Download asset URLs and place into public/assets
+      const JSZip = await import('jszip');
+      const zip = new JSZip.default();
+
+      // Add text files first
+      for (const [p, c] of files) zip.file(p, c);
+
+      // Save all discovered asset candidates (by imageRef hash or node id)
+      for (const { key, aliasKeys } of assetCandidates) {
+        const url = assetMap[key];
+        if (!url) continue;
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const buf = await res.arrayBuffer();
+          const ct = res.headers.get('content-type') || '';
+          const isSvg = ct.includes('svg') || url.endsWith('.svg');
+          const ext = isSvg ? 'svg' : ct.includes('png') || url.includes('.png') ? 'png' : ct.includes('jpeg') || url.includes('.jpg') || url.includes('.jpeg') ? 'jpg' : 'png';
+          const safeKey = sanitizeFilename(key);
+          const path = `public/assets/${safeKey}.${ext}`;
+          const publicPath = `/assets/${safeKey}.${ext}`;
+          localAssetMap[key] = publicPath;
+          for (const a of aliasKeys) localAssetMap[a] = publicPath;
+          zip.file(path, buf);
+        } catch (e) {
+          console.warn('⚠️ Failed to fetch asset', key, e);
+        }
+      }
+
+      // Finally, generate the component file WITH local asset paths resolved
+      const componentTsx = `'use client';\n\nimport React from 'react';\nimport { useFigmaScale } from '../lib/useFigmaScale';\n\nexport default function ${componentName}() {\n  const designWidth = ${Math.round(rootBB.width || 1200)};\n  const scale = useFigmaScale(designWidth, ${enableScaling ? Math.max(1, maxScale).toFixed(1) : 1});\n  return (\n    <div style={{ width: '100vw', minHeight: '100vh', overflowX: 'hidden', overflowY: 'auto', display: 'flex', justifyContent: 'center' }}>\n      <div style={{ width: designWidth + 'px', height: '${Math.round(rootBB.height || 800)}px', transform: 'scale(' + scale + ')', transformOrigin: 'top center', position: 'relative', flexShrink: 0 }}>\n${genNode(frameNode, undefined, 8)}\n      </div>\n      <div style={{ height: (${Math.round(rootBB.height || 800)} * scale) + 'px' }} />\n    </div>\n  );\n}\n`;
+      zip.file(`src/components/${componentName}.tsx`, componentTsx);
+
+      // Produce archive
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const outName = `${projectSlug}-nextjs-project.zip`;
+      downloadBlob(blob, outName);
+      console.log('✅ Exported static Next.js project');
+    } catch (error) {
+      console.error('❌ Export failed:', error);
+    }
+  };
 
   // Function to load assets (images and SVGs) from Figma API
   // Extract unique font families from Figma data
@@ -208,7 +635,6 @@ export default function OutputPage() {
       console.log('🔄 Continuing with design rendering without assets');
     }
   };
-  const [transformOrigin, setTransformOrigin] = useState<string>('center top');
 
   // Effect to trigger image loading when fileKey and figmaToken are available
   useEffect(() => {
@@ -236,7 +662,7 @@ export default function OutputPage() {
   }, [fileKey, figmaToken, frameNode]);
 
   // Function to clear all data and reset state
-  const clearAllData = () => {
+  const clearAllData = async () => {
     setFigmaData(null);
     setFrameNode(null);
     setAssetMap({});
@@ -249,10 +675,19 @@ export default function OutputPage() {
     setUploadError(null);
     setDataVersion(prev => prev + 1);
     
+    // Clear IndexedDB data
+    try {
+      const { clearAllFigmaData } = await import('@/lib/figmaStorage');
+      await clearAllFigmaData();
+      console.log('🧹 Cleared IndexedDB data');
+    } catch (error) {
+      console.error('❌ Failed to clear IndexedDB:', error);
+    }
+    
     // Clear ALL localStorage data completely
     localStorage.clear();
     
-    console.log('🧹 All data cleared including localStorage');
+    console.log('🧹 All data cleared including localStorage and IndexedDB');
     
     // Force page refresh to ensure completely clean state
     window.location.reload();
@@ -820,12 +1255,103 @@ export default function OutputPage() {
         throw new Error('No document node found in the uploaded data');
       }
 
+      // Extract available pages/frames
+      const extractAvailablePages = (root: FigmaNode): PageInfo[] => {
+        const pages: PageInfo[] = [];
+        
+        const findFrames = (node: FigmaNode, isTopLevel: boolean = true): void => {
+          if (node.type === 'FRAME' && isTopLevel) {
+            pages.push({ 
+              id: node.id || `frame-${pages.length}`, 
+              name: node.name || `Frame ${pages.length + 1}`, 
+              node 
+            });
+          } else if (node.type === 'CANVAS' || node.type === 'PAGE' || node.type === 'DOCUMENT') {
+            node.children?.forEach(child => {
+              if (child.type === 'FRAME') {
+                pages.push({ 
+                  id: child.id || `frame-${pages.length}`, 
+                  name: child.name || `Frame ${pages.length + 1}`, 
+                  node: child 
+                });
+              } else {
+                findFrames(child, false);
+              }
+            });
+          }
+        };
+        
+        findFrames(root);
+        return pages;
+      };
+
+      const pages = extractAvailablePages(documentNode);
+      let targetNode: FigmaNode = documentNode;
+
+      if (pages.length > 1) {
+        console.log('🔄 Multi-page design detected with', pages.length, 'pages');
+        setIsMultiPageDesign(true);
+        setAvailablePages(pages);
+        const initialPageId = selectedPageId && pages.some(p => p.id === selectedPageId) ? selectedPageId : pages[0].id;
+        setSelectedPageId(initialPageId);
+        const initialPage = pages.find(p => p.id === initialPageId)!;
+        targetNode = initialPage.node;
+      } else if (pages.length === 1) {
+        console.log('📄 Single frame found within document/canvas');
+        setIsMultiPageDesign(false);
+        setAvailablePages(pages);
+        setSelectedPageId(pages[0].id);
+        targetNode = pages[0].node;
+      } else {
+        console.log('📄 Using document node as the render target');
+        setIsMultiPageDesign(false);
+        setAvailablePages([]);
+        setSelectedPageId(null);
+      }
+
+      // Initialize tree builder for the selected frame
+      if (devMode) {
+        resetGlobalTreeBuilder();
+        const treeBuilder = getGlobalTreeBuilder();
+        treeBuilder.startTree(targetNode.id);
+        
+        // Build tree recursively
+        const buildTreeRecursively = (node: FigmaNode, parentId?: string) => {
+          // Extract styles and props
+          const styles = extractNodeStyles(node);
+          const props = extractNodeProps(node);
+          
+          // Add node to tree
+          treeBuilder.addNode(
+            node.id,
+            node.type,
+            node.name,
+            styles,
+            props,
+            parentId
+          );
+          
+          // Process children
+          if (node.children) {
+            treeBuilder.enterNode(node.id);
+            node.children.forEach(child => {
+              buildTreeRecursively(child, node.id);
+            });
+            treeBuilder.exitNode();
+          }
+        };
+        
+        buildTreeRecursively(targetNode);
+        treeBuilder.serializeToLocalStorage('figmaTree');
+        console.log('🌳 Tree built and serialized for frame:', targetNode.name);
+      }
+
       // Log the structure for debugging
       console.log('🎨 Document structure:', {
-        name: documentNode.name,
-        type: documentNode.type,
-        childrenCount: documentNode.children?.length || 0,
-        children: documentNode.children?.map(child => ({
+        name: targetNode.name,
+        type: targetNode.type,
+        childrenCount: targetNode.children?.length || 0,
+        children: targetNode.children?.map(child => ({
           name: child.name,
           type: child.type,
           id: child.id,
@@ -834,14 +1360,14 @@ export default function OutputPage() {
         }))
       });
 
-      // Load fonts from the document node
-      await loadFontsFromFigmaData(documentNode);
+      // Load fonts from the target node
+      await loadFontsFromFigmaData(targetNode);
       
       // Force re-render by setting frame node and incrementing version
       setFrameNode(null); // Clear first
       setDataVersion(prev => prev + 1); // Increment version to force re-render
       setTimeout(() => {
-        setFrameNode(documentNode);
+        setFrameNode(targetNode);
         console.log('✅ Frame node updated, triggering re-render');
       }, 0);
       
@@ -849,6 +1375,47 @@ export default function OutputPage() {
       console.error('❌ Error parsing Figma data:', err);
       setError(err instanceof Error ? err.message : 'Failed to parse Figma data');
     }
+  };
+
+  // Helper function to extract node styles
+  const extractNodeStyles = (node: FigmaNode): React.CSSProperties => {
+    const styles: React.CSSProperties = {};
+    
+    if (node.absoluteBoundingBox) {
+      styles.position = 'absolute';
+      styles.left = `${node.absoluteBoundingBox.x}px`;
+      styles.top = `${node.absoluteBoundingBox.y}px`;
+      styles.width = `${node.absoluteBoundingBox.width}px`;
+      styles.height = `${node.absoluteBoundingBox.height}px`;
+    }
+    
+    if (node.opacity !== undefined) {
+      styles.opacity = node.opacity;
+    }
+    
+    if (node.visible === false) {
+      styles.display = 'none';
+    }
+    
+    // Add more style extraction as needed
+    return styles;
+  };
+
+  // Helper function to extract node props
+  const extractNodeProps = (node: FigmaNode): Record<string, any> => {
+    const props: Record<string, any> = {};
+    
+    if (node.type === 'TEXT' && node.characters) {
+      props.textContent = node.characters;
+      props.characters = node.characters;
+    }
+    
+    if (node.type === 'IMAGE') {
+      props.alt = node.name || 'Image';
+    }
+    
+    // Add more prop extraction as needed
+    return props;
   };
 
   // Load Figma data from URL parameters or localStorage
@@ -880,7 +1447,14 @@ export default function OutputPage() {
             console.log('📄 Regular JSON data detected');
           }
           
-          // Update localStorage with new data
+          // Update both IndexedDB and localStorage with new data
+          try {
+            const { saveFigmaData } = await import('@/lib/figmaStorage');
+            await saveFigmaData(figmaData);
+            console.log('✅ Updated IndexedDB with new data from URL');
+          } catch (error) {
+            console.error('❌ Failed to save to IndexedDB:', error);
+          }
           localStorage.setItem('figmaData', JSON.stringify(figmaData));
           console.log('✅ Updated localStorage with new data from URL');
           
@@ -928,12 +1502,34 @@ export default function OutputPage() {
             console.log('🚀 Using plugin asset data:', Object.keys(figmaData.imageMap).length, 'assets');
           }
         } else {
-          // No URL data, try to load from localStorage (from upload page)
-          const storedData = localStorage.getItem('figmaData');
+          // No URL data, try to load from IndexedDB first, then localStorage (from upload page)
+          console.log('🔄 Loading data from storage (upload page)...');
+          let storedData = null;
+          
+          // Try IndexedDB first
+          try {
+            const { loadFigmaData } = await import('@/lib/figmaStorage');
+            storedData = await loadFigmaData();
+            if (storedData) {
+              console.log('📁 Successfully loaded data from IndexedDB');
+            }
+          } catch (error) {
+            console.error('❌ Failed to load from IndexedDB:', error);
+          }
+          
+          // Fallback to localStorage if IndexedDB failed
+          if (!storedData) {
+            const localData = localStorage.getItem('figmaData');
+            if (localData) {
+              storedData = JSON.parse(localData);
+              console.log('📁 Loaded data from localStorage (fallback)');
+            }
+          }
+          
           if (storedData) {
             try {
-              const figmaData = JSON.parse(storedData);
-              console.log('📁 Loading data from localStorage (upload page)');
+              const figmaData = storedData; // Data from IndexedDB is already parsed
+              console.log('📁 Processing loaded data from storage');
               
               setAssetMap({});
               setAssetLoadingStatus('Processing uploaded data...');
@@ -951,26 +1547,68 @@ export default function OutputPage() {
               setFigmaData(figmaData);
               await parseFigmaData(figmaData);
               
-              // Load token from localStorage if available
-              const storedToken = localStorage.getItem('figmaToken');
-              if (storedToken) {
-                setFigmaToken(storedToken);
-                console.log('✅ Loaded Figma token from localStorage');
+              // Load token from IndexedDB first, then localStorage
+              try {
+                const { loadFigmaToken } = await import('@/lib/figmaStorage');
+                const storedToken = await loadFigmaToken();
+                if (storedToken) {
+                  setFigmaToken(storedToken);
+                  console.log('✅ Loaded Figma token from IndexedDB');
+                } else {
+                  // Fallback to localStorage
+                  const localToken = localStorage.getItem('figmaToken');
+                  if (localToken) {
+                    setFigmaToken(localToken);
+                    console.log('✅ Loaded Figma token from localStorage (fallback)');
+                  }
+                }
+              } catch (error) {
+                console.error('❌ Failed to load token from IndexedDB, trying localStorage:', error);
+                const localToken = localStorage.getItem('figmaToken');
+                if (localToken) {
+                  setFigmaToken(localToken);
+                  console.log('✅ Loaded Figma token from localStorage (fallback)');
+                }
               }
               
-              // Check if we need to extract file key from stored URL
-              const storedUrl = localStorage.getItem('figmaUrl');
-              if (storedUrl) {
-                setFigmaUrl(storedUrl);
-                const extractedFileKey = extractFileKeyFromUrl(storedUrl);
-                if (extractedFileKey) {
-                  setFileKey(extractedFileKey);
-                  console.log('✅ Extracted file key from stored URL:', extractedFileKey);
+              // Load URL from IndexedDB first, then localStorage
+              try {
+                const { loadFigmaUrl } = await import('@/lib/figmaStorage');
+                const storedUrl = await loadFigmaUrl();
+                if (storedUrl) {
+                  setFigmaUrl(storedUrl);
+                  const extractedFileKey = extractFileKeyFromUrl(storedUrl);
+                  if (extractedFileKey) {
+                    setFileKey(extractedFileKey);
+                    console.log('✅ Extracted file key from stored URL (IndexedDB):', extractedFileKey);
+                  } else {
+                    console.log('❌ Could not extract file key from stored URL:', storedUrl);
+                  }
                 } else {
-                  console.log('❌ Could not extract file key from stored URL:', storedUrl);
+                  // Fallback to localStorage
+                  const localUrl = localStorage.getItem('figmaUrl');
+                  if (localUrl) {
+                    setFigmaUrl(localUrl);
+                    const extractedFileKey = extractFileKeyFromUrl(localUrl);
+                    if (extractedFileKey) {
+                      setFileKey(extractedFileKey);
+                      console.log('✅ Extracted file key from stored URL (localStorage fallback):', extractedFileKey);
+                    }
+                  } else {
+                    console.log('❌ No stored Figma URL found');
+                  }
                 }
-              } else {
-                console.log('❌ No stored Figma URL found');
+              } catch (error) {
+                console.error('❌ Failed to load URL from IndexedDB, trying localStorage:', error);
+                const localUrl = localStorage.getItem('figmaUrl');
+                if (localUrl) {
+                  setFigmaUrl(localUrl);
+                  const extractedFileKey = extractFileKeyFromUrl(localUrl);
+                  if (extractedFileKey) {
+                    setFileKey(extractedFileKey);
+                    console.log('✅ Extracted file key from stored URL (localStorage fallback):', extractedFileKey);
+                  }
+                }
               }
               
               // Use plugin asset data if available
@@ -1086,43 +1724,48 @@ export default function OutputPage() {
 
   return (
     <div className="min-h-screen bg-gray-50" style={{ margin: 0, padding: 0 }}>
-      {/* Compact Single-Line Header with All Tools */}
-      <div className="bg-white border-b border-gray-200 py-2 sticky top-0 z-50 shadow-sm" style={{ paddingLeft: '20px', paddingRight: '20px' }}>
-        <div className="flex items-center justify-between space-x-4">
-          {/* Left Section - Title & Info */}
+      {/* Sticky Header with Page Selector and Export */}
+      <div className="bg-white border-b border-gray-200 py-2 sticky top-0 z-50 shadow-sm">
+        <div className="flex items-center justify-between space-x-4 px-4">
+          {/* Left Section - Brand & Page Selector */}
           <div className="flex items-center space-x-3 min-w-0 flex-1">
-            <h1 className="text-lg font-bold text-gray-900 truncate">
-              Figma Output - {frameNode.name}
-            </h1>
-            <div className="flex items-center space-x-1 flex-shrink-0">
-              <span className="text-xs text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
-                {frameNode.children?.length || 0} elements
-              </span>
-              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                dataSource === 'URL parameters' 
-                  ? 'bg-green-100 text-green-700' 
-                  : dataSource === 'Plugin Export'
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'bg-yellow-100 text-yellow-700'
-              }`}>
-                {dataSource}
-              </span>
-              {figmaData?.metadata?.exportedBy === 'DesignStorm Plugin' && (
-                <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">
-                  🚀
-                </span>
-              )}
-              {Object.keys(assetMap).length > 0 && (
-                <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">
-                  🎨 {Object.keys(assetMap).length} assets
-                </span>
-              )}
-              {loadedFonts.size > 0 && (
-                <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
-                  🔤 {loadedFonts.size} fonts
-                </span>
-              )}
+            {/* Brand */}
+            <div className="flex items-center space-x-2 text-sm font-semibold text-gray-900">
+              <span className="px-2 py-1 rounded bg-gray-100">Figma</span>
+              <span className="text-gray-400">→</span>
+              <span className="px-2 py-1 rounded bg-gray-100">React</span>
             </div>
+            
+            {/* Page Selector */}
+            {isMultiPageDesign && availablePages.length > 0 && (
+              <select
+                value={selectedPageId ?? ''}
+                onChange={(e) => {
+                  const pageId = e.target.value;
+                  setSelectedPageId(pageId);
+                  const selected = availablePages.find(p => p.id === pageId);
+                  if (selected) {
+                    // Reset assets so we only load for the selected page
+                    setAssetMap({});
+                    setAssetLoadingStatus('Not started');
+                    setFrameNode(null);
+                    setTimeout(() => setFrameNode(selected.node), 0);
+                    // Optionally reload fonts for the selected frame
+                    loadFontsFromFigmaData(selected.node);
+                  }
+                }}
+                className="h-8 px-2 text-sm bg-white border border-gray-300 rounded hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+              >
+                {availablePages.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
+            
+            {/* Current frame info */}
+            <span className="text-sm text-gray-600 truncate">
+              {frameNode?.name} ({frameNode?.children?.length || 0} elements)
+            </span>
           </div>
           
           {/* Center Section - File Upload */}
@@ -1140,17 +1783,9 @@ export default function OutputPage() {
             )}
           </div>
           
-          {/* Right Section - All Controls */}
+          {/* Right Section - Controls */}
           <div className="flex items-center space-x-1 flex-shrink-0">
-            {/* Render Mode */}
-            <select
-              value={renderMode}
-              onChange={(e) => setRenderMode(e.target.value as 'simple' | 'enhanced')}
-              className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
-            >
-              <option value="enhanced">Enhanced</option>
-              <option value="simple">Simple</option>
-            </select>
+            {/* Render Mode removed */}
             
             {/* Dev Mode */}
             <button
@@ -1184,26 +1819,6 @@ export default function OutputPage() {
               {showDebugPanel ? '📊' : '📈'} Panel
             </button>
             
-            {/* Overflow Toggle */}
-            <button
-              onClick={() => setOverflowHidden(!overflowHidden)}
-              className={`px-2 py-1 text-xs rounded transition-colors font-medium ${
-                overflowHidden 
-                  ? 'bg-orange-100 hover:bg-orange-200 text-orange-800' 
-                  : 'bg-purple-100 hover:bg-purple-200 text-purple-800'
-              }`}
-            >
-              {overflowHidden ? '🔒' : '🔓'} Overflow
-            </button>
-            
-            {/* Layout Debug */}
-            <button
-              onClick={() => setShowLayoutDebug(!showLayoutDebug)}
-              className="px-2 py-1 text-xs bg-green-100 hover:bg-green-200 text-green-700 rounded transition-colors font-medium"
-            >
-              {showLayoutDebug ? 'Hide' : 'Show'} Layout
-            </button>
-            
             {/* Scaling Toggle */}
             <button
               onClick={() => setEnableScaling(!enableScaling)}
@@ -1214,6 +1829,19 @@ export default function OutputPage() {
               }`}
             >
               {enableScaling ? '📏' : '📐'} Scale
+            </button>
+            
+            {/* Export Button */}
+            <button
+              onClick={handleExport}
+              className="px-3 py-1 text-xs font-medium text-white rounded bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 active:scale-[0.98] transition-transform shadow-sm flex items-center gap-1"
+              title="Export React component"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
+                <path d="M12 3a1 1 0 011 1v8.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L11 12.586V4a1 1 0 011-1z"/>
+                <path d="M5 19a2 2 0 002 2h10a2 2 0 002-2v-3a1 1 0 112 0v3a4 4 0 01-4 4H7a4 4 0 01-4-4v-3a1 1 0 112 0v3z"/>
+              </svg>
+              Export
             </button>
             
             {/* Clear Data */}
@@ -1269,7 +1897,7 @@ export default function OutputPage() {
 
       {/* Main render area */}
       <div className="bg-white w-screen figma-renderer-container" style={{ margin: 0, padding: 0 }}>
-        <div className={`relative w-screen figma-renderer-container ${overflowHidden ? 'overflow-hidden' : 'overflow-hidden'}`} style={{ margin: 0, padding: 0 }}>
+        <div className="relative w-screen figma-renderer-container overflow-hidden" style={{ margin: 0, padding: 0 }}>
           
           {/* Smart Debug Panel Overlay */}
           {showDebugPanel && (
@@ -1317,10 +1945,7 @@ export default function OutputPage() {
                           <span className="text-gray-600">Data Source:</span>
                           <span className="font-medium">{dataSource}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Render Mode:</span>
-                          <span className="font-medium capitalize">{renderMode}</span>
-                        </div>
+                        {/* Render Mode removed from debug info */}
                       </div>
                     </div>
                     
@@ -1337,8 +1962,8 @@ export default function OutputPage() {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">Layout Debug:</span>
-                          <span className={`font-medium ${showLayoutDebug ? 'text-green-600' : 'text-gray-600'}`}>
-                            {showLayoutDebug ? 'On' : 'Off'}
+                          <span className={`font-medium ${false ? 'text-green-600' : 'text-gray-600'}`}>
+                            Off
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -1361,8 +1986,8 @@ export default function OutputPage() {
                         )}
                         <div className="flex justify-between">
                           <span className="text-gray-600">Overflow:</span>
-                          <span className={`font-medium ${overflowHidden ? 'text-orange-600' : 'text-purple-600'}`}>
-                            {overflowHidden ? 'Hidden' : 'Visible'}
+                          <span className={`font-medium ${false ? 'text-orange-600' : 'text-purple-600'}`}>
+                            Visible
                           </span>
                         </div>
                       </div>
@@ -1522,50 +2147,26 @@ export default function OutputPage() {
             <SimpleFigmaRenderer
               key={`renderer-${frameNode.id}-${dataSource}-${dataVersion}`}
               node={frameNode}
-              fileKey={fileKey}
-              figmaToken={figmaToken}
               showDebug={showDebug}
               isRoot={true}
               imageMap={assetMap}
               devMode={devMode}
               enableScaling={enableScaling}
               maxScale={maxScale}
-              transformOrigin={transformOrigin}
             />
           )}
           
-          {/* Coordinate overlay for debugging */}
-          {/*showDebug && !devMode && (
-            <div className="absolute top-4 left-4 bg-black bg-opacity-90 text-white text-xs p-3 rounded shadow-lg z-50">
-              <div className="font-bold mb-2">🔍 Debug Info</div>
-              <div>Frame: {frameNode.name}</div>
-              <div>Type: {frameNode.type}</div>
-              <div>Children: {frameNode.children?.length || 0}</div>
-              <div>File Key: {fileKey || 'Not provided'}</div>
-              <div>Data Source: {dataSource}</div>
-              <div className={figmaToken ? 'text-green-300' : 'text-yellow-300'}>
-                {figmaToken ? '✅ Token loaded - images enabled' : '⚠️ No token - images may not load'}
+          {/* Coordinate overlay for debugging removed */}
               </div>
-              <div>Node ID: 55446:11667</div>
-              <div className="mt-2 text-yellow-300">
-                {imageLoadingStatus}
-              </div>
-              <div className="mt-1">
-                                        Assets: {Object.keys(assetMap).length}
-              </div>
-              <div className="mt-1">
-                Renderer: {renderMode}
-              </div>
-              <div className="mt-1">
-                Layout Debug: {showLayoutDebug ? 'On' : 'Off'}
-              </div>
-              <div className="mt-1">
-                Dev Mode: {devMode ? 'On' : 'Off'}
-              </div>
-            </div>
-          )*/}
-        </div>
       </div>
     </div>
+  );
+}
+
+export default function OutputPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading...</div>}>
+      <OutputPageContent />
+    </Suspense>
   );
 } 

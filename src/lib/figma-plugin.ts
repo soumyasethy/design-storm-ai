@@ -138,15 +138,19 @@ export class FigmaPluginIntegration {
   private extractColors(): any[] {
     const colors: any[] = [];
     
-    if (this.currentData?.styles?.paint) {
-      this.currentData.styles.paint.forEach((style: any) => {
-        if (style.paints?.[0]?.type === 'SOLID') {
-          colors.push({
-            name: style.name,
-            color: style.paints[0].color,
-          });
-        }
-      });
+    const styles = this.currentData?.styles;
+    if (styles && typeof styles === 'object' && !Array.isArray(styles) && 'paint' in styles) {
+      const paintStyles = (styles as any).paint;
+      if (Array.isArray(paintStyles)) {
+        paintStyles.forEach((style: any) => {
+          if (style.paints?.[0]?.type === 'SOLID') {
+            colors.push({
+              name: style.name,
+              color: style.paints[0].color,
+            });
+          }
+        });
+      }
     }
     
     return colors;
@@ -155,17 +159,21 @@ export class FigmaPluginIntegration {
   private extractTypography(): any[] {
     const typography: any[] = [];
     
-    if (this.currentData?.styles?.text) {
-      this.currentData.styles.text.forEach((style: any) => {
-        typography.push({
-          name: style.name,
-          fontFamily: style.style?.fontFamily,
-          fontSize: style.style?.fontSize,
-          fontWeight: style.style?.fontWeight,
-          lineHeight: style.style?.lineHeightPx,
-          letterSpacing: style.style?.letterSpacing,
+    const styles = this.currentData?.styles;
+    if (styles && typeof styles === 'object' && !Array.isArray(styles) && 'text' in styles) {
+      const textStyles = (styles as any).text;
+      if (Array.isArray(textStyles)) {
+        textStyles.forEach((style: any) => {
+          typography.push({
+            name: style.name,
+            fontFamily: style.style?.fontFamily,
+            fontSize: style.style?.fontSize,
+            fontWeight: style.style?.fontWeight,
+            lineHeight: style.style?.lineHeightPx,
+            letterSpacing: style.style?.letterSpacing,
+          });
         });
-      });
+      }
     }
     
     return typography;

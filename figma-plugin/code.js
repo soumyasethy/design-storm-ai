@@ -605,27 +605,40 @@ async function extractAllImages() {
   return images;
 }
 
-// Build image map for easy access
+// Build image map with base64 data for direct embedding
 async function buildImageMap(images) {
   const imageMap = {};
   
   for (const image of images) {
-    if (image.nodeId) {
-      // Store image metadata for debugging (without bytes to prevent freezing)
+    if (image.nodeId && image.base64) {
+      // Store metadata for reference
       imageMap[`${image.nodeId}_meta`] = {
         hash: image.hash,
         nodeName: image.nodeName,
         width: image.width,
         height: image.height,
-        hasBytes: image.hasBytes || false
+        format: image.format || 'png',
+        hasBytes: true,
+        scale: image.scale || 1
       };
       
-      // For now, just store a placeholder for the image URL
-      // This will be filled in later when needed
-      imageMap[image.nodeId] = `placeholder:${image.hash}`;
+      // Store base64 data URL for direct use
+      if (image.format === 'svg') {
+        // SVG as data URL
+        imageMap[image.nodeId] = `data:image/svg+xml;base64,${image.base64}`;
+      } else {
+        // PNG/JPEG as data URL
+        imageMap[image.nodeId] = `data:image/${image.format || 'png'};base64,${image.base64}`;
+      }
+      
+      // Also store by hash for fill references
+      if (image.hash) {
+        imageMap[image.hash] = imageMap[image.nodeId];
+      }
     }
   }
   
+  console.log(`📦 Built image map with ${Object.keys(imageMap).length / 2} images`);
   return imageMap;
 }
 
@@ -804,15 +817,20 @@ async function extractAssetsFromNodes(nodes) {
   return assets;
 }
 
-// Extract images from specific nodes
+// Extract images from specific nodes with proper byte extraction
 async function extractImagesFromNodes(nodes) {
   const images = [];
+  const processedHashes = new Set();
   
+  console.log(`🎯 Starting image extraction from ${nodes.length} nodes...`);
+  
+  // Process each node
   for (const node of nodes) {
-    const nodeImages = await extractNodeImages(node);
+    const nodeImages = await extractNodeImagesWithBytes(node, processedHashes);
     images.push(...nodeImages);
   }
   
+  console.log(`✅ Extracted ${images.length} images with full data`);
   return images;
 }
 
@@ -866,7 +884,7 @@ async function extractNodeAssets(node) {
   return assets;
 }
 
-// Extract images from a single node (simplified version)
+// Extract images from a single node (simplified version for metadata only)
 async function extractNodeImages(node) {
   const images = [];
   
@@ -921,6 +939,129 @@ async function extractNodeImages(node) {
   if ('children' in node && node.children) {
     for (const child of node.children) {
       const childImages = await extractNodeImages(child);
+      images.push(...childImages);
+    }
+  }
+  
+  return images;
+}
+
+// Extract images with actual bytes from a single node
+async function extractNodeImagesWithBytes(node, processedHashes = new Set()) {
+  const images = [];
+  
+  // Process image fills
+  if (node.fills && Array.isArray(node.fills)) {
+    for (const fill of node.fills) {
+      if (fill.type === 'IMAGE' && fill.imageHash && !processedHashes.has(fill.imageHash)) {
+        try {
+          const image = figma.getImageByHash(fill.imageHash);
+          if (image) {
+            // Extract actual bytes
+            const imageBytes = await image.getBytesAsync();
+            const base64Data = bytesToBase64(imageBytes);
+            
+            images.push({
+              hash: fill.imageHash,
+              nodeId: node.id,
+              nodeName: node.name,
+              bytes: imageBytes,
+              base64: base64Data,
+              width: image.width,
+              height: image.height,
+              type: 'IMAGE',
+              format: 'png', // Default format
+              hasBytes: true
+            });
+            
+            processedHashes.add(fill.imageHash);
+            console.log(`✅ Extracted image with bytes: ${node.name} (${image.width}x${image.height})`);
+          }
+        } catch (error) {
+          console.warn(`⚠️ Could not extract image bytes from node: ${node.name}`, error);
+        }
+      }
+    }
+  }
+  
+  // Check for SVG exports (vectors, lines, shapes)
+  if (node.type === 'VECTOR' || node.type === 'LINE' || node.type === 'ELLIPSE' || 
+      node.type === 'POLYGON' || node.type === 'STAR' || node.type === 'BOOLEAN_OPERATION') {
+    try {
+      // Export as SVG
+      const svgData = await node.exportAsync({
+        format: 'SVG',
+        svgIdAttribute: false,
+        svgSimplifyStroke: true,
+        svgOutlineText: true
+      });
+      
+      if (svgData) {
+        const svgString = new TextDecoder('utf-8').decode(svgData);
+        const base64Svg = btoa(svgString);
+        
+        images.push({
+          hash: `svg_${node.id}`,
+          nodeId: node.id,
+          nodeName: node.name,
+          bytes: svgData,
+          base64: base64Svg,
+          svgString: svgString,
+          width: node.width || 100,
+          height: node.height || 100,
+          type: 'SVG',
+          format: 'svg',
+          hasBytes: true
+        });
+        
+        console.log(`✅ Extracted SVG: ${node.name} (${node.width}x${node.height})`);
+      }
+    } catch (error) {
+      console.warn(`⚠️ Could not export SVG for ${node.name}:`, error);
+    }
+  }
+  
+  // Export complex nodes as PNG if they contain important visuals
+  if ((node.type === 'FRAME' || node.type === 'GROUP' || node.type === 'COMPONENT' || node.type === 'INSTANCE') &&
+      node.name && (node.name.toLowerCase().includes('icon') || 
+                   node.name.toLowerCase().includes('logo') ||
+                   node.name.toLowerCase().includes('image') ||
+                   node.name.toLowerCase().includes('avatar'))) {
+    try {
+      // Export as high-quality PNG
+      const pngData = await node.exportAsync({
+        format: 'PNG',
+        constraint: { type: 'SCALE', value: 2 } // 2x for retina
+      });
+      
+      if (pngData) {
+        const base64Png = bytesToBase64(pngData);
+        
+        images.push({
+          hash: `png_${node.id}`,
+          nodeId: node.id,
+          nodeName: node.name,
+          bytes: pngData,
+          base64: base64Png,
+          width: node.width * 2, // Account for 2x scale
+          height: node.height * 2,
+          type: 'PNG',
+          format: 'png',
+          hasBytes: true,
+          scale: 2
+        });
+        
+        console.log(`✅ Exported component as PNG: ${node.name} (${node.width * 2}x${node.height * 2})`);
+      }
+    } catch (error) {
+      console.warn(`⚠️ Could not export PNG for ${node.name}:`, error);
+    }
+  }
+  
+  // Recursively process children
+  if ('children' in node && node.children) {
+    for (const child of node.children) {
+      const childImages = await extractNodeImagesWithBytes(child, processedHashes);
       images.push(...childImages);
     }
   }

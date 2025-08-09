@@ -153,20 +153,20 @@ export async function loadFigmaAssetsFromNodes({
     if (isMaskGroup(node)) {
       maskGroupIds.push(node.id);
       console.log(`🎭 Found mask group: ${node.id} (${node.name}) - treating as single asset`);
-      // Skip individual children of mask groups - we'll export the whole group
-      return;
+      // Do NOT return: still traverse children to collect fallback child image nodes
+      // so that if the group export URL isn't available we can still render using a child image.
     }
     
-    // Find image nodes (but skip if they're part of a mask group)
-    if (node?.fills?.some((f: any) => f.type === "IMAGE") && !isPartOfMaskGroup(node)) {
+    // Find image nodes (even if inside a mask group, as fallback)
+    if (node?.fills?.some((f: any) => f.type === "IMAGE")) {
       imageNodeIds.push(node.id);
       console.log(`🖼️ Found image node: ${node.id} (${node.name})`);
     }
     
-    // Find vector, line, and rectangle nodes for SVG export (but skip if they're part of a mask group)
+    // Find vector, line, and rectangle nodes for SVG export (skip masked contents to avoid duplicates)
     if ((node?.type === 'VECTOR' || node?.type === 'LINE' || 
         (node?.type === 'RECTANGLE' && (node?.strokes?.length > 0 || node?.fills?.some((f: any) => f.type === 'SOLID')))) && 
-        !isPartOfMaskGroup(node)) {
+        !isMaskGroup(node)) {
       svgNodeIds.push(node.id);
       console.log(`📐 Found SVG node: ${node.id} (${node.name}) - ${node.type}`);
     }
@@ -983,65 +983,6 @@ export function getGeometricLineProperties(node: any): {
     angleDegrees: 0,
     lineColor: '#FF004F'
   };
-}
-
-// Get line-specific styling properties
-export function getLineStyles(node: any): React.CSSProperties {
-  if (!node || typeof node !== 'object') {
-    return {
-      border: '2px solid #1D1BFB',
-      backgroundColor: 'transparent',
-      borderRadius: '0',
-    };
-  }
-  
-  const { strokes, strokeWeight, name, transform, absoluteBoundingBox } = node;
-  
-  // Determine border color and width
-  let borderColor = '#1D1BFB'; // Default AG Bright Blue
-  let borderWidth = strokeWeight || 2;
-  
-  if (strokes?.[0]?.type === 'SOLID' && strokes[0].color) {
-    borderColor = rgbaToCss(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b, strokes[0].color.a);
-  }
-  
-  // Check for specific color names in node name
-  const nodeName = name?.toLowerCase() || '';
-  if (nodeName.includes('pink') || nodeName.includes('accent')) {
-    borderColor = '#FF004F';
-  } else if (nodeName.includes('blue') || nodeName.includes('bright blue') || nodeName.includes('ag bright blue')) {
-    borderColor = '#1D1BFB'; // AG Bright Blue
-  } else if (nodeName.includes('red')) {
-    borderColor = '#ff0055';
-  }
-  
-  // Handle matrix transform
-  let transformStyle = '';
-  if (transform && Array.isArray(transform)) {
-    transformStyle = `matrix(${transform.join(', ')})`;
-  }
-  
-  const styles: React.CSSProperties = {
-    border: `${borderWidth}px solid ${borderColor}`,
-    backgroundColor: 'transparent',
-    borderRadius: '0',
-    position: 'absolute',
-    boxSizing: 'border-box',
-  };
-  
-  // Add transform if present
-  if (transformStyle) {
-    styles.transform = transformStyle;
-    styles.transformOrigin = '0 0';
-  }
-  
-  // Add dimensions if available
-  if (absoluteBoundingBox) {
-    styles.width = `${absoluteBoundingBox.width}px`;
-    styles.height = `${absoluteBoundingBox.height}px`;
-  }
-  
-  return styles;
 }
 
 // Check if node is an angled box
