@@ -240,7 +240,7 @@ export async function loadFigmaAssetsFromNodes({
     try {
       console.log(`🖼️ Exporting ${imageNodeIds.length} images as PNG...`);
       const idsParam = encodeURIComponent(imageNodeIds.join(","));
-      const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${idsParam}&format=png&scale=2`;
+      const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${idsParam}&format=png`;
       
       console.log(`🔗 Calling Figma API for images: ${url}`);
       

@@ -102,6 +102,13 @@ function OutputPageContent() {
     loaded: number;
     isLoading: boolean;
   }>({ total: 0, loaded: 0, isLoading: false });
+  // Export progress (mirrors asset loading bar UX)
+  const [exportProgress, setExportProgress] = useState<{
+    isExporting: boolean;
+    total: number;
+    loaded: number;
+    label: string;
+  }>({ isExporting: false, total: 0, loaded: 0, label: '' });
   // Removed render mode dropdown/state
   const [dataSource, setDataSource] = useState<string>('');
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -185,6 +192,15 @@ function OutputPageContent() {
             }
           }
         }
+        // Frame background paints can also be images
+        if (Array.isArray((n as any).background)) {
+          for (const b of (n as any).background) {
+            if (b?.type === 'IMAGE') {
+              if (b.imageRef) addCandidate(b.imageRef, [n.id]);
+              else addCandidate(n.id);
+            }
+          }
+        }
         // Vector/shape nodes: export as files (SVG via API util) for 1:1 usage
         if (
           n.type === 'VECTOR' ||
@@ -206,6 +222,14 @@ function OutputPageContent() {
         (n.children || []).forEach(walkForAssets);
       };
       walkForAssets(frameNode);
+
+      // Initialize export progress (assets + packaging [100 units])
+      setExportProgress({
+        isExporting: true,
+        total: assetCandidates.length + 100,
+        loaded: 0,
+        label: 'Preparing files…',
+      });
 
       // Merge in full asset URLs from the Figma API to ensure SVGs and masked groups are available
       let sourceAssetMap: Record<string, string> = { ...assetMap };
@@ -632,9 +656,10 @@ function OutputPageContent() {
       for (const [p, c] of files) zip.file(p, c);
 
       // Save all discovered asset candidates (by imageRef hash or node id)
+      let downloaded = 0;
       for (const { key, aliasKeys } of assetCandidates) {
         const url = sourceAssetMap[key];
-        if (!url) continue;
+        if (!url) { downloaded++; setExportProgress((ep) => ({ ...ep, loaded: downloaded, label: `Downloading assets (${downloaded}/${assetCandidates.length})…` })); continue; }
         try {
           const res = await fetch(url);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -650,6 +675,9 @@ function OutputPageContent() {
           zip.file(path, buf);
         } catch (e) {
           console.warn('⚠️ Failed to fetch asset', key, e);
+        } finally {
+          downloaded++;
+          setExportProgress((ep) => ({ ...ep, loaded: Math.min(downloaded, ep.total), label: `Downloading assets (${downloaded}/${assetCandidates.length})…` }));
         }
       }
 
@@ -658,12 +686,20 @@ function OutputPageContent() {
       zip.file(`src/components/${componentName}.tsx`, componentTsx);
 
       // Produce archive
-      const blob = await zip.generateAsync({ type: 'blob' });
+      const blob = await zip.generateAsync({ type: 'blob' }, (meta) => {
+        setExportProgress((ep) => ({
+          ...ep,
+          loaded: assetCandidates.length + Math.min(100, Math.floor(meta.percent || 0)),
+          label: `Packaging project (${Math.floor(meta.percent || 0)}%)…`,
+        }));
+      });
       const outName = `${projectSlug}-nextjs-project.zip`;
       downloadBlob(blob, outName);
       console.log('✅ Exported static Next.js project');
+      setExportProgress({ isExporting: false, total: 0, loaded: 0, label: '' });
     } catch (error) {
       console.error('❌ Export failed:', error);
+      setExportProgress((ep) => ({ ...ep, isExporting: false, label: 'Export failed' }));
     }
   };
 
@@ -2034,6 +2070,33 @@ function OutputPageContent() {
                 </span>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Export Progress Bar - mirrors loading bar UX */}
+      {exportProgress.isExporting && (
+        <div className="bg-emerald-50/80 border-b border-emerald-200/50 shadow-sm sticky top-12 z-40">
+          <div className="h-8 flex items-center justify-between px-4">
+            <div className="flex items-center space-x-2">
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-emerald-600"></div>
+              <span className="text-emerald-800 text-xs font-medium">
+                {exportProgress.label || 'Exporting…'}
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-24 bg-emerald-200/50 rounded-full h-1.5">
+                <div
+                  className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300 ease-out"
+                  style={{
+                    width: `${Math.min(100, Math.round(((exportProgress.loaded) / Math.max(1, exportProgress.total)) * 100))}%`,
+                  }}
+                ></div>
+              </div>
+              <span className="text-emerald-600 text-xs font-medium">
+                {Math.min(100, Math.round(((exportProgress.loaded) / Math.max(1, exportProgress.total)) * 100))}%
+              </span>
+            </div>
           </div>
         </div>
       )}
