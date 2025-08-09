@@ -28,7 +28,7 @@ const isUsableUrl = (u?: string) => typeof u === 'string' && u.trim().length > 0
 
 const sanitize = (styles: any): React.CSSProperties => {
     const allow = new Set([
-        'position','top','right','bottom','left','zIndex','display','flexDirection','flexWrap','justifyContent','alignItems','alignContent','alignSelf','flex','flexGrow','flexShrink','flexBasis','order','width','height','minWidth','minHeight','maxWidth','maxHeight','margin','marginTop','marginRight','marginBottom','marginLeft','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','overflow','overflowX','overflowY','visibility','boxSizing','border','borderWidth','borderStyle','borderColor','borderTop','borderRight','borderBottom','borderLeft','borderRadius','borderTopLeftRadius','borderTopRightRadius','borderBottomLeftRadius','borderBottomRightRadius','boxShadow','background','backgroundColor','backgroundImage','backgroundRepeat','backgroundPosition','backgroundSize','color','fontFamily','fontSize','fontWeight','fontStyle','lineHeight','textAlign','textDecoration','textTransform','textShadow','textOverflow','whiteSpace','wordBreak','transform','transformOrigin','opacity','WebkitFontSmoothing','WebkitMaskImage','WebkitMaskMode','WebkitMaskSize','WebkitMaskPosition','WebkitMaskRepeat','filter','backdropFilter','mixBlendMode',
+        'position', 'top', 'right', 'bottom', 'left', 'zIndex', 'display', 'flexDirection', 'flexWrap', 'justifyContent', 'alignItems', 'alignContent', 'alignSelf', 'flex', 'flexGrow', 'flexShrink', 'flexBasis', 'order', 'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'overflow', 'overflowX', 'overflowY', 'visibility', 'boxSizing', 'border', 'borderWidth', 'borderStyle', 'borderColor', 'borderTop', 'borderRight', 'borderBottom', 'borderLeft', 'borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius', 'boxShadow', 'background', 'backgroundColor', 'backgroundImage', 'backgroundRepeat', 'backgroundPosition', 'backgroundSize', 'color', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'textAlign', 'textDecoration', 'textTransform', 'textShadow', 'textOverflow', 'whiteSpace', 'wordBreak', 'transform', 'transformOrigin', 'opacity', 'WebkitFontSmoothing', 'WebkitMaskImage', 'WebkitMaskMode', 'WebkitMaskSize', 'WebkitMaskPosition', 'WebkitMaskRepeat', 'filter', 'backdropFilter', 'mixBlendMode',
     ]);
     const out: any = {};
     for (const [k, v] of Object.entries(styles || {})) {
@@ -66,7 +66,7 @@ const fillStyles = (
     nodeId?: string,
     imageMap?: Record<string, string>
 ): React.CSSProperties => {
-    if (!fills || !fills.length) return { backgroundColor: 'rgba(200,200,200,0.25)' };
+    if (!fills || !fills.length) return { backgroundColor: 'transparent' };
     const f = fills[0];
     const s: React.CSSProperties = {};
     if (f.type === 'SOLID' && f.color) {
@@ -181,15 +181,13 @@ const effectStyles = (node: any): React.CSSProperties => {
     (node.effects || []).forEach((e: any) => {
         if (!e?.visible) return;
         if (e.type === 'DROP_SHADOW') {
-            const filt = `drop-shadow(${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${
-                e.color ? rgbaToCss(e.color.r, e.color.g, e.color.b, e.color.a) : 'rgba(0,0,0,0.3)'
-            })`;
+            const filt = `drop-shadow(${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${e.color ? rgbaToCss(e.color.r, e.color.g, e.color.b, e.color.a) : 'rgba(0,0,0,0.3)'
+                })`;
             s.filter = s.filter ? `${s.filter} ${filt}` : filt;
         }
         if (e.type === 'INNER_SHADOW') {
-            const bs = `inset ${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${
-                e.color ? rgbaToCss(e.color.r, e.color.g, e.color.b, e.color.a) : 'rgba(0,0,0,0.3)'
-            }`;
+            const bs = `inset ${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${e.color ? rgbaToCss(e.color.r, e.color.g, e.color.b, e.color.a) : 'rgba(0,0,0,0.3)'
+                }`;
             s.boxShadow = s.boxShadow ? `${s.boxShadow}, ${bs}` : bs;
         }
         if (e.type === 'LAYER_BLUR') {
@@ -257,8 +255,8 @@ const TextRenderer: Renderer = ({ node, styles, showDebug, devMode }) => {
     useEffect(() => {
         if (st.fontFamily)
             import('@/lib/fontLoader')
-                .then(({ loadFont }) => loadFont(st.fontFamily, [st.fontWeight || 400, 700]).catch(() => {}))
-                .catch(() => {});
+                .then(({ loadFont }) => loadFont(st.fontFamily, [st.fontWeight || 400, 700]).catch(() => { }))
+                .catch(() => { });
     }, [st.fontFamily, st.fontWeight]);
 
     const align = getTextAlign(st?.textAlignHorizontal || 'LEFT');
@@ -277,10 +275,7 @@ const TextRenderer: Renderer = ({ node, styles, showDebug, devMode }) => {
         ...styles,
         width: styles.width ? `calc(${styles.width} + ${TEXT_W_BUFFER * 2}px)` : undefined,
         height: styles.height ? `calc(${styles.height} + ${TEXT_H_BUFFER * 2}px)` : undefined,
-        // paddingLeft: TEXT_W_BUFFER,
-        // paddingRight: TEXT_W_BUFFER,
-        // paddingTop: TEXT_H_BUFFER,
-        // paddingBottom: TEXT_H_BUFFER,
+        // Padding disabled to avoid visible blocks around text
 
         display: 'flex',
         alignItems: getVerticalAlign(st?.textAlignVertical || 'TOP'),
@@ -298,8 +293,11 @@ const TextRenderer: Renderer = ({ node, styles, showDebug, devMode }) => {
         letterSpacing: st.letterSpacing ? `${st.letterSpacing}px` : undefined,
         color: baseColor,
         whiteSpace: 'pre-wrap',
-        overflow: 'hidden',
+        overflow: 'visible',
         wordBreak: 'break-word' as any,
+        background: 'transparent',
+        pointerEvents: 'auto',
+        zIndex: (typeof (styles as any).zIndex === 'number' ? (styles as any).zIndex : 0) + 10,
     };
 
     const overrides: number[] = node.characterStyleOverrides || [];
@@ -341,8 +339,8 @@ const TextRenderer: Renderer = ({ node, styles, showDebug, devMode }) => {
                     );
                 return Object.keys(span).length ? (
                     <span key={`c-${i}`} style={span}>
-              {ch}
-            </span>
+                        {ch}
+                    </span>
                 ) : (
                     <span key={`c-${i}`}>{ch}</span>
                 );
@@ -465,6 +463,10 @@ const ContainerRenderer: Renderer = ({ node, styles, imageMap, showDebug, devMod
             );
         } else if (Array.isArray(node.fills) && node.fills.length) {
             Object.assign(base, fillStyles(node.fills, node.id, imageMap));
+        }
+        // Never show default placeholder gray backgrounds for containers
+        if (base.backgroundColor === 'rgba(200,200,200,0.25)') {
+            delete (base as any).backgroundColor;
         }
         return base;
     }, [styles, node.backgroundColor, node.fills, node.id, imageMap]);
@@ -634,14 +636,14 @@ interface Props {
 }
 
 const SimpleFigmaRenderer: React.FC<Props> = ({
-                                                  node,
-                                                  imageMap = {},
-                                                  showDebug = false,
-                                                  isRoot = false,
-                                                  devMode = false,
-                                                  enableScaling = true,
-                                                  maxScale = 2,
-                                              }) => {
+    node,
+    imageMap = {},
+    showDebug = false,
+    isRoot = false,
+    devMode = false,
+    enableScaling = true,
+    maxScale = 2,
+}) => {
     if (!node || typeof node !== 'object') return <div>Invalid node</div>;
 
     // annotate once with parent bounds + order for stacking

@@ -12,6 +12,26 @@ class FontLoader {
   private loadingPromises: Map<string, Promise<void>> = new Map();
 
   /**
+   * Add preconnects to Google Fonts hosts once per page
+   */
+  private ensurePreconnects(): void {
+    const add = (href: string, crossOrigin?: string) => {
+      if (document.querySelector(`link[rel="preconnect"][href="${href}"]`)) return;
+      const l = document.createElement('link');
+      l.rel = 'preconnect';
+      l.href = href;
+      if (crossOrigin) (l as HTMLLinkElement).crossOrigin = crossOrigin;
+      document.head.appendChild(l);
+    };
+    try {
+      add('https://fonts.googleapis.com');
+      add('https://fonts.gstatic.com', 'anonymous');
+    } catch {
+      // no-op
+    }
+  }
+
+  /**
    * Convert font family name to Google Fonts URL
    */
   private getGoogleFontsUrl(fontFamily: string, weights: number[] = [400, 700], styles: string[] = ['normal'], display: string = 'swap'): string {
@@ -50,6 +70,7 @@ class FontLoader {
    */
   private async loadFontInternal(fontFamily: string, weights: number[], styles: string[], display: string, fontKey: string): Promise<void> {
     try {
+      this.ensurePreconnects();
       const url = this.getGoogleFontsUrl(fontFamily, weights, styles, display);
       
       // Check if link already exists
@@ -66,21 +87,38 @@ class FontLoader {
       // Remove crossOrigin to avoid CORS issues with Google Fonts
 
       // Wait for font to load
-      await new Promise<void>((resolve, reject) => {
-        link.onload = () => {
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const done = () => {
+          if (settled) return; settled = true;
           this.loadedFonts.add(fontKey);
           this.loadingPromises.delete(fontKey);
           resolve();
         };
+
+        link.onload = done;
         link.onerror = () => {
-          this.loadingPromises.delete(fontKey);
-          reject(new Error(`Failed to load font: ${fontFamily}`));
+          // Do not reject: some browsers/extensions block onerror for CSS fonts.
+          console.info(`Font CSS request reported error for ${fontFamily}, continuing with fallback load check.`);
+          done();
         };
         document.head.appendChild(link);
+
+        // Fallback: resolve after 1500ms if no load/error events fire
+        setTimeout(done, 1500);
       });
 
+      // Try to explicitly load the font via Font Loading API; ignore failures
+      if (document?.fonts && weights?.length) {
+        try {
+          await Promise.race([
+            Promise.all(weights.map(w => (document as any).fonts.load(`${w} 1em ${fontFamily}`))),
+            new Promise((r) => setTimeout(r, 1500)),
+          ]);
+        } catch {/* ignore */}
+      }
     } catch (error) {
-      console.warn(`Font loading failed for ${fontFamily}:`, error);
+      console.info(`Font loading fallback for ${fontFamily}:`, error);
       // Still mark as loaded to prevent infinite retries
       this.loadedFonts.add(fontKey);
       this.loadingPromises.delete(fontKey);

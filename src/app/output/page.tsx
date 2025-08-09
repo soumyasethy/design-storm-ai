@@ -156,6 +156,10 @@ function OutputPageContent() {
           .replace(/-+/g, '-')
           .replace(/^-|-$/g, '');
 
+      // ---- Text buffers (easy to tweak) ----
+      const TEXT_W_BUFFER = 6; // px on left and right
+      const TEXT_H_BUFFER = 4; // px on top and bottom
+
       const componentName = pascal(frameNode.name || 'ExportedDesign');
       const projectSlug = slug(frameNode.name || 'figma-export');
 
@@ -181,6 +185,15 @@ function OutputPageContent() {
             }
           }
         }
+        // Vector/shape nodes: export as files (SVG via API util) for 1:1 usage
+        if (
+          n.type === 'VECTOR' ||
+          n.type === 'LINE' ||
+          n.type === 'ELLIPSE' ||
+          n.type === 'RECTANGLE'
+        ) {
+          addCandidate(n.id);
+        }
         if (n.type === 'GROUP') {
           const hasMaskChild = Array.isArray(n.children) && n.children.some((c: any) => c?.isMask && (c.maskType || c.mask));
           const hasTextChild = Array.isArray(n.children) && n.children.some((c: any) => c?.type === 'TEXT');
@@ -193,6 +206,24 @@ function OutputPageContent() {
         (n.children || []).forEach(walkForAssets);
       };
       walkForAssets(frameNode);
+
+      // Merge in full asset URLs from the Figma API to ensure SVGs and masked groups are available
+      let sourceAssetMap: Record<string, string> = { ...assetMap };
+      try {
+        if (fileKey && figmaToken) {
+          const apiAssetMap = await loadFigmaAssetsFromNodes({
+            figmaFileKey: fileKey,
+            figmaToken,
+            rootNode: frameNode,
+            onProgress: (total: number, loaded: number) => {
+              if (devMode) console.log(`Export asset progress: ${loaded}/${total}`);
+            },
+          });
+          sourceAssetMap = { ...sourceAssetMap, ...apiAssetMap };
+        }
+      } catch (e) {
+        console.warn('⚠️ Could not load additional assets from API during export. Proceeding with existing asset map.', e);
+      }
 
       // Sanitize filenames for cross-platform safety
       const sanitizeFilename = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, '-');
@@ -242,7 +273,7 @@ function OutputPageContent() {
 
       files.set(
         'src/app/layout.tsx',
-        `import './globals.css';\n\nexport const metadata = { title: '${componentName}', description: 'Exported from DesignStorm' };\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang=\"en\">\n      <head>\n        ${headLinks}\n      </head>\n      <body style={{ margin: 0 }}>${'${children}'}</body>\n    </html>\n  );\n}\n`
+        `import './globals.css';\n\nexport const metadata = { title: '${componentName}', description: 'Exported from DesignStorm' };\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang=\"en\">\n      <head>\n        ${headLinks}\n      </head>\n      <body style={{ margin: 0 }}>{children}</body>\n    </html>\n  );\n}\n`
       );
 
       // global CSS with default font
@@ -306,12 +337,22 @@ function OutputPageContent() {
             s.height = `${bb.height}px`;
           }
         }
-        // Background color from node.backgroundColor
-        if (node.backgroundColor) s.backgroundColor = rgba(node.backgroundColor);
+        // Background color from node.backgroundColor (skip for TEXT nodes)
+        if (node.type !== 'TEXT' && node.backgroundColor) s.backgroundColor = rgba(node.backgroundColor);
         // Fills
         if (node.fills?.[0]) {
           const f = node.fills[0];
-          if (f.type === 'SOLID' && f.color) s.backgroundColor = rgba(f.color);
+          if (node.type !== 'TEXT' && f.type === 'SOLID' && f.color) {
+            // Avoid painting container backgrounds when they simply wrap visual children (icons/images)
+            const hasVisualChildren = Array.isArray(node.children) && node.children.some((c: any) => {
+              if (['VECTOR', 'RECTANGLE', 'ELLIPSE', 'LINE'].includes(c?.type)) return true;
+              return Array.isArray(c?.fills) && c.fills.some((cf: any) => cf?.type === 'IMAGE');
+            });
+            const isPureWhite = Math.round((f.color?.r || 0) * 255) === 255 && Math.round((f.color?.g || 0) * 255) === 255 && Math.round((f.color?.b || 0) * 255) === 255 && (f.color?.a ?? 1) >= 1;
+            if (!(hasVisualChildren && isPureWhite)) {
+              s.backgroundColor = rgba(f.color);
+            }
+          }
           if (f.type === 'IMAGE') {
             const p = (f.imageRef && getLocalImagePathByRef(f.imageRef)) || getLocalImagePath(node.id);
             if (p) {
@@ -347,6 +388,9 @@ function OutputPageContent() {
           s.borderRadius = `${TL}px ${TR}px ${BR}px ${BL}px`;
         } else if (node.cornerRadius) {
           s.borderRadius = `${node.cornerRadius}px`;
+        } else if (node.type === 'ELLIPSE') {
+          // Ensure true circles/ellipses render as rounded in export
+          s.borderRadius = '50%';
         }
         // Strokes
         if (node.strokes?.[0]) {
@@ -370,23 +414,33 @@ function OutputPageContent() {
           for (const e of node.effects) {
             if (!e?.visible) continue;
             if (e.type === 'DROP_SHADOW') {
-              drops.push(`${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${rgba(e.color || {})}`);
+              const shadow = `${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${rgba(e.color || {})}`;
+              drops.push(shadow);
             } else if (e.type === 'INNER_SHADOW') {
               inners.push(`inset ${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${rgba(e.color || {})}`);
             }
           }
-          if (drops.length) s.boxShadow = drops.join(', ');
-          if (inners.length) s.boxShadow = s.boxShadow ? `${s.boxShadow}, ${inners.join(', ')}` : inners.join(', ');
+          if (node.type === 'TEXT') {
+            if (drops.length) (s as any).textShadow = drops.join(', ');
+            // ignore inners for text to avoid rectangular artifacts
+          } else {
+            if (drops.length) s.boxShadow = drops.join(', ');
+            if (inners.length) s.boxShadow = s.boxShadow ? `${s.boxShadow}, ${inners.join(', ')}` : inners.join(', ');
+          }
         }
         if (node.opacity !== undefined && node.opacity !== 1) s.opacity = node.opacity;
         if (node.clipContent) s.overflow = 'hidden';
         // Transforms
+        const hasImageFill = Array.isArray(node.fills) && node.fills.some((ff: any) => ff?.type === 'IMAGE');
         const t: string[] = [];
-        if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
-        else if (node.rotation && Math.abs(node.rotation) > 0) {
-          let deg = node.rotation;
-          if (Math.abs(deg) <= Math.PI) deg = (deg * 180) / Math.PI;
-          t.push(`rotate(${Math.round(deg * 100) / 100}deg)`);
+        // Skip rotate for image-based nodes because export already bakes rotation into the asset
+        if (!hasImageFill) {
+          if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
+          else if (node.rotation && Math.abs(node.rotation) > 0) {
+            let deg = node.rotation;
+            if (Math.abs(deg) <= Math.PI) deg = (deg * 180) / Math.PI;
+            t.push(`rotate(${Math.round(deg * 100) / 100}deg)`);
+          }
         }
         if (node.scale && (node.scale.x !== 1 || node.scale.y !== 1)) t.push(`scale(${node.scale.x}, ${node.scale.y})`);
         if (node.skew) t.push(`skew(${node.skew}deg)`);
@@ -413,7 +467,6 @@ function OutputPageContent() {
 
         switch (type) {
           case 'TEXT': {
-            const text = esc(String(node.characters || ''));
             const st = (node.style || {}) as any; // font properties
             const align = st.textAlignHorizontal === 'CENTER' ? 'center' : st.textAlignHorizontal === 'RIGHT' ? 'right' : st.textAlignHorizontal === 'JUSTIFIED' ? 'justify' : 'left';
             const mappedGoogle = (name?: string) => {
@@ -423,7 +476,7 @@ function OutputPageContent() {
               return wl.has(n) ? n : 'Inter';
             };
             const mapped = mappedGoogle(st.fontFamily);
-            const t: Record<string, any> = {
+            const baseTextStyle: Record<string, any> = {
               whiteSpace: 'pre-wrap',
               fontFamily: `'${mapped}', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`,
               fontSize: st.fontSize ? `${st.fontSize}px` : undefined,
@@ -431,22 +484,97 @@ function OutputPageContent() {
               lineHeight: st.lineHeightPx ? `${st.lineHeightPx}px` : st.lineHeightPercent ? `${st.lineHeightPercent}%` : undefined,
               letterSpacing: st.letterSpacing ? `${st.letterSpacing}px` : undefined,
               textAlign: align,
+              backgroundColor: 'transparent',
+              color: (() => {
+                const fill = node.fills?.[0];
+                return fill?.type === 'SOLID' && fill.color ? rgba(fill.color) : undefined;
+              })(),
+              // export-time text buffer
+              paddingLeft: `${TEXT_W_BUFFER}px`,
+              paddingRight: `${TEXT_W_BUFFER}px`,
+              paddingTop: `${TEXT_H_BUFFER}px`,
+              paddingBottom: `${TEXT_H_BUFFER}px`,
             };
-            // text color from fills
-            const fill = node.fills?.[0];
-            if (fill?.type === 'SOLID' && fill.color) t.color = rgba(fill.color);
-            const tStyle = toStyleJSX(t);
-            return `${pad}<div style=${s} data-figma-node-id=\"${node.id}\">\n${pad}  <span style=${tStyle}>${text}</span>\n${pad}</div>`;
+            const tStyle = toStyleJSX(baseTextStyle);
+
+            // Make the outer text container account for buffers and avoid squeezing
+            const textBox = { ...styleFor(node, parentBB) } as Record<string, any>;
+            if (node.absoluteBoundingBox) {
+              const bw = Math.round(node.absoluteBoundingBox.width || 0) + TEXT_W_BUFFER * 2;
+              const bh = Math.round(node.absoluteBoundingBox.height || 0) + TEXT_H_BUFFER * 2;
+              textBox.width = `calc(${bw}px)`;
+              textBox.height = `calc(${bh}px)`;
+              textBox.maxWidth = '100%';
+            }
+            const sText = toStyleJSX(textBox);
+
+            // Build rich text spans using styleOverrideTable
+            const chars = String(node.characters || '');
+            const overrides: number[] = (node as any).characterStyleOverrides || [];
+            const table: Record<string, any> = (node as any).styleOverrideTable || {};
+            const runForIndex = (i: number) => table[String(overrides[i] || 0)] || {};
+            const toSpanStyle = (cs: any) => {
+              const style: Record<string, any> = {};
+              if (cs.fontFamily) style.fontFamily = `'${mappedGoogle(cs.fontFamily)}', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+              if (cs.fontSize) style.fontSize = `${cs.fontSize}px`;
+              if (cs.fontWeight) style.fontWeight = cs.fontWeight;
+              if (cs.letterSpacing) style.letterSpacing = `${cs.letterSpacing}px`;
+              if (cs.lineHeightPx) style.lineHeight = `${cs.lineHeightPx}px`;
+              else if (cs.lineHeightPercent) style.lineHeight = `${cs.lineHeightPercent}%`;
+              const f = cs.fills?.[0];
+              if (f?.type === 'SOLID' && f.color) style.color = rgba(f.color);
+              const deco = (cs.textDecoration || cs.textDecorationLine || '').toString().toLowerCase();
+              if (deco.includes('underline')) style.textDecoration = 'underline';
+              if (cs.textCase === 'UPPER') style.textTransform = 'uppercase';
+              if (cs.textCase === 'LOWER') style.textTransform = 'lowercase';
+              if (cs.textCase === 'TITLE') style.textTransform = 'capitalize';
+              return toStyleJSX(style);
+            };
+            let content = '';
+            for (let i = 0; i < chars.length; i++) {
+              const ch = chars[i];
+              if (ch === '\n') {
+                // Preserve consecutive newlines faithfully; insert a tiny spacer to prevent DOM collapse
+                let count = 1;
+                while (i + 1 < chars.length && chars[i + 1] === '\n') { count++; i++; }
+                for (let k = 0; k < count; k++) content += '<br/>';
+                continue;
+              }
+              const cs = runForIndex(i);
+              const styleAttr = toSpanStyle(cs);
+              const href = cs?.hyperlink?.url;
+              const inner = esc(ch);
+              if (href) content += `<a href=\"${href}\" style=${styleAttr}>${inner}</a>`;
+              else content += `<span style=${styleAttr}>${inner}</span>`;
+            }
+            return `${pad}<div style=${sText} data-figma-node-id=\"${node.id}\">\n${pad}  <span style=${tStyle}>${content}</span>\n${pad}</div>`;
           }
           case 'RECTANGLE':
           case 'ELLIPSE':
           case 'VECTOR':
           case 'LINE': {
-            // Prefer img if we have a local asset; else a styled div
+            // Always prefer exported asset usage for 1:1 fidelity if available
             const p = getLocalImagePath(node.id);
             if (p) {
-              return `${pad}<div style=${s}>\n${pad}  <img src=\"${p}\" alt=\"${(node.name || 'image').replace(/"/g, '&quot;')}\" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />\n${pad}</div>`;
+              // Use layout-only styles; strip all visual paint/border so only the asset is visible
+              const layoutOnly: any = { ...styleFor(node, parentBB) };
+              delete layoutOnly.background;
+              delete layoutOnly.backgroundColor;
+              delete layoutOnly.backgroundImage;
+              delete layoutOnly.backgroundRepeat;
+              delete layoutOnly.backgroundSize;
+              delete layoutOnly.backgroundPosition;
+              delete layoutOnly.border;
+              delete (layoutOnly as any).borderTop;
+              delete (layoutOnly as any).borderRight;
+              delete (layoutOnly as any).borderBottom;
+              delete (layoutOnly as any).borderLeft;
+              delete (layoutOnly as any).outline;
+              delete (layoutOnly as any).boxShadow;
+              const sOnly = toStyleJSX(layoutOnly);
+              return `${pad}<div style=${sOnly}>\n${pad}  <img src=\"${p}\" alt=\"${(node.name || 'image').replace(/"/g, '&quot;')}\" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />\n${pad}</div>`;
             }
+            // If no asset, fall back to styled div (rare)
             return `${pad}<div style=${s} data-figma-node-id=\"${node.id}\" />`;
           }
           case 'GROUP': {
@@ -468,6 +596,10 @@ function OutputPageContent() {
               }
               if (p) {
                 const mergedStyle = styleFor(node, parentBB);
+                delete (mergedStyle as any).border;
+                delete (mergedStyle as any).outline;
+                delete (mergedStyle as any).boxShadow;
+                delete (mergedStyle as any).backgroundColor; // asset will paint
                 mergedStyle.backgroundImage = `url('${p}')`;
                 mergedStyle.backgroundSize = 'cover';
                 mergedStyle.backgroundPosition = 'center';
@@ -501,7 +633,7 @@ function OutputPageContent() {
 
       // Save all discovered asset candidates (by imageRef hash or node id)
       for (const { key, aliasKeys } of assetCandidates) {
-        const url = assetMap[key];
+        const url = sourceAssetMap[key];
         if (!url) continue;
         try {
           const res = await fetch(url);
@@ -540,14 +672,25 @@ function OutputPageContent() {
   const extractFontFamilies = (node: any): Set<string> => {
     const fonts = new Set<string>();
     
-    const traverse = (currentNode: any) => {
-      if (currentNode.style?.fontFamily) {
-        fonts.add(currentNode.style.fontFamily);
+    const add = (f?: string) => {
+      if (!f) return;
+      const name = String(f).trim();
+      if (name) fonts.add(name);
+    };
+
+    const traverse = (n: any) => {
+      if (!n || typeof n !== 'object') return;
+      // Base style
+      add(n.style?.fontFamily);
+      // Text style override table (rich text runs)
+      if (n.styleOverrideTable && typeof n.styleOverrideTable === 'object') {
+        Object.values(n.styleOverrideTable).forEach((ov: any) => add(ov?.fontFamily));
       }
-      
-      if (currentNode.children) {
-        currentNode.children.forEach(traverse);
+      // Instances sometimes carry styles in props
+      if (Array.isArray(n.styles)) {
+        n.styles.forEach((s: any) => add(s?.fontFamily));
       }
+      (n.children || []).forEach(traverse);
     };
     
     traverse(node);
