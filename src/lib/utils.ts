@@ -145,6 +145,7 @@ export async function loadFigmaAssetsFromNodes({
   
   // Step 1: Collect all asset node IDs (images, vectors, lines, rectangles, mask groups)
   const imageNodeIds: string[] = [];
+  const imageRefIds: string[] = [];
   const svgNodeIds: string[] = [];
   const maskGroupIds: string[] = [];
   
@@ -160,7 +161,19 @@ export async function loadFigmaAssetsFromNodes({
     // Find image nodes (even if inside a mask group, as fallback)
     if (node?.fills?.some((f: any) => f.type === "IMAGE")) {
       imageNodeIds.push(node.id);
+      for (const f of node.fills) {
+        if (f?.type === 'IMAGE' && f.imageRef) imageRefIds.push(f.imageRef);
+      }
       console.log(`🖼️ Found image node: ${node.id} (${node.name})`);
+    }
+    // Frames can have background paints separate from fills
+    if (Array.isArray((node as any).background)) {
+      for (const b of (node as any).background) {
+        if (b?.type === 'IMAGE' && b.imageRef) {
+          imageRefIds.push(b.imageRef);
+          console.log(`🖼️ Found background imageRef on ${node.id} (${node.name})`);
+        }
+      }
     }
     
     // Find vector, line, and rectangle nodes for SVG export (skip masked contents to avoid duplicates)
@@ -202,11 +215,13 @@ export async function loadFigmaAssetsFromNodes({
   
   findAssetNodes(rootNode);
   
-  const totalAssets = imageNodeIds.length + svgNodeIds.length + maskGroupIds.length;
+  const uniqueImageRefs = Array.from(new Set(imageRefIds));
+  const totalAssets = imageNodeIds.length + svgNodeIds.length + maskGroupIds.length + uniqueImageRefs.length;
   console.log(`📊 Found ${imageNodeIds.length} image nodes, ${svgNodeIds.length} SVG nodes, and ${maskGroupIds.length} mask groups:`, { 
     images: imageNodeIds, 
     svgs: svgNodeIds, 
-    maskGroups: maskGroupIds 
+    maskGroups: maskGroupIds,
+    imageRefs: uniqueImageRefs,
   });
   
   // Update progress with total count
@@ -268,6 +283,37 @@ export async function loadFigmaAssetsFromNodes({
         }
       }
       // Continue with SVG export even if images fail
+    }
+  }
+
+  // Step 2b: Export image fills by imageRef (covers frame backgrounds and fills reliably)
+  if (uniqueImageRefs.length > 0) {
+    try {
+      console.log(`🖼️ Exporting ${uniqueImageRefs.length} image fills by imageRef...`);
+      const idsParam = encodeURIComponent(uniqueImageRefs.join(","));
+      const url = `https://api.figma.com/v1/files/${figmaFileKey}/images?ids=${idsParam}&format=png&scale=2`;
+      console.log(`🔗 Calling Figma API for imageRefs: ${url}`);
+      const res = await fetch(url, {
+        headers: {
+          "X-Figma-Token": figmaToken,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) {
+        throw new Error(`Figma API error for imageRefs: ${res.status} ${res.statusText}`);
+      }
+      const data = await res.json();
+      const refMap = data.images ?? {};
+      // Some APIs can return null for not-yet-ready images; filter those out
+      for (const [k, v] of Object.entries(refMap)) {
+        if (v) (assetMap as any)[k] = v as string;
+      }
+      const added = Object.values(refMap).filter(Boolean).length;
+      loadedCount += added;
+      onProgress?.(totalAssets, loadedCount);
+      console.log(`✅ Loaded ${added} imageRefs from Figma API`);
+    } catch (error) {
+      console.error('❌ Error loading imageRefs from Figma API:', error);
     }
   }
   
