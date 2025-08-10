@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/upload?error=missing_params', request.url));
     }
 
-    // First try official API endpoint, then fall back to legacy path if needed
+    // Use official Figma OAuth token endpoint
     const formBody = new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
@@ -47,7 +47,8 @@ export async function GET(request: NextRequest) {
       grant_type: 'authorization_code'
     }).toString();
 
-    let tokenResponse = await fetch('https://www.figma.com/api/oauth/token', {
+    const tokenUrl = 'https://api.figma.com/v1/oauth/token';
+    let tokenResponse = await fetch(tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -57,27 +58,13 @@ export async function GET(request: NextRequest) {
     });
 
     console.log('📡 Token response status:', tokenResponse.status);
-    console.log('🔗 Direct Figma API URL: https://www.figma.com/api/oauth/token');
+    console.log('🔗 Token URL:', tokenUrl);
     
     if (!tokenResponse.ok) {
       const firstErrorText = await tokenResponse.text();
-      console.error('❌ Token exchange failed on /api/oauth/token:', firstErrorText);
+      console.error('❌ Token exchange failed:', firstErrorText);
       console.error('Token response headers:', Object.fromEntries(tokenResponse.headers.entries()));
-      // Fallback to legacy endpoint
-      tokenResponse = await fetch('https://www.figma.com/oauth/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
-        },
-        body: formBody,
-      });
-      console.log('📡 Fallback token response status (/oauth/token):', tokenResponse.status);
-      if (!tokenResponse.ok) {
-        const errorText = await tokenResponse.text();
-        console.error('❌ Token exchange failed on fallback:', errorText);
-        return NextResponse.redirect(new URL('/upload?error=token_exchange_failed', request.url));
-      }
+      return NextResponse.redirect(new URL('/upload?error=token_exchange_failed', request.url));
     }
 
     const tokenData = await tokenResponse.json();

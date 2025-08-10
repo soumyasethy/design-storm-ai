@@ -120,7 +120,8 @@ class FigmaAuthManager {
         grant_type: 'authorization_code'
       }).toString();
 
-      let tokenResponse = await fetch('https://www.figma.com/oauth/token', {
+      const tokenUrl = 'https://api.figma.com/v1/oauth/token';
+      let tokenResponse = await fetch(tokenUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -134,20 +135,7 @@ class FigmaAuthManager {
       
       if (!tokenResponse.ok) {
         const firstErrorText = await tokenResponse.text();
-        console.error('❌ Token exchange failed (client) primary:', firstErrorText);
-        // Try legacy endpoint
-        tokenResponse = await fetch('https://www.figma.com/api/oauth/token', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json',
-          },
-          body: formBody,
-        });
-        if (!tokenResponse.ok) {
-          const errorText = await tokenResponse.text();
-          throw new Error(`Failed to exchange code for token: ${tokenResponse.status} - ${errorText}`);
-        }
+        throw new Error(`Failed to exchange code for token: ${tokenResponse.status} - ${firstErrorText}`);
       }
 
       const tokenData = await tokenResponse.json();
