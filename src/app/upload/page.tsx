@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect, Suspense } from 'react';
-import { Upload, FileText, X, Eye, Code, ArrowRight, Figma, Link, Users, Zap, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, X, Eye, Code, ArrowRight, Figma, Link, Zap, CheckCircle, AlertCircle } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFigmaFile } from '@/lib/useFigmaFile';
 import { useFigmaData } from '@/lib/useFigmaData';
@@ -124,7 +124,7 @@ function UploadPageContent() {
           errorMessage = 'Missing OAuth parameters';
           break;
         case 'token_exchange_failed':
-          errorMessage = 'Token exchange with Figma failed';
+          errorMessage = 'Token exchange failed. Please verify FIGMA_CLIENT_ID/FIGMA_CLIENT_SECRET and redirect URI.';
           break;
         case 'user_info_failed':
           errorMessage = 'Failed to retrieve user information';

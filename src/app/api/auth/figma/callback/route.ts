@@ -29,15 +29,25 @@ export async function GET(request: NextRequest) {
     // Call Figma OAuth API directly
     console.log('🔄 Exchanging code for token directly...');
     
+    const clientId = process.env.FIGMA_CLIENT_ID || process.env.NEXT_PUBLIC_FIGMA_CLIENT_ID || '';
+    const clientSecret = process.env.FIGMA_CLIENT_SECRET || '';
+    const redirectUri = process.env.NEXT_PUBLIC_FIGMA_REDIRECT_URI || 'http://localhost:3000/api/auth/figma/callback';
+
+    if (!clientId || !clientSecret) {
+      console.error('❌ Missing FIGMA_CLIENT_ID or FIGMA_CLIENT_SECRET');
+      return NextResponse.redirect(new URL('/upload?error=missing_params', request.url));
+    }
+
     const tokenResponse = await fetch('https://www.figma.com/api/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
       },
       body: new URLSearchParams({
-        client_id: process.env.FIGMA_CLIENT_ID || '',
-        client_secret: process.env.FIGMA_CLIENT_SECRET || '',
-        redirect_uri: process.env.NEXT_PUBLIC_FIGMA_REDIRECT_URI || 'http://localhost:3000/api/auth/figma/callback',
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
         code,
         grant_type: 'authorization_code'
       }).toString()

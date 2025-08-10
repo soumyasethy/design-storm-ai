@@ -108,15 +108,20 @@ class FigmaAuthManager {
       console.log('🔄 Exchanging code for token...');
       
       // Call Figma OAuth API directly
+      const clientId = FIGMA_CONFIG.CLIENT_ID;
+      const clientSecret = process.env.FIGMA_CLIENT_SECRET || '';
+      const redirectUri = FIGMA_CONFIG.REDIRECT_URI;
+      if (!clientId || !clientSecret) throw new Error('Missing FIGMA client credentials');
       const tokenResponse = await fetch('https://www.figma.com/oauth/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
         },
         body: new URLSearchParams({
-          client_id: FIGMA_CONFIG.CLIENT_ID,
-          client_secret: process.env.FIGMA_CLIENT_SECRET || '',
-          redirect_uri: FIGMA_CONFIG.REDIRECT_URI,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: redirectUri,
           code,
           grant_type: 'authorization_code'
         }).toString()

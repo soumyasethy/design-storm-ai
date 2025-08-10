@@ -578,74 +578,6 @@ export function getSpecialColor(nodeName: string, defaultColor: string): string 
   
   const name = nodeName.toLowerCase();
   
-  // Agilitas brand colors
-  if (name.includes('all-in') || name.includes('accent') || name.includes('pink')) {
-    return '#FF0A54'; // Pink accent
-  }
-  
-  if (name.includes('explore') || name.includes('learn more') || name.includes('button') || name.includes('cta') || name.includes('lets talk')) {
-    return '#0066FF'; // Blue for interactive elements
-  }
-  
-  // Section-specific colors
-  if (name.includes('hero') || name.includes('built to move')) {
-    return '#FFFFFF'; // White for hero text
-  }
-  
-  if (name.includes('integrated') || name.includes('agile') || name.includes('brand spotlight') || name.includes('fresh off the field')) {
-    return '#1E1E1E'; // Dark for main content
-  }
-  
-  if (name.includes('vision') || name.includes('mission')) {
-    return '#FFFFFF'; // White for vision/mission text
-  }
-  
-  if (name.includes('get in touch')) {
-    return '#FFFFFF'; // White for contact section
-  }
-  
-  if (name.includes('footer') || name.includes('agilitas logo')) {
-    return '#FFFFFF'; // White for footer
-  }
-  
-  // Text hierarchy colors
-  if (name.includes('heading') || name.includes('title')) { 
-    if (name.includes('vision') || name.includes('mission') || name.includes('get in touch')) {
-      return '#FFFFFF'; // White for dark backgrounds
-    }
-    return '#1E1E1E'; // Dark for light backgrounds
-  }
-  
-  if (name.includes('body') || name.includes('paragraph') || name.includes('description')) { 
-    if (name.includes('vision') || name.includes('mission') || name.includes('get in touch')) {
-      return '#FFFFFF'; // White for dark backgrounds
-    }
-    return '#1E1E1E'; // Dark for light backgrounds
-  }
-  
-  // Brand names
-  if (name.includes('lotto') || name.includes('one8') || name.includes('whats coming')) {
-    return '#1E1E1E'; // Dark for brand names
-  }
-  
-  if (name.includes('virat kohli')) {
-    return '#1E1E1E'; // Dark for names
-  }
-  
-  // Geometric elements and accent lines
-  if (name.includes('geometric') || name.includes('line') || name.includes('accent-line') || name.includes('vector')) {
-    return '#FF004F'; // Pink for geometric lines
-  }
-  
-  // Vertical accent lines
-  if (name.includes('vertical') || name.includes('accent') || name.includes('decorative')) {
-    return '#FF004F'; // Pink for accent elements
-  }
-  
-  // Section transitions and angled elements
-  if (name.includes('transition') || name.includes('angled') || name.includes('diagonal')) {
-    return '#FF004F'; // Pink for section transitions
-  }
   
   return defaultColor;
 }
@@ -710,33 +642,15 @@ export function isCircularElement(node: any): boolean {
     return false;
   }
   
-  const name = node.name?.toLowerCase() || '';
   const { width, height } = node.absoluteBoundingBox || {};
   const radius = node.cornerRadius || 0;
   
-  // Check by name for specific design elements with enhanced precision
-  if (name.includes('linkedin') || name.includes('instagram') || name.includes('youtube') ||
-      name.includes('social') || name.includes('avatar') || name.includes('icon') ||
-      name.includes('circle') || name.includes('round') || name.includes('logo') ||
-      name.includes('manufacturing') || name.includes('brands') || name.includes('stores') ||
-      name.includes('retail') || name.includes('integrated') || name.includes('agile') ||
-      name.includes('circular') || name.includes('dot') || name.includes('top button') ||
-      name.includes('shoe') || name.includes('fire') || name.includes('people') ||
-      name.includes('footer') || name.includes('social icon')) {
-    return true;
-  }
   
   // Check by dimensions and radius for perfect circles
   if (width && height && radius) {
     return Math.abs(width - height) < 2 && radius >= Math.min(width, height) / 2;
   }
-  
-  // Check for square elements that should be circular (like footer icons)
-  if (width && height && Math.abs(width - height) < 2) {
-    if (name.includes('footer') || name.includes('social') || name.includes('icon')) {
-      return true;
-    }
-  }
+
   
   return false;
 }

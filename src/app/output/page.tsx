@@ -7,8 +7,7 @@ import SimpleFigmaRenderer from '@/components/SimpleFigmaRenderer';
 import { extractFileKeyFromUrl, loadFigmaAssetsFromNodes } from '@/lib/utils';
 import { isPluginExport, parsePluginData } from '@/lib/figma-plugin';
 import { fontLoader } from '@/lib/fontLoader';
-import { FigmaTreeBuilder, getGlobalTreeBuilder, resetGlobalTreeBuilder } from '@/lib/figmaTree';
-import { generateProjectFiles } from '@/lib/nextjsExporter';
+
 
 interface FigmaData {
   name?: string;
@@ -1488,43 +1487,7 @@ function OutputPageContent() {
         setSelectedPageId(null);
       }
 
-      // Initialize tree builder for the selected frame
-      if (devMode) {
-        resetGlobalTreeBuilder();
-        const treeBuilder = getGlobalTreeBuilder();
-        treeBuilder.startTree(targetNode.id);
-        
-        // Build tree recursively
-        const buildTreeRecursively = (node: FigmaNode, parentId?: string) => {
-          // Extract styles and props
-          const styles = extractNodeStyles(node);
-          const props = extractNodeProps(node);
-          
-          // Add node to tree
-          treeBuilder.addNode(
-            node.id,
-            node.type,
-            node.name,
-            styles,
-            props,
-            parentId
-          );
-          
-          // Process children
-          if (node.children) {
-            treeBuilder.enterNode(node.id);
-            node.children.forEach(child => {
-              buildTreeRecursively(child, node.id);
-            });
-            treeBuilder.exitNode();
-          }
-        };
-        
-        buildTreeRecursively(targetNode);
-        treeBuilder.serializeToLocalStorage('figmaTree');
-        console.log('🌳 Tree built and serialized for frame:', targetNode.name);
-      }
-
+  
       // Log the structure for debugging
       console.log('🎨 Document structure:', {
         name: targetNode.name,
