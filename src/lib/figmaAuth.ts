@@ -112,29 +112,42 @@ class FigmaAuthManager {
       const clientSecret = process.env.FIGMA_CLIENT_SECRET || '';
       const redirectUri = FIGMA_CONFIG.REDIRECT_URI;
       if (!clientId || !clientSecret) throw new Error('Missing FIGMA client credentials');
-      const tokenResponse = await fetch('https://www.figma.com/oauth/token', {
+      const formBody = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        code,
+        grant_type: 'authorization_code'
+      }).toString();
+
+      let tokenResponse = await fetch('https://www.figma.com/oauth/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
         },
-        body: new URLSearchParams({
-          client_id: clientId,
-          client_secret: clientSecret,
-          redirect_uri: redirectUri,
-          code,
-          grant_type: 'authorization_code'
-        }).toString()
+        body: formBody
       });
 
       console.log('📡 Token response status:', tokenResponse.status);
       console.log('🔗 Direct Figma API URL: https://www.figma.com/oauth/token');
       
       if (!tokenResponse.ok) {
-        const errorText = await tokenResponse.text();
-        console.error('❌ Token exchange failed:', errorText);
-        console.error('Token response headers:', Object.fromEntries(tokenResponse.headers.entries()));
-        throw new Error(`Failed to exchange code for token: ${tokenResponse.status} - ${errorText}`);
+        const firstErrorText = await tokenResponse.text();
+        console.error('❌ Token exchange failed (client) primary:', firstErrorText);
+        // Try legacy endpoint
+        tokenResponse = await fetch('https://www.figma.com/api/oauth/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
+          },
+          body: formBody,
+        });
+        if (!tokenResponse.ok) {
+          const errorText = await tokenResponse.text();
+          throw new Error(`Failed to exchange code for token: ${tokenResponse.status} - ${errorText}`);
+        }
       }
 
       const tokenData = await tokenResponse.json();

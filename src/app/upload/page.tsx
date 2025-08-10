@@ -124,7 +124,7 @@ function UploadPageContent() {
           errorMessage = 'Missing OAuth parameters';
           break;
         case 'token_exchange_failed':
-          errorMessage = 'Token exchange failed. Please verify FIGMA_CLIENT_ID/FIGMA_CLIENT_SECRET and redirect URI.';
+          errorMessage = 'Token exchange failed. We tried both Figma endpoints. Verify Client ID, Secret, and Redirect URI match exactly.';
           break;
         case 'user_info_failed':
           errorMessage = 'Failed to retrieve user information';

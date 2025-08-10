@@ -38,29 +38,46 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/upload?error=missing_params', request.url));
     }
 
-    const tokenResponse = await fetch('https://www.figma.com/api/oauth/token', {
+    // First try official API endpoint, then fall back to legacy path if needed
+    const formBody = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      code,
+      grant_type: 'authorization_code'
+    }).toString();
+
+    let tokenResponse = await fetch('https://www.figma.com/api/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json',
       },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri,
-        code,
-        grant_type: 'authorization_code'
-      }).toString()
+      body: formBody
     });
 
     console.log('📡 Token response status:', tokenResponse.status);
     console.log('🔗 Direct Figma API URL: https://www.figma.com/api/oauth/token');
     
     if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      console.error('❌ Token exchange failed:', errorText);
+      const firstErrorText = await tokenResponse.text();
+      console.error('❌ Token exchange failed on /api/oauth/token:', firstErrorText);
       console.error('Token response headers:', Object.fromEntries(tokenResponse.headers.entries()));
-      return NextResponse.redirect(new URL('/upload?error=token_exchange_failed', request.url));
+      // Fallback to legacy endpoint
+      tokenResponse = await fetch('https://www.figma.com/oauth/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: formBody,
+      });
+      console.log('📡 Fallback token response status (/oauth/token):', tokenResponse.status);
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        console.error('❌ Token exchange failed on fallback:', errorText);
+        return NextResponse.redirect(new URL('/upload?error=token_exchange_failed', request.url));
+      }
     }
 
     const tokenData = await tokenResponse.json();
