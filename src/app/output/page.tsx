@@ -579,9 +579,10 @@ function OutputPageContent() {
       }
       familiesToLoad.add('Inter'); // ensure alias target always present
 
-      const googleFontHrefs = Array.from(familiesToLoad).map(
-          (f) => `https://fonts.googleapis.com/css2?family=${encodeURIComponent(f).replace(/%20/g, '+')}:wght@300;400;500;600;700&display=swap`,
-      );
+      const googleFontHrefs = Array.from(familiesToLoad).map((f) => {
+        const fam = encodeURIComponent(f).replace(/%20/g, '+');
+        return `https://fonts.googleapis.com/css2?family=${fam}:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap`;
+      });
 
       const headLinks = [
         `<link rel="preconnect" href="https://fonts.googleapis.com" />`,
@@ -631,8 +632,19 @@ function OutputPageContent() {
       );
 
       // ---------- style helpers ----------
-      const esc = (txt: string) =>
-          (txt || '').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/\{/g, '{"{"}').replace(/\}/g, '{"}"}');
+      // Escape content for JSX while preserving Unicode glyphs (icons/emojis)
+      const esc = (txt: string) => {
+        const s = txt || '';
+        // Replace special JSX tokens only; leave unicode intact
+        return s
+          .replace(/`/g, '\\`')
+          .replace(/\$/g, '\\$')
+          .replace(/\{/g, '{"{"}')
+          .replace(/\}/g, '{"}"}')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      };
 
       const toStyleJSX = (obj: Record<string, any>) => {
         const parts: string[] = [];
@@ -815,7 +827,10 @@ function OutputPageContent() {
                 const fill = node.fills?.[0];
                 return fill?.type === 'SOLID' && fill.color ? rgba(fill.color) : undefined;
               })(),
-              fontStyle: st.fontStyle ? String(st.fontStyle).toLowerCase() : undefined,
+              fontStyle: (() => {
+                const val = String(st.fontStyle || '').toLowerCase();
+                return val === 'italic' || val === 'oblique' ? val : undefined;
+              })(),
               // these buffers match the “old code” look and avoid crowding
               // paddingLeft: `${TEXT_W_BUFFER}px`,
               // paddingRight: `${TEXT_W_BUFFER}px`,
@@ -839,8 +854,10 @@ function OutputPageContent() {
             }
             const sText = toStyleJSX(textBox);
 
-            // rich text spans
-            const chars = String(node.characters || '');
+            // rich text spans (normalize Figma line separators to newline/paragraph)
+            const chars = String(node.characters || '')
+              .replace(/\u2028/g, '\n')   // LINE SEPARATOR
+              .replace(/\u2029/g, '\n\n'); // PARAGRAPH SEPARATOR
             const overrides: number[] = (node as any).characterStyleOverrides || [];
             const table: Record<string, any> = (node as any).styleOverrideTable || {};
             const runForIndex = (i: number) => table[String(overrides[i] || 0)] || {};
@@ -908,6 +925,9 @@ function OutputPageContent() {
               delete (layoutOnly as any).borderLeft;
               delete (layoutOnly as any).outline;
               delete (layoutOnly as any).boxShadow;
+              // avoid applying figma transforms (rotation) on bitmap exports
+              delete (layoutOnly as any).transform;
+              delete (layoutOnly as any).transformOrigin;
               const sOnly = toStyleJSX(layoutOnly);
               return `${pad}<div style=${sOnly}>\n${pad}  <img src="${p}" alt="${(node.name || 'image').replace(/"/g, '&quot;')}" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />\n${pad}</div>`;
             }
@@ -936,6 +956,9 @@ function OutputPageContent() {
                 delete (mergedStyle as any).outline;
                 delete (mergedStyle as any).boxShadow;
                 delete (mergedStyle as any).backgroundColor;
+                // avoid applying figma transforms (rotation) on flattened bitmaps
+                delete (mergedStyle as any).transform;
+                delete (mergedStyle as any).transformOrigin;
                 mergedStyle.backgroundImage = `url('${p}')`;
                 mergedStyle.backgroundSize = 'cover';
                 mergedStyle.backgroundPosition = 'center';
@@ -1024,10 +1047,22 @@ function OutputPageContent() {
       }
 
       const componentTsx =
-          `'use client';\n\nimport React from 'react';\nimport { useFigmaScale } from '../lib/useFigmaScale';\n\n` +
+          `'use client';\n\nimport React, { useEffect } from 'react';\nimport { useFigmaScale } from '../lib/useFigmaScale';\n\n` +
           `export default function ${componentName}() {\n` +
           `  const designWidth = ${Math.round(rootBB.width || 1200)};\n` +
           `  const scale = ${enableScaling ? 'useFigmaScale(designWidth)' : '1'};\n` +
+          `  const FONT_FAMILIES: string[] = ${JSON.stringify(Array.from(familiesToLoad))};\n` +
+          `  useEffect(() => {\n` +
+          `    try {\n` +
+          `      const d: any = (typeof document !== 'undefined') ? (document as any) : null;\n` +
+          `      if (d && d.fonts && FONT_FAMILIES.length) {\n` +
+          `        const weights = [300,400,500,600,700];\n` +
+          `        FONT_FAMILIES.forEach(f => {\n` +
+          `          weights.forEach(w => { try { d.fonts.load(\`${'${w}'} 1em \"${'${f}'}\"\`); } catch {} });\n` +
+          `        });\n` +
+          `      }\n` +
+          `    } catch {}\n` +
+          `  }, []);\n` +
           `  return (\n` +
           `    <div style={{ width: '100vw', minHeight: '100vh', overflowX: 'hidden', overflowY: 'auto', display: 'flex', justifyContent: 'center' }}>\n` +
           `      <div style={{ width: designWidth + 'px', height: '${Math.round(rootBB.height || 800)}px', transform: 'scale(' + scale + ')', transformOrigin: 'top center', position: 'relative', flexShrink: 0 }}>\n` +
