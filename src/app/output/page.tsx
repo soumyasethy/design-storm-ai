@@ -1,143 +1,440 @@
+// src/app/output/page.tsx
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+
 import SimpleFigmaRenderer from '@/components/SimpleFigmaRenderer';
+import NodeBrowser from '@/components/NodeBrowser';
+import SettingsPanel from '@/components/SettingsPanel';
 
-import { extractFileKeyFromUrl, loadFigmaAssetsFromNodes } from '@/lib/utils';
-import { isPluginExport, parsePluginData } from '@/lib/figma-plugin';
+import { figmaAuth } from '@/lib/figmaAuth';
+import type { FigmaData, FigmaNode } from '@/lib/figmaTypes';
+import { synthesizeAbsoluteBB } from '@/lib/figmaNavigation';
+import {
+  normalizeFigmaUrl,
+  normalizeToWebLink,
+  extractFileKeyFromUrl,
+  loadFigmaAssetsFromNodes,
+  collectImageishNodeIds,
+} from '@/lib/utils';
 import { fontLoader } from '@/lib/fontLoader';
+import { createReactFontFamily } from '@/lib/fontUtils';
 
+/* ---------------- helpers ---------------- */
 
-interface FigmaData {
-  name?: string;
-  lastModified?: string;
-  thumbnailUrl?: string;
-  version?: string;
-  role?: string;
-  editorType?: string;
-  linkAccess?: string;
-  nodes?: {
-    [key: string]: {
-      document: FigmaNode;
-    };
+const extractFontFamilies = (node: any): Set<string> => {
+  const fonts = new Set<string>();
+  const add = (f?: string) => {
+    if (!f) return;
+    const name = String(f).trim();
+    if (name) fonts.add(name);
   };
-  document?: FigmaNode;
-  components?: Record<string, unknown> | any[];
-  styles?: Record<string, unknown> | any[];
-  originalData?: unknown;
-  metadata?: {
-    exportedBy?: string;
-    pluginVersion?: string;
-    lastModified?: string;
+  const walk = (n: any) => {
+    if (!n || typeof n !== 'object') return;
+    add(n.style?.fontFamily);
+    if (n.styleOverrideTable && typeof n.styleOverrideTable === 'object') {
+      Object.values(n.styleOverrideTable).forEach((ov: any) => add(ov?.fontFamily));
+    }
+    if (Array.isArray(n.styles)) n.styles.forEach((s: any) => add((s as any)?.fontFamily));
+    (n.children || []).forEach(walk);
   };
-  imageMap?: Record<string, string>;
-  images?: Array<{
-    hash: string;
-    nodeId: string;
-    nodeName: string;
-    bytes: Uint8Array;
-    width: number;
-    height: number;
-  }>;
-}
+  walk(node);
+  return fonts;
+};
 
-interface FigmaNode {
-  id: string;
-  name: string;
-  type: string;
-  children?: FigmaNode[];
-  absoluteBoundingBox?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  fills?: Array<{
-    type: string;
-    color?: { r: number; g: number; b: number; a?: number };
-    imageRef?: string;
-  }>;
-  strokes?: Array<{
-    type: string;
-    color?: { r: number; g: number; b: number; a?: number };
-    strokeWeight?: number;
-  }>;
-  strokeWeight?: number;
-  cornerRadius?: number;
-  characters?: string;
-  style?: {
-    fontFamily?: string;
-    fontSize?: number;
-    fontWeight?: number;
-    textAlignHorizontal?: string;
-    lineHeight?: number;
-    letterSpacing?: number;
-  };
-  opacity?: number;
-  visible?: boolean;
-}
+const loadFontsFromFigmaData = async (rootNode: any) => {
+  if (!rootNode) return;
+  const families = Array.from(extractFontFamilies(rootNode));
+  if (!families.length) return;
+  try {
+    await fontLoader.loadFonts(
+        families.map((family) => ({ family, weights: [400, 500, 600, 700], display: 'swap' })),
+    );
+  } catch (e) {
+    console.warn('Font load failed', e);
+  }
+};
 
-interface PageInfo {
-  id: string;
-  name: string;
-  node: FigmaNode;
-}
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+/* ---------------- page ---------------- */
 
 function OutputPageContent() {
   const searchParams = useSearchParams();
+
+  // core data
   const [figmaData, setFigmaData] = useState<FigmaData | null>(null);
   const [frameNode, setFrameNode] = useState<FigmaNode | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showDebug, setShowDebug] = useState(false);
+  const [dataSource, setDataSource] = useState<string>('');
+  const [dataVersion, setDataVersion] = useState<number>(0);
+
+  // auth + api
+  const [authUser, setAuthUser] = useState<any>(null);
   const [fileKey, setFileKey] = useState<string>('');
-  const [figmaToken, setFigmaToken] = useState<string>('');
+  const [figmaToken, setFigmaToken] = useState<string>(''); // PAT or OAuth goes here
   const [figmaUrl, setFigmaUrl] = useState<string>('');
+
+  // assets
   const [assetMap, setAssetMap] = useState<Record<string, string>>({});
   const [assetLoadingStatus, setAssetLoadingStatus] = useState<string>('Not started');
-  const [assetLoadingProgress, setAssetLoadingProgress] = useState<{
-    total: number;
-    loaded: number;
-    isLoading: boolean;
-  }>({ total: 0, loaded: 0, isLoading: false });
-  // Export progress (mirrors asset loading bar UX)
-  const [exportProgress, setExportProgress] = useState<{
-    isExporting: boolean;
-    total: number;
-    loaded: number;
-    label: string;
-  }>({ isExporting: false, total: 0, loaded: 0, label: '' });
-  // Removed render mode dropdown/state
-  const [dataSource, setDataSource] = useState<string>('');
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [dataVersion, setDataVersion] = useState<number>(0);
-  const [devMode, setDevMode] = useState<boolean>(false);
-  const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
-  const [enableScaling, setEnableScaling] = useState<boolean>(true);
-  const [fontLoadingStatus, setFontLoadingStatus] = useState<string>('Not started');
-  const [loadedFonts, setLoadedFonts] = useState<Set<string>>(new Set());
-  const [maxScale, setMaxScale] = useState<number>(1.2);
-  const [transformOrigin, setTransformOrigin] = useState<string>('center top');
-  
-  // Multi-page support state
-  const [availablePages, setAvailablePages] = useState<PageInfo[]>([]);
-  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
-  const [isMultiPageDesign, setIsMultiPageDesign] = useState<boolean>(false);
+  const [assetLoadingProgress, setAssetLoadingProgress] = useState<{ total: number; loaded: number; isLoading: boolean }>(
+      { total: 0, loaded: 0, isLoading: false },
+  );
 
-  // Simple downloader helper for Export
-  const downloadBlob = (blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  // export (progress bar)
+  const [exportProgress, setExportProgress] = useState<{ isExporting: boolean; total: number; loaded: number; label: string }>(
+      { isExporting: false, total: 0, loaded: 0, label: '' },
+  );
+
+  // ui
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [devMode, setDevMode] = useState<boolean>(false);
+  const [showDebug, setShowDebug] = useState<boolean>(false);
+  const [enableScaling, setEnableScaling] = useState<boolean>(true);
+  const [maxScale, setMaxScale] = useState<number>(1.2);
+
+  // overlays
+  const [showBrowser, setShowBrowser] = useState<boolean>(false);
+  const [showSettings, setShowSettings] = useState<boolean>(false);
+  // only download assets after an explicit target pick
+  const [hasUserPickedTarget, setHasUserPickedTarget] = useState<boolean>(false);
+
+  // cancellable jobs
+  const assetJobRef = useRef<{ id: number; abort: AbortController } | null>(null);
+  const exportJobRef = useRef<{ id: number; abort: AbortController } | null>(null);
+
+  /* ---------------- auth hydrate ---------------- */
+
+  useEffect(() => {
+    const refresh = async () => {
+      try {
+        setAuthUser(figmaAuth.getUser());
+        const res = await fetch('/api/auth/figma/me', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.authenticated) setAuthUser(data.user);
+        }
+      } catch {/* ignore */}
+    };
+    refresh();
+    const onEvt = () => refresh();
+    window.addEventListener('figma-auth-updated', onEvt as any);
+    window.addEventListener('focus', onEvt);
+    return () => {
+      window.removeEventListener('figma-auth-updated', onEvt as any);
+      window.removeEventListener('focus', onEvt);
+    };
+  }, []);
+
+  // Find the best available token from: state -> localStorage -> IndexedDB -> OAuth
+  const hydrateBestToken = async () => {
+    if (figmaToken) return figmaToken;
+    try {
+      const local = localStorage.getItem('figmaToken');
+      if (local) {
+        setFigmaToken(local);
+        return local;
+      }
+    } catch {}
+    try {
+      const { loadFigmaToken } = await import('@/lib/figmaStorage');
+      const t = await loadFigmaToken();
+      if (t) {
+        setFigmaToken(t);
+        try { localStorage.setItem('figmaToken', t); } catch {}
+        return t;
+      }
+    } catch {}
+    try {
+      const t = figmaAuth.getAccessToken?.();
+      if (t) {
+        setFigmaToken(t);
+        return t;
+      }
+    } catch {}
+    return '';
   };
 
-  // Export function that generates a minimal Next.js project with static TSX files
+  // initial token hydrate
+  useEffect(() => { void hydrateBestToken(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const handleLogout = async () => {
+    try {
+      await figmaAuth.logout();
+      setAuthUser(null);
+    } catch {}
+  };
+
+  /* ---------------- upload handler (first screen) ---------------- */
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
+      setUploadError('Please select a valid JSON file');
+      return;
+    }
+    setUploadError(null);
+    setLoading(true);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target?.result as string) as FigmaData;
+        setAssetMap({});
+        setAssetLoadingStatus('Not started');
+
+        const isPluginExport = (data: any) =>
+            !!(data?.metadata?.exportedBy === 'DesignStorm Plugin' || data?.imageMap || data?.nodes);
+
+        if (isPluginExport(json)) {
+          const { parsePluginData } = require('@/lib/figma-plugin');
+          const pluginData = parsePluginData(json);
+          setDataSource('Plugin Export');
+          setFigmaData(pluginData);
+          if (pluginData.imageMap && Object.keys(pluginData.imageMap).length) {
+            setAssetMap(pluginData.imageMap);
+            setAssetLoadingStatus(`✅ Loaded ${Object.keys(pluginData.imageMap).length} assets from plugin`);
+          }
+          const doc =
+              pluginData.document ||
+              (pluginData?.nodes && pluginData?.nodes[Object.keys(pluginData?.nodes)[0]]?.document);
+          if (doc) {
+            const pick = synthesizeAbsoluteBB(doc as any);
+            setFrameNode(pick);
+            void loadFontsFromFigmaData(pick);
+          }
+        } else {
+          setDataSource('File Upload');
+          setFigmaData(json);
+          if ((json as any).imageMap && Object.keys((json as any).imageMap).length) {
+            setAssetMap((json as any).imageMap);
+            setAssetLoadingStatus(`✅ Loaded ${Object.keys((json as any).imageMap).length} assets from plugin`);
+          }
+          const doc = json.document || (json.nodes && (json.nodes as any)[Object.keys(json.nodes as any)[0]]?.document);
+          if (doc) {
+            const pick = synthesizeAbsoluteBB(doc as any);
+            setFrameNode(pick);
+            void loadFontsFromFigmaData(pick);
+          }
+        }
+      } catch (err) {
+        console.error('Upload parse error:', err);
+        setUploadError('Invalid JSON file. Please check the file format.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    reader.onerror = () => {
+      setUploadError('Error reading file. Please try again.');
+      setLoading(false);
+    };
+    reader.readAsText(file);
+  };
+
+  /* ---------------- initial load (via ?url= or storage) ---------------- */
+
+  useEffect(() => {
+    const run = async () => {
+      setLoading(true);
+      try {
+        const urlParam = searchParams.get('url');
+
+        if (urlParam) {
+          try {
+            const normalized = normalizeFigmaUrl(urlParam);
+            await figmaAuth.hydrateFromServerCookie().catch(() => {});
+            const fileData = await figmaAuth.getFileByLink(normalized);
+
+            const fData: FigmaData = {
+              document: fileData.document,
+              components: fileData.components,
+              componentSets: (fileData as any).componentSets,
+              styles: fileData.styles,
+              name: fileData.name,
+              lastModified: fileData.lastModified,
+              version: fileData.version,
+              thumbnailUrl: fileData.thumbnailUrl,
+            };
+
+            try {
+              const { saveFigmaData, saveFigmaUrl } = await import('@/lib/figmaStorage');
+              await saveFigmaData(fData);
+              await saveFigmaUrl(normalized);
+            } catch {}
+
+            setDataSource('URL fetch');
+            setFigmaData(fData);
+
+            const chosen = synthesizeAbsoluteBB(fData.document as any);
+            setFrameNode(chosen);
+            void loadFontsFromFigmaData(chosen);
+
+            setFigmaUrl(normalized);
+            const key = extractFileKeyFromUrl(normalized);
+            setFileKey(key || '');
+
+            await hydrateBestToken();
+
+            setLoading(false);
+            return;
+          } catch (e) {
+            console.warn('URL fetch failed, falling back:', e);
+          }
+        }
+
+        // storage fallback: IndexedDB only
+        let stored: any = null;
+        try {
+          const { loadFigmaData } = await import('@/lib/figmaStorage');
+          stored = await loadFigmaData();
+        } catch {}
+
+        if (stored) {
+          setDataSource(stored.metadata?.exportedBy === 'DesignStorm Plugin' ? 'Plugin Export' : 'File Upload');
+          setFigmaData(stored);
+
+          const chosen = synthesizeAbsoluteBB(
+              stored.document || stored.nodes?.[Object.keys(stored.nodes)[0]]?.document,
+          );
+          if (chosen) {
+            setFrameNode(chosen);
+            void loadFontsFromFigmaData(chosen);
+          }
+
+          let storedUrl: string | null = null;
+          try {
+            const { loadFigmaUrl } = await import('@/lib/figmaStorage');
+            storedUrl = await loadFigmaUrl();
+          } catch {}
+          if (!storedUrl) storedUrl = localStorage.getItem('figmaUrl') || null;
+
+          if (storedUrl) {
+            const norm = normalizeToWebLink(storedUrl);
+            setFigmaUrl(norm);
+            const key = extractFileKeyFromUrl(norm);
+            setFileKey(key || '');
+          }
+
+          await hydrateBestToken();
+
+          setLoading(false);
+          return;
+        }
+
+        setLoading(false);
+      } catch (e) {
+        console.error(e);
+        setError(e instanceof Error ? e.message : 'Failed to load Figma data');
+        setLoading(false);
+      }
+    };
+
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  /* ---------------- asset loading (cancellable + race-proof) ---------------- */
+
+  const startAssetJob = async (root: FigmaNode, token: string) => {
+    // cancel previous
+    if (assetJobRef.current) {
+      assetJobRef.current.abort.abort();
+      assetJobRef.current = null;
+    }
+    // also cancel any export in flight if the target changes
+    if (exportJobRef.current) {
+      exportJobRef.current.abort.abort();
+      exportJobRef.current = null;
+      setExportProgress({ isExporting: false, total: 0, loaded: 0, label: '' });
+    }
+
+    const abort = new AbortController();
+    const jobId = Date.now();
+    assetJobRef.current = { id: jobId, abort };
+
+    if (!fileKey || !token || !root) {
+      setAssetLoadingStatus('ℹ️ Add a Figma token in Settings or login with OAuth');
+      setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: false });
+      return;
+    }
+
+    setAssetLoadingStatus('Loading assets from Figma API…');
+    setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: true });
+
+    try {
+      const imageish = collectImageishNodeIds(root);
+      console.log('📦 Asset scan', { nodeId: root.id, imageishCount: imageish.length, fileKey });
+
+      const apiMap = await loadFigmaAssetsFromNodes({
+        figmaFileKey: fileKey,
+        figmaToken: token,
+        rootNode: root,
+        signal: abort.signal,
+        onProgress: (total, loaded) => {
+          if (assetJobRef.current?.id !== jobId || abort.signal.aborted) return;
+          setAssetLoadingProgress({ total, loaded, isLoading: true });
+        },
+      });
+
+      if (assetJobRef.current?.id !== jobId || abort.signal.aborted) return;
+
+      if (Object.keys(apiMap).length) {
+        setAssetMap(apiMap);
+        setAssetLoadingStatus(`✅ Loaded ${Object.keys(apiMap).length} assets from Figma API`);
+        setAssetLoadingProgress({
+          total: Object.keys(apiMap).length,
+          loaded: Object.keys(apiMap).length,
+          isLoading: false,
+        });
+      } else {
+        setAssetLoadingStatus('ℹ️ No assets found in design - continuing without images');
+        setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: false });
+      }
+    } catch (e: any) {
+      if (abort.signal.aborted) return;
+      console.error('Asset load error:', e);
+      setAssetLoadingStatus(
+          e?.status === 401 || e?.status === 403
+              ? '🔐 Invalid/expired token. Open Settings and paste a valid PAT, or re-login.'
+              : '⚠️ Could not load images - continuing without assets',
+      );
+      setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: false });
+    } finally {
+      if (assetJobRef.current?.id === jobId) assetJobRef.current = null;
+    }
+  };
+
+  // auto-load when frame + creds exist
+  useEffect(() => {
+    const run = async () => {
+      if (!hasUserPickedTarget) return; // do not auto-download before user picks a target
+      const best = await hydrateBestToken();
+      if (frameNode && fileKey && best) await startAssetJob(frameNode, best);
+      else if (frameNode && fileKey && !best) {
+        setAssetLoadingStatus('ℹ️ Add a Figma token in Settings or login with OAuth');
+        setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: false });
+      }
+    };
+    void run();
+    return () => assetJobRef.current?.abort.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameNode?.id, fileKey, hasUserPickedTarget]);
+
+  /* ---------------- export (cancellable + font + border fixes) ---------------- */
+
   const handleExport = async () => {
     try {
       if (!frameNode) {
@@ -145,26 +442,34 @@ function OutputPageContent() {
         return;
       }
 
+      // cancel a previous export if running
+      if (exportJobRef.current) {
+        exportJobRef.current.abort.abort();
+        exportJobRef.current = null;
+      }
+      const abort = new AbortController();
+      const jobId = Date.now();
+      exportJobRef.current = { id: jobId, abort };
+
       // -------- helpers --------
       const pascal = (s: string) =>
-        (s || 'ExportedComponent')
-          .replace(/[^a-zA-Z0-9]+/g, ' ')
-          .trim()
-          .split(/\s+/)
-          .map((x) => x.charAt(0).toUpperCase() + x.slice(1))
-          .join('')
-          .replace(/^\d/, '_$&');
+          (s || 'ExportedComponent')
+              .replace(/[^a-zA-Z0-9]+/g, ' ')
+              .trim()
+              .split(/\s+/)
+              .map((x) => x.charAt(0).toUpperCase() + x.slice(1))
+              .join('')
+              .replace(/^\d/, '_$&');
 
       const slug = (s: string) =>
-        (s || 'exported-design')
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '');
+          (s || 'exported-design')
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/-+/g, '-')
+              .replace(/^-|-$/g, '');
 
-      // ---- Text buffers (easy to tweak) ----
-      const TEXT_W_BUFFER = 6; // px on left and right
-      const TEXT_H_BUFFER = 4; // px on top and bottom
+      const TEXT_W_BUFFER = 6;
+      const TEXT_H_BUFFER = 4;
 
       const componentName = pascal(frameNode.name || 'ExportedDesign');
       const projectSlug = slug(frameNode.name || 'figma-export');
@@ -191,7 +496,6 @@ function OutputPageContent() {
             }
           }
         }
-        // Frame background paints can also be images
         if (Array.isArray((n as any).background)) {
           for (const b of (n as any).background) {
             if (b?.type === 'IMAGE') {
@@ -200,12 +504,14 @@ function OutputPageContent() {
             }
           }
         }
-        // Vector/shape nodes: export as files (SVG via API util) for 1:1 usage
         if (
-          n.type === 'VECTOR' ||
-          n.type === 'LINE' ||
-          n.type === 'ELLIPSE' ||
-          n.type === 'RECTANGLE'
+            n.type === 'VECTOR' ||
+            n.type === 'LINE' ||
+            n.type === 'ELLIPSE' ||
+            n.type === 'RECTANGLE' ||
+            n.type === 'POLYGON' ||
+            n.type === 'STAR' ||
+            n.type === 'BOOLEAN_OPERATION'
         ) {
           addCandidate(n.id);
         }
@@ -213,16 +519,12 @@ function OutputPageContent() {
           const hasMaskChild = Array.isArray(n.children) && n.children.some((c: any) => c?.isMask && (c.maskType || c.mask));
           const hasTextChild = Array.isArray(n.children) && n.children.some((c: any) => c?.type === 'TEXT');
           const hasExport = Array.isArray(n.exportSettings) && n.exportSettings.length > 0;
-          // If group has a mask child and contains no text, export the GROUP bitmap (captures mask + effects)
-          if ((hasMaskChild && !hasTextChild) || hasExport) {
-            addCandidate(n.id);
-          }
+          if ((hasMaskChild && !hasTextChild) || hasExport) addCandidate(n.id);
         }
         (n.children || []).forEach(walkForAssets);
       };
       walkForAssets(frameNode);
 
-      // Initialize export progress (assets + packaging [100 units])
       setExportProgress({
         isExporting: true,
         total: assetCandidates.length + 100,
@@ -230,7 +532,7 @@ function OutputPageContent() {
         label: 'Preparing files…',
       });
 
-      // Merge in full asset URLs from the Figma API to ensure SVGs and masked groups are available
+      // Merge more complete asset URLs (Figma API) to ensure SVGs/masks are present
       let sourceAssetMap: Record<string, string> = { ...assetMap };
       try {
         if (fileKey && figmaToken) {
@@ -238,6 +540,7 @@ function OutputPageContent() {
             figmaFileKey: fileKey,
             figmaToken,
             rootNode: frameNode,
+            signal: abort.signal,
             onProgress: (total: number, loaded: number) => {
               if (devMode) console.log(`Export asset progress: ${loaded}/${total}`);
             },
@@ -245,105 +548,109 @@ function OutputPageContent() {
           sourceAssetMap = { ...sourceAssetMap, ...apiAssetMap };
         }
       } catch (e) {
-        console.warn('⚠️ Could not load additional assets from API during export. Proceeding with existing asset map.', e);
+        if (!abort.signal.aborted) {
+          console.warn('⚠️ Could not load additional assets during export. Proceeding.', e);
+        } else {
+          // aborted by user / target change
+          setExportProgress({ isExporting: false, total: 0, loaded: 0, label: '' });
+          return;
+        }
       }
+      if (abort.signal.aborted) { setExportProgress({ isExporting: false, total: 0, loaded: 0, label: '' }); return; }
 
-      // Sanitize filenames for cross-platform safety
       const sanitizeFilename = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, '-');
-
-      // Prepare project files container
       const files = new Map<string, string>();
 
-      // ---------- fonts: collect families from the frame ----------
-      const fontFamilies: string[] = Array.from(extractFontFamilies(frameNode));
-      const googleFontHrefs = fontFamilies.map((f) =>
-        `https://fonts.googleapis.com/css2?family=${encodeURIComponent(f).replace(/%20/g, '+')}:wght@400;500;600;700&display=swap`
+      /* ---------- Fonts: include all mapped families (with aliases) for export ---------- */
+      const ALIAS: Record<string, string> = {
+        'SF Pro Text': 'Inter',
+        'SF Pro Display': 'Inter',
+        'Helvetica Neue': 'Inter',
+        'Helvetica': 'Inter',
+        'Arial': 'Inter',
+        'System': 'Inter',
+      };
+
+      const originalFamilies: string[] = Array.from(extractFontFamilies(frameNode));
+      const familiesToLoad = new Set<string>();
+      for (const fam of originalFamilies) {
+        const mapped = (ALIAS[fam] ?? fam).replace(/\bVariable\b/gi, '').trim();
+        if (mapped) familiesToLoad.add(mapped);
+      }
+      familiesToLoad.add('Inter'); // ensure alias target always present
+
+      const googleFontHrefs = Array.from(familiesToLoad).map(
+          (f) => `https://fonts.googleapis.com/css2?family=${encodeURIComponent(f).replace(/%20/g, '+')}:wght@300;400;500;600;700&display=swap`,
       );
+
       const headLinks = [
-        `<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" />`,
-        `<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossOrigin=\"anonymous\" />`,
-        ...googleFontHrefs.map((h) => `<link href=\"${h}\" rel=\"stylesheet\" />`)
+        `<link rel="preconnect" href="https://fonts.googleapis.com" />`,
+        `<link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />`,
+        ...googleFontHrefs.map((h) => `<link href="${h}" rel="stylesheet" />`),
       ].join('\n    ');
-      const defaultFont = fontFamilies[0] || 'Inter';
+
+      const defaultFont = (Array.from(familiesToLoad)[0]) || 'Inter';
       const defaultFontCSS = `'${defaultFont}', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
 
-      // ---------- minimal project files ----------
+      /* ---------- minimal project files ---------- */
       files.set(
-        'package.json',
-        JSON.stringify(
-          {
-            name: projectSlug,
-            version: '0.1.0',
-            private: true,
-            scripts: {
-              dev: 'next dev',
-              build: 'next build',
-              start: 'next start'
-            },
-            dependencies: {
-              next: '15.4.4',
-              react: '19.1.0',
-              'react-dom': '19.1.0',
-              typescript: '^5.6.0'
-            }
-          },
-          null,
-          2
-        )
+          'package.json',
+          JSON.stringify(
+              {
+                name: projectSlug,
+                version: '0.1.0',
+                private: true,
+                scripts: { dev: 'next dev', build: 'next build', start: 'next start' },
+                dependencies: { next: '15.4.4', react: '19.1.0', 'react-dom': '19.1.0', typescript: '^5.6.0' },
+              },
+              null,
+              2,
+          ),
       );
 
       files.set('next.config.js', `/** @type {import('next').NextConfig} */\nconst nextConfig = {};\nmodule.exports = nextConfig;\n`);
 
       files.set(
-        'src/app/layout.tsx',
-        `import './globals.css';\n\nexport const metadata = { title: '${componentName}', description: 'Exported from DesignStorm' };\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang=\"en\">\n      <head>\n        ${headLinks}\n      </head>\n      <body style={{ margin: 0 }}>{children}</body>\n    </html>\n  );\n}\n`
-      );
-
-      // global CSS with default font
-      files.set(
-        'src/app/globals.css',
-        `:root{}\n*{box-sizing:border-box}\nhtml,body{margin:0;padding:0;overflow-x:hidden;max-width:100vw}\nbody{font-family:${defaultFontCSS};}\nimg{display:block;max-width:100%}\n`
+          'src/app/layout.tsx',
+          `import './globals.css';\n\nexport const metadata = { title: '${componentName}', description: 'Exported from DesignStorm' };\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang="en">\n      <head>\n        ${headLinks}\n      </head>\n      <body style={{ margin: 0 }}>{children}</body>\n    </html>\n  );\n}\n`,
       );
 
       files.set(
-        'src/app/page.tsx',
-        `'use client';\n\nimport React from 'react';\nimport ${componentName} from '../components/${componentName}';\n\nexport default function Page() {\n  return <${componentName} />;\n}\n`
+          'src/app/globals.css',
+          `:root{}\n*{box-sizing:border-box}\nhtml,body{margin:0;padding:0;overflow-x:hidden;max-width:100vw}\nbody{font-family:${defaultFontCSS};}\nimg{display:block;max-width:100%}\n`,
       );
 
-      // Minimal scaling hook
       files.set(
-        'src/lib/useFigmaScale.ts',
-        `import { useEffect, useState } from 'react';\n\nexport function useFigmaScale(designWidth: number, maxScale = 1.2) {\n  const [scale, setScale] = useState(() => {\n    if (typeof window === 'undefined') return 1;\n    const vw = window.innerWidth;\n    const s = vw / Math.max(1, designWidth);\n    return Math.min(Math.max(s, 0.1), maxScale);\n  });\n\n  useEffect(() => {\n    const onResize = () => {\n      const vw = window.innerWidth;\n      const s = vw / Math.max(1, designWidth);\n      setScale(Math.min(Math.max(s, 0.1), maxScale));\n    };\n    window.addEventListener('resize', onResize);\n    return () => window.removeEventListener('resize', onResize);\n  }, [designWidth, maxScale]);\n\n  return scale;\n}\n`
+          'src/app/page.tsx',
+          `'use client';\n\nimport React from 'react';\nimport ${componentName} from '../components/${componentName}';\n\nexport default function Page() { return <${componentName} />; }\n`,
       );
 
-      // ---------- component code generation ----------
+      files.set(
+          'src/lib/useFigmaScale.ts',
+          `import { useEffect, useState } from 'react';\n\nexport function useFigmaScale(designWidth: number) {\n  const [scale, setScale] = useState(1);\n  useEffect(() => {\n    const compute = () => {\n      if (typeof window === 'undefined') return;\n      const vw = window.innerWidth;\n      const s = vw / Math.max(1, designWidth);\n      setScale(Math.max(0.1, s));\n    };\n    compute();\n    window.addEventListener('resize', compute);\n    return () => window.removeEventListener('resize', compute);\n  }, [designWidth]);\n  return scale;\n}\n`,
+      );
+
+      // ---------- style helpers ----------
       const esc = (txt: string) =>
-        (txt || '')
-          .replace(/`/g, '\\`')
-          .replace(/\$/g, '\\$')
-          .replace(/\{/g, '{"{"}')
-          .replace(/\}/g, '{"}"}');
+          (txt || '').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/\{/g, '{"{"}').replace(/\}/g, '{"}"}');
 
       const toStyleJSX = (obj: Record<string, any>) => {
-        // returns a string like {{ key: value, key2: 'value2' }} with double braces
         const parts: string[] = [];
         for (const [k, v] of Object.entries(obj)) {
           if (v === undefined || v === null || v === '') continue;
-          const key = k;
           const value = typeof v === 'number' ? String(v) : JSON.stringify(v);
-          parts.push(`${key}: ${value}`);
+          parts.push(`${k}: ${value}`);
         }
         return `{{ ${parts.join(', ')} }}`;
       };
 
       const rgba = (c: any) =>
-        `rgba(${Math.round((c?.r || 0) * 255)}, ${Math.round((c?.g || 0) * 255)}, ${Math.round(
-          (c?.b || 0) * 255
-        )}, ${c?.a ?? 1})`;
+          `rgba(${Math.round((c?.r || 0) * 255)}, ${Math.round((c?.g || 0) * 255)}, ${Math.round((c?.b || 0) * 255)}, ${c?.a ?? 1})`;
 
       const getLocalImagePath = (nodeId: string) => localAssetMap[nodeId] || '';
       const getLocalImagePathByRef = (ref?: string) => (ref ? localAssetMap[ref] : '') || '';
 
+      // the big style factory, with the BORDER FIX
       const styleFor = (node: any, parentBB?: any) => {
         const s: any = {};
         const bb = node.absoluteBoundingBox;
@@ -360,21 +667,23 @@ function OutputPageContent() {
             s.height = `${bb.height}px`;
           }
         }
-        // Background color from node.backgroundColor (skip for TEXT nodes)
+        // background
         if (node.type !== 'TEXT' && node.backgroundColor) s.backgroundColor = rgba(node.backgroundColor);
-        // Fills
+
+        // fills
         if (node.fills?.[0]) {
           const f = node.fills[0];
           if (node.type !== 'TEXT' && f.type === 'SOLID' && f.color) {
-            // Avoid painting container backgrounds when they simply wrap visual children (icons/images)
-            const hasVisualChildren = Array.isArray(node.children) && node.children.some((c: any) => {
-              if (['VECTOR', 'RECTANGLE', 'ELLIPSE', 'LINE'].includes(c?.type)) return true;
-              return Array.isArray(c?.fills) && c.fills.some((cf: any) => cf?.type === 'IMAGE');
-            });
-            const isPureWhite = Math.round((f.color?.r || 0) * 255) === 255 && Math.round((f.color?.g || 0) * 255) === 255 && Math.round((f.color?.b || 0) * 255) === 255 && (f.color?.a ?? 1) >= 1;
-            if (!(hasVisualChildren && isPureWhite)) {
-              s.backgroundColor = rgba(f.color);
-            }
+            const hasVisualChildren =
+                Array.isArray(node.children) &&
+                node.children.some((c: any) => ['VECTOR', 'RECTANGLE', 'ELLIPSE', 'LINE'].includes(c?.type) ||
+                    (Array.isArray(c?.fills) && c.fills.some((cf: any) => cf?.type === 'IMAGE')));
+            const isPureWhite =
+                Math.round((f.color?.r || 0) * 255) === 255 &&
+                Math.round((f.color?.g || 0) * 255) === 255 &&
+                Math.round((f.color?.b || 0) * 255) === 255 &&
+                (f.color?.a ?? 1) >= 1;
+            if (!(hasVisualChildren && isPureWhite)) s.backgroundColor = rgba(f.color);
           }
           if (f.type === 'IMAGE') {
             const p = (f.imageRef && getLocalImagePathByRef(f.imageRef)) || getLocalImagePath(node.id);
@@ -386,9 +695,7 @@ function OutputPageContent() {
             }
           }
           if (f.type?.startsWith('GRADIENT') && Array.isArray(f.gradientStops) && f.gradientStops.length) {
-            const stops = f.gradientStops
-              .map((st: any) => `${rgba(st.color)} ${st.position * 100}%`)
-              .join(', ');
+            const stops = f.gradientStops.map((st: any) => `${rgba(st.color)} ${st.position * 100}%`).join(', ');
             let dir = '';
             if (Array.isArray(f.gradientTransform)) {
               const t = f.gradientTransform.flat();
@@ -398,12 +705,11 @@ function OutputPageContent() {
             if (f.type === 'GRADIENT_LINEAR') s.background = `linear-gradient(${dir || 'to bottom'}, ${stops})`;
             else if (f.type === 'GRADIENT_RADIAL') s.background = `radial-gradient(circle at center, ${stops})`;
             else if (f.type === 'GRADIENT_ANGULAR') s.background = `conic-gradient(from ${dir || '0deg'}, ${stops})`;
-            else if (f.type === 'GRADIENT_DIAMOND') {
-              s.background = `radial-gradient(ellipse at center, ${stops})`;
-            }
+            else if (f.type === 'GRADIENT_DIAMOND') s.background = `radial-gradient(ellipse at center, ${stops})`;
           }
         }
-        // Corner radii (individual if present)
+
+        // corner radii
         const tl = node.cornerRadiusTopLeft, tr = node.cornerRadiusTopRight, bl = node.cornerRadiusBottomLeft, br = node.cornerRadiusBottomRight;
         if ([tl, tr, bl, br].some((v: any) => v !== undefined)) {
           const cr = node.cornerRadius ?? 0;
@@ -412,51 +718,50 @@ function OutputPageContent() {
         } else if (node.cornerRadius) {
           s.borderRadius = `${node.cornerRadius}px`;
         } else if (node.type === 'ELLIPSE') {
-          // Ensure true circles/ellipses render as rounded in export
           s.borderRadius = '50%';
         }
-        // Strokes
-        if (node.strokes?.[0]) {
+
+        // STROKES (apply only to shape nodes; fix the unwanted box borders)
+        const SHAPE_TYPES = new Set(['VECTOR','LINE','ELLIPSE','RECTANGLE','POLYGON','STAR','BOOLEAN_OPERATION']);
+        if (SHAPE_TYPES.has(node.type) && node.strokes?.[0]) {
           const st = node.strokes[0];
           const color = st.color ? rgba(st.color) : undefined;
           const w = st.strokeWeight || node.strokeWeight || 0;
-          const align = st.strokeAlign || 'CENTER';
           if (w > 0 && color) {
-            if (align === 'OUTSIDE') {
-              s.outline = `${w}px solid ${color}`;
-              s.outlineOffset = '0px';
+            if (node.type === 'LINE') {
+              const bb2 = node.absoluteBoundingBox || { width: 0, height: 0 };
+              if ((bb2.width || 0) >= (bb2.height || 0)) s.borderTop = `${w}px solid ${color}`;
+              else s.borderLeft = `${w}px solid ${color}`;
             } else {
-              s.border = `${w}px ${Array.isArray(st.dashPattern) && st.dashPattern.length ? 'dashed' : 'solid'} ${color}`;
+              const isDashed = Array.isArray((st as any).dashPattern) && (st as any).dashPattern.length;
+              s.border = `${w}px ${isDashed ? 'dashed' : 'solid'} ${color}`;
             }
           }
         }
-        // Effects (shadows)
+
+        // effects (match renderer: use CSS filter for drop-shadows to avoid opaque box on transparent backgrounds)
         if (Array.isArray(node.effects) && node.effects.length) {
           const drops: string[] = [];
           const inners: string[] = [];
           for (const e of node.effects) {
             if (!e?.visible) continue;
-            if (e.type === 'DROP_SHADOW') {
-              const shadow = `${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${rgba(e.color || {})}`;
-              drops.push(shadow);
-            } else if (e.type === 'INNER_SHADOW') {
-              inners.push(`inset ${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${rgba(e.color || {})}`);
-            }
+            if (e.type === 'DROP_SHADOW') drops.push(`drop-shadow(${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${rgba(e.color || {})})`);
+            else if (e.type === 'INNER_SHADOW') inners.push(`inset ${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${rgba(e.color || {})}`);
           }
           if (node.type === 'TEXT') {
-            if (drops.length) (s as any).textShadow = drops.join(', ');
-            // ignore inners for text to avoid rectangular artifacts
+            if (drops.length) (s as any).textShadow = drops.map(d => d.replace(/^drop-shadow\(|\)$/g, '')).join(', ');
           } else {
-            if (drops.length) s.boxShadow = drops.join(', ');
-            if (inners.length) s.boxShadow = s.boxShadow ? `${s.boxShadow}, ${inners.join(', ')}` : inners.join(', ');
+            if (drops.length) (s as any).filter = drops.join(' ');
+            if (inners.length) s.boxShadow = inners.join(', ');
           }
         }
+
         if (node.opacity !== undefined && node.opacity !== 1) s.opacity = node.opacity;
         if (node.clipContent) s.overflow = 'hidden';
-        // Transforms
+
+        // transforms
         const hasImageFill = Array.isArray(node.fills) && node.fills.some((ff: any) => ff?.type === 'IMAGE');
         const t: string[] = [];
-        // Skip rotate for image-based nodes because export already bakes rotation into the asset
         if (!hasImageFill) {
           if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
           else if (node.rotation && Math.abs(node.rotation) > 0) {
@@ -481,7 +786,6 @@ function OutputPageContent() {
         return s;
       };
 
-      const groupHasMaskChild = (n: any) => n?.type === 'GROUP' && n?.children?.some((c: any) => c?.isMask);
       const genNode = (node: any, parentBB?: any, indent = 2): string => {
         if (!node) return '';
         const pad = ' '.repeat(indent);
@@ -490,20 +794,19 @@ function OutputPageContent() {
 
         switch (type) {
           case 'TEXT': {
-            const st = (node.style || {}) as any; // font properties
-            const align = st.textAlignHorizontal === 'CENTER' ? 'center' : st.textAlignHorizontal === 'RIGHT' ? 'right' : st.textAlignHorizontal === 'JUSTIFIED' ? 'justify' : 'left';
-            const mappedGoogle = (name?: string) => {
-              const wl = new Set(['Inter','Roboto','Open Sans','Lato','Poppins','Montserrat','Source Sans Pro','Raleway','Ubuntu','Nunito','Work Sans','DM Sans','Noto Sans','Fira Sans','PT Sans','Oswald','Bebas Neue','Playfair Display','Merriweather','Lora','Space Grotesk','Rubik','Roboto Slab','Nunito Sans','Karla','Manrope']);
-              const alias: Record<string,string> = { 'SF Pro Text':'Inter','SF Pro Display':'Inter','Helvetica Neue':'Inter','Helvetica':'Inter','Arial':'Inter','System':'Inter' };
-              const n = (alias[name || ''] || name || '').trim();
-              return wl.has(n) ? n : 'Inter';
-            };
-            const mapped = mappedGoogle(st.fontFamily);
+            const st = (node.style || {}) as any;
+            const align = st.textAlignHorizontal === 'CENTER' ? 'center' :
+                st.textAlignHorizontal === 'RIGHT' ? 'right' :
+                    st.textAlignHorizontal === 'JUSTIFIED' ? 'justify' : 'left';
+            const vAlign = st.textAlignVertical === 'CENTER' ? 'center' :
+                st.textAlignVertical === 'BOTTOM' ? 'flex-end' : 'flex-start';
+            const normalizeFamily = (name?: string) => String(name || '').replace(/Variable/gi, '').trim();
+            const mapped = normalizeFamily(st.fontFamily) || defaultFont;
             const baseTextStyle: Record<string, any> = {
               whiteSpace: 'pre-wrap',
-              fontFamily: `'${mapped}', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`,
+              fontFamily: createReactFontFamily(mapped || st.fontFamily || ''),
               fontSize: st.fontSize ? `${st.fontSize}px` : undefined,
-              fontWeight: st.fontWeight || undefined,
+              fontWeight: st.fontWeight ?? 'normal',
               lineHeight: st.lineHeightPx ? `${st.lineHeightPx}px` : st.lineHeightPercent ? `${st.lineHeightPercent}%` : undefined,
               letterSpacing: st.letterSpacing ? `${st.letterSpacing}px` : undefined,
               textAlign: align,
@@ -512,35 +815,44 @@ function OutputPageContent() {
                 const fill = node.fills?.[0];
                 return fill?.type === 'SOLID' && fill.color ? rgba(fill.color) : undefined;
               })(),
-              // export-time text buffer
-              paddingLeft: `${TEXT_W_BUFFER}px`,
-              paddingRight: `${TEXT_W_BUFFER}px`,
-              paddingTop: `${TEXT_H_BUFFER}px`,
-              paddingBottom: `${TEXT_H_BUFFER}px`,
+              fontStyle: st.fontStyle ? String(st.fontStyle).toLowerCase() : undefined,
+              // these buffers match the “old code” look and avoid crowding
+              // paddingLeft: `${TEXT_W_BUFFER}px`,
+              // paddingRight: `${TEXT_W_BUFFER}px`,
+              // paddingTop: `${TEXT_H_BUFFER}px`,
+              // paddingBottom: `${TEXT_H_BUFFER}px`,
             };
             const tStyle = toStyleJSX(baseTextStyle);
 
-            // Make the outer text container account for buffers and avoid squeezing
+            // outer text box (account for buffer) — match renderer: flex container aligns vertically
             const textBox = { ...styleFor(node, parentBB) } as Record<string, any>;
+            (textBox as any).display = 'flex';
+            (textBox as any).alignItems = vAlign;
+            (textBox as any).justifyContent = align === 'center' ? 'center' : 'flex-start';
+            (textBox as any).textAlign = align;
             if (node.absoluteBoundingBox) {
-              const bw = Math.round(node.absoluteBoundingBox.width || 0) + TEXT_W_BUFFER * 2;
-              const bh = Math.round(node.absoluteBoundingBox.height || 0) + TEXT_H_BUFFER * 2;
+              const bw = Math.round(node.absoluteBoundingBox.width || 0) + TEXT_W_BUFFER ;
+              const bh = Math.round(node.absoluteBoundingBox.height || 0) + TEXT_H_BUFFER;
               textBox.width = `calc(${bw}px)`;
               textBox.height = `calc(${bh}px)`;
               textBox.maxWidth = '100%';
             }
             const sText = toStyleJSX(textBox);
 
-            // Build rich text spans using styleOverrideTable
+            // rich text spans
             const chars = String(node.characters || '');
             const overrides: number[] = (node as any).characterStyleOverrides || [];
             const table: Record<string, any> = (node as any).styleOverrideTable || {};
             const runForIndex = (i: number) => table[String(overrides[i] || 0)] || {};
             const toSpanStyle = (cs: any) => {
               const style: Record<string, any> = {};
-              if (cs.fontFamily) style.fontFamily = `'${mappedGoogle(cs.fontFamily)}', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+              if (cs.fontFamily) style.fontFamily = createReactFontFamily(normalizeFamily(cs.fontFamily));
               if (cs.fontSize) style.fontSize = `${cs.fontSize}px`;
               if (cs.fontWeight) style.fontWeight = cs.fontWeight;
+              if (cs.fontStyle) {
+                const v = String(cs.fontStyle).toLowerCase();
+                if (v === 'italic' || v === 'oblique') style.fontStyle = v;
+              }
               if (cs.letterSpacing) style.letterSpacing = `${cs.letterSpacing}px`;
               if (cs.lineHeightPx) style.lineHeight = `${cs.lineHeightPx}px`;
               else if (cs.lineHeightPercent) style.lineHeight = `${cs.lineHeightPercent}%`;
@@ -548,6 +860,10 @@ function OutputPageContent() {
               if (f?.type === 'SOLID' && f.color) style.color = rgba(f.color);
               const deco = (cs.textDecoration || cs.textDecorationLine || '').toString().toLowerCase();
               if (deco.includes('underline')) style.textDecoration = 'underline';
+              if (deco.includes('underline')) {
+                (style as any).textUnderlineOffset = '2px';
+                (style as any).textDecorationThickness = '1px';
+              }
               if (cs.textCase === 'UPPER') style.textTransform = 'uppercase';
               if (cs.textCase === 'LOWER') style.textTransform = 'lowercase';
               if (cs.textCase === 'TITLE') style.textTransform = 'capitalize';
@@ -557,7 +873,6 @@ function OutputPageContent() {
             for (let i = 0; i < chars.length; i++) {
               const ch = chars[i];
               if (ch === '\n') {
-                // Preserve consecutive newlines faithfully; insert a tiny spacer to prevent DOM collapse
                 let count = 1;
                 while (i + 1 < chars.length && chars[i + 1] === '\n') { count++; i++; }
                 for (let k = 0; k < count; k++) content += '<br/>';
@@ -567,19 +882,18 @@ function OutputPageContent() {
               const styleAttr = toSpanStyle(cs);
               const href = cs?.hyperlink?.url;
               const inner = esc(ch);
-              if (href) content += `<a href=\"${href}\" style=${styleAttr}>${inner}</a>`;
+              if (href) content += `<a href="${href}" style=${styleAttr}>${inner}</a>`;
               else content += `<span style=${styleAttr}>${inner}</span>`;
             }
-            return `${pad}<div style=${sText} data-figma-node-id=\"${node.id}\">\n${pad}  <span style=${tStyle}>${content}</span>\n${pad}</div>`;
+            return `${pad}<div style=${sText} data-figma-node-id="${node.id}">\n${pad}  <span style=${tStyle}>${content}</span>\n${pad}</div>`;
           }
+
           case 'RECTANGLE':
           case 'ELLIPSE':
           case 'VECTOR':
           case 'LINE': {
-            // Always prefer exported asset usage for 1:1 fidelity if available
             const p = getLocalImagePath(node.id);
             if (p) {
-              // Use layout-only styles; strip all visual paint/border so only the asset is visible
               const layoutOnly: any = { ...styleFor(node, parentBB) };
               delete layoutOnly.background;
               delete layoutOnly.backgroundColor;
@@ -595,15 +909,14 @@ function OutputPageContent() {
               delete (layoutOnly as any).outline;
               delete (layoutOnly as any).boxShadow;
               const sOnly = toStyleJSX(layoutOnly);
-              return `${pad}<div style=${sOnly}>\n${pad}  <img src=\"${p}\" alt=\"${(node.name || 'image').replace(/"/g, '&quot;')}\" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />\n${pad}</div>`;
+              return `${pad}<div style=${sOnly}>\n${pad}  <img src="${p}" alt="${(node.name || 'image').replace(/"/g, '&quot;')}" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />\n${pad}</div>`;
             }
-            // If no asset, fall back to styled div (rare)
-            return `${pad}<div style=${s} data-figma-node-id=\"${node.id}\" />`;
+            return `${pad}<div style=${s} data-figma-node-id="${node.id}" />`;
           }
+
           case 'GROUP': {
             const hasMaskChild = Array.isArray(node.children) && node.children.some((c: any) => c?.isMask && (c.maskType || c.mask));
             const hasTextChild = Array.isArray(node.children) && node.children.some((c: any) => c?.type === 'TEXT');
-            // If group has mask and no text, render as a single flattened image background
             if (hasMaskChild && !hasTextChild) {
               let p = getLocalImagePath(node.id);
               if (!p && Array.isArray(node.children)) {
@@ -622,50 +935,62 @@ function OutputPageContent() {
                 delete (mergedStyle as any).border;
                 delete (mergedStyle as any).outline;
                 delete (mergedStyle as any).boxShadow;
-                delete (mergedStyle as any).backgroundColor; // asset will paint
+                delete (mergedStyle as any).backgroundColor;
                 mergedStyle.backgroundImage = `url('${p}')`;
                 mergedStyle.backgroundSize = 'cover';
                 mergedStyle.backgroundPosition = 'center';
                 mergedStyle.backgroundRepeat = 'no-repeat';
                 const s2 = toStyleJSX(mergedStyle);
-                return `${pad}<div style=${s2} data-figma-node-id=\"${node.id}\" />`;
+                return `${pad}<div style=${s2} data-figma-node-id="${node.id}" />`;
               }
             }
-            // fallthrough to default container rendering
+            // default container
           }
+
           default: {
             const children = (node.children || [])
-              .map((c: any) => genNode(c, node.absoluteBoundingBox, indent + 2))
-              .filter(Boolean)
-              .join('\n');
+                .map((c: any) => genNode(c, node.absoluteBoundingBox, indent + 2))
+                .filter(Boolean)
+                .join('\n');
             if (children)
-              return `${pad}<div style=${s} data-figma-node-id=\"${node.id}\">\n${children}\n${pad}</div>`;
-            return `${pad}<div style=${s} data-figma-node-id=\"${node.id}\" />`;
+              return `${pad}<div style=${s} data-figma-node-id="${node.id}">\n${children}\n${pad}</div>`;
+            return `${pad}<div style=${s} data-figma-node-id="${node.id}" />`;
           }
         }
       };
 
       const rootBB = frameNode.absoluteBoundingBox || { width: 1200, height: 800 };
+
       // ---------- copy assets into zip and rewrite references ----------
-      // Download asset URLs and place into public/assets
-      const JSZip = await import('jszip');
-      const zip = new JSZip.default();
+       const JSZip = await import('jszip');
+       const zip = new JSZip.default();
 
-      // Add text files first
-      for (const [p, c] of files) zip.file(p, c);
+       for (const [p, c] of files) zip.file(p, c);
+       // ensure /public/assets/ is created in zip before placing files
+       zip.folder('public');
+       zip.folder('public')?.folder('assets');
 
-      // Save all discovered asset candidates (by imageRef hash or node id)
       let downloaded = 0;
+      let failed = 0;
       for (const { key, aliasKeys } of assetCandidates) {
+        if (abort.signal.aborted) break;
         const url = sourceAssetMap[key];
-        if (!url) { downloaded++; setExportProgress((ep) => ({ ...ep, loaded: downloaded, label: `Downloading assets (${downloaded}/${assetCandidates.length})…` })); continue; }
+        if (!url) {
+          downloaded++;
+          setExportProgress((ep) => ({ ...ep, loaded: downloaded, label: `Downloading assets (${downloaded}/${assetCandidates.length})…` }));
+          continue;
+        }
+        // Fetch via server proxy to bypass browser CORS
         try {
-          const res = await fetch(url);
+          const proxied = `/api/assets?url=${encodeURIComponent(url)}`;
+          const res = await fetch(proxied, { signal: abort.signal, cache: 'no-store' });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const buf = await res.arrayBuffer();
           const ct = res.headers.get('content-type') || '';
           const isSvg = ct.includes('svg') || url.endsWith('.svg');
-          const ext = isSvg ? 'svg' : ct.includes('png') || url.includes('.png') ? 'png' : ct.includes('jpeg') || url.includes('.jpg') || url.includes('.jpeg') ? 'jpg' : 'png';
+          const ext = isSvg ? 'svg' :
+              ct.includes('png') || url.includes('.png') ? 'png' :
+                  (ct.includes('jpeg') || url.includes('.jpg') || url.includes('.jpeg')) ? 'jpg' : 'png';
           const safeKey = sanitizeFilename(key);
           const path = `public/assets/${safeKey}.${ext}`;
           const publicPath = `/assets/${safeKey}.${ext}`;
@@ -673,18 +998,47 @@ function OutputPageContent() {
           for (const a of aliasKeys) localAssetMap[a] = publicPath;
           zip.file(path, buf);
         } catch (e) {
-          console.warn('⚠️ Failed to fetch asset', key, e);
+          if (abort.signal.aborted) break;
+          failed++;
+          // Fallback: map to remote URL so exported code can still display via <img>/CSS background
+          localAssetMap[key] = url;
+          for (const a of aliasKeys) localAssetMap[a] = url;
         } finally {
           downloaded++;
-          setExportProgress((ep) => ({ ...ep, loaded: Math.min(downloaded, ep.total), label: `Downloading assets (${downloaded}/${assetCandidates.length})…` }));
+          setExportProgress((ep) => ({
+            ...ep,
+            loaded: Math.min(downloaded, ep.total),
+            label: `Downloading assets (${downloaded}/${assetCandidates.length})…`,
+          }));
         }
       }
 
-      // Finally, generate the component file WITH local asset paths resolved
-      const componentTsx = `'use client';\n\nimport React from 'react';\nimport { useFigmaScale } from '../lib/useFigmaScale';\n\nexport default function ${componentName}() {\n  const designWidth = ${Math.round(rootBB.width || 1200)};\n  const scale = useFigmaScale(designWidth, ${enableScaling ? Math.max(1, maxScale).toFixed(1) : 1});\n  return (\n    <div style={{ width: '100vw', minHeight: '100vh', overflowX: 'hidden', overflowY: 'auto', display: 'flex', justifyContent: 'center' }}>\n      <div style={{ width: designWidth + 'px', height: '${Math.round(rootBB.height || 800)}px', transform: 'scale(' + scale + ')', transformOrigin: 'top center', position: 'relative', flexShrink: 0 }}>\n${genNode(frameNode, undefined, 8)}\n      </div>\n      <div style={{ height: (${Math.round(rootBB.height || 800)} * scale) + 'px' }} />\n    </div>\n  );\n}\n`;
+      if (failed > 0 && !devMode) {
+        // Single summary to avoid noisy console spam
+        console.warn(`Proceeding with ${failed} remote asset reference${failed === 1 ? '' : 's'} due to CORS.`);
+      }
+
+      if (abort.signal.aborted) {
+        setExportProgress({ isExporting: false, total: 0, loaded: 0, label: '' });
+        return;
+      }
+
+      const componentTsx =
+          `'use client';\n\nimport React from 'react';\nimport { useFigmaScale } from '../lib/useFigmaScale';\n\n` +
+          `export default function ${componentName}() {\n` +
+          `  const designWidth = ${Math.round(rootBB.width || 1200)};\n` +
+          `  const scale = ${enableScaling ? 'useFigmaScale(designWidth)' : '1'};\n` +
+          `  return (\n` +
+          `    <div style={{ width: '100vw', minHeight: '100vh', overflowX: 'hidden', overflowY: 'auto', display: 'flex', justifyContent: 'center' }}>\n` +
+          `      <div style={{ width: designWidth + 'px', height: '${Math.round(rootBB.height || 800)}px', transform: 'scale(' + scale + ')', transformOrigin: 'top center', position: 'relative', flexShrink: 0 }}>\n` +
+          `${genNode(frameNode, undefined, 8)}\n` +
+          `      </div>\n` +
+          `      <div style={{ height: (${Math.round(rootBB.height || 800)} * scale) + 'px' }} />\n` +
+          `    </div>\n` +
+          `  );\n` +
+          `}\n`;
       zip.file(`src/components/${componentName}.tsx`, componentTsx);
 
-      // Produce archive
       const blob = await zip.generateAsync({ type: 'blob' }, (meta) => {
         setExportProgress((ep) => ({
           ...ep,
@@ -692,1650 +1046,305 @@ function OutputPageContent() {
           label: `Packaging project (${Math.floor(meta.percent || 0)}%)…`,
         }));
       });
+
+      if (abort.signal.aborted) {
+        setExportProgress({ isExporting: false, total: 0, loaded: 0, label: '' });
+        return;
+      }
+
       const outName = `${projectSlug}-nextjs-project.zip`;
       downloadBlob(blob, outName);
       console.log('✅ Exported static Next.js project');
       setExportProgress({ isExporting: false, total: 0, loaded: 0, label: '' });
     } catch (error) {
-      console.error('❌ Export failed:', error);
-      setExportProgress((ep) => ({ ...ep, isExporting: false, label: 'Export failed' }));
-    }
-  };
-
-  // Function to load assets (images and SVGs) from Figma API
-  // Extract unique font families from Figma data
-  const extractFontFamilies = (node: any): Set<string> => {
-    const fonts = new Set<string>();
-    
-    const add = (f?: string) => {
-      if (!f) return;
-      const name = String(f).trim();
-      if (name) fonts.add(name);
-    };
-
-    const traverse = (n: any) => {
-      if (!n || typeof n !== 'object') return;
-      // Base style
-      add(n.style?.fontFamily);
-      // Text style override table (rich text runs)
-      if (n.styleOverrideTable && typeof n.styleOverrideTable === 'object') {
-        Object.values(n.styleOverrideTable).forEach((ov: any) => add(ov?.fontFamily));
-      }
-      // Instances sometimes carry styles in props
-      if (Array.isArray(n.styles)) {
-        n.styles.forEach((s: any) => add(s?.fontFamily));
-      }
-      (n.children || []).forEach(traverse);
-    };
-    
-    traverse(node);
-    return fonts;
-  };
-
-  // Load fonts from Figma data
-  const loadFontsFromFigmaData = async (rootNode: any) => {
-    if (!rootNode) return;
-    
-    setFontLoadingStatus('Extracting fonts...');
-    const fontFamilies = Array.from(extractFontFamilies(rootNode));
-    
-    if (fontFamilies.length === 0) {
-      setFontLoadingStatus('No fonts found');
-      return;
-    }
-    
-    setFontLoadingStatus(`Loading ${fontFamilies.length} fonts...`);
-    
-    try {
-      await fontLoader.loadFonts(
-        fontFamilies.map(family => ({
-          family,
-          weights: [400, 500, 600, 700], // Common weights
-          display: 'swap'
-        }))
-      );
-      
-      setLoadedFonts(new Set(fontFamilies));
-      setFontLoadingStatus(`Loaded ${fontFamilies.length} fonts successfully`);
-      
-      if (devMode) {
-        console.log('🎨 Fonts loaded:', fontFamilies);
-      }
-    } catch (error) {
-      setFontLoadingStatus(`Font loading failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      console.error('Font loading error:', error);
-    }
-  };
-
-  const loadAssetsFromFigmaAPI = async (rootNode: any) => {
-    console.log('🚀 loadAssetsFromFigmaAPI called with:');
-    console.log('  - fileKey:', fileKey);
-    console.log('  - figmaToken:', figmaToken ? '***' : 'missing');
-    console.log('  - rootNode:', rootNode?.name, rootNode?.id);
-    
-    if (!fileKey || !figmaToken) {
-      console.log('⚠️ Missing file key or token, skipping API asset loading');
-      console.log('  - fileKey missing:', !fileKey);
-      console.log('  - figmaToken missing:', !figmaToken);
-      return;
-    }
-
-    try {
-      console.log('🚀 Loading assets from Figma API...');
-      setAssetLoadingStatus('Loading assets from Figma API...');
-      setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: true });
-      
-      const apiAssetMap = await loadFigmaAssetsFromNodes({
-        figmaFileKey: fileKey,
-        figmaToken: figmaToken,
-        rootNode: rootNode,
-        onProgress: (total, loaded) => {
-          setAssetLoadingProgress({ total, loaded, isLoading: true });
-        },
-      });
-      
-      if (Object.keys(apiAssetMap).length > 0) {
-        setAssetMap(apiAssetMap);
-        setAssetLoadingStatus(`✅ Loaded ${Object.keys(apiAssetMap).length} assets from Figma API`);
-        setAssetLoadingProgress({ total: Object.keys(apiAssetMap).length, loaded: Object.keys(apiAssetMap).length, isLoading: false });
-        console.log('✅ Assets loaded from Figma API:', apiAssetMap);
+      if ((error as any)?.name === 'AbortError') {
+        console.log('Export aborted');
       } else {
-        setAssetLoadingStatus('ℹ️ No assets found in design - continuing without images');
-        setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: false });
-        console.log('ℹ️ No assets found in design - continuing without images');
+        console.error('❌ Export failed:', error);
       }
-    } catch (error) {
-      console.error('❌ Error loading assets from Figma API:', error);
-      setAssetLoadingStatus('⚠️ Could not load images - continuing without assets');
-      setAssetLoadingProgress({ total: 0, loaded: 0, isLoading: false });
-      
-      // Don't let API errors prevent the app from working
-      console.log('🔄 Continuing with design rendering without assets');
+      setExportProgress((ep) => ({ ...ep, isExporting: false, label: 'Export cancelled' }));
     }
   };
 
-  // Effect to trigger image loading when fileKey and figmaToken are available
-  useEffect(() => {
-    console.log('🔄 useEffect triggered - checking conditions:');
-    console.log('📁 File Key:', fileKey);
-    console.log('🔑 Token available:', !!figmaToken);
-    console.log('📄 Frame Node available:', !!frameNode);
-    console.log('📄 Frame Node name:', frameNode?.name);
-    console.log('📄 Frame Node ID:', frameNode?.id);
-    
-    if (fileKey && figmaToken && frameNode) {
-      console.log('✅ All conditions met, triggering asset loading...');
-      console.log('📁 File Key:', fileKey);
-      console.log('🔑 Token available:', !!figmaToken);
-      console.log('📄 Frame Node:', frameNode.name);
-      console.log('📄 Frame Node ID:', frameNode.id);
-      
-      loadAssetsFromFigmaAPI(frameNode);
-    } else {
-      console.log('❌ Missing conditions:');
-      if (!fileKey) console.log('  - Missing fileKey');
-      if (!figmaToken) console.log('  - Missing figmaToken');
-      if (!frameNode) console.log('  - Missing frameNode');
-    }
-  }, [fileKey, figmaToken, frameNode]);
+  /* ---------------- UI states ---------------- */
 
-  // Function to clear all data and reset state
-  const clearAllData = async () => {
-    setFigmaData(null);
-    setFrameNode(null);
-    setAssetMap({});
-    setAssetLoadingStatus('Not started');
-    setFileKey('');
-    setFigmaToken('');
-    setFigmaUrl('');
-    setDataSource('');
-    setError(null);
-    setUploadError(null);
-    setDataVersion(prev => prev + 1);
-    
-    // Clear IndexedDB data
-    try {
-      const { clearAllFigmaData } = await import('@/lib/figmaStorage');
-      await clearAllFigmaData();
-      console.log('🧹 Cleared IndexedDB data');
-    } catch (error) {
-      console.error('❌ Failed to clear IndexedDB:', error);
-    }
-    
-    // Clear ALL localStorage data completely
-    localStorage.clear();
-    
-    console.log('🧹 All data cleared including localStorage and IndexedDB');
-    
-    // Force page refresh to ensure completely clean state
-    window.location.reload();
-  };
-
-  const clearDataWithoutReload = () => {
-    setFigmaData(null);
-    setFrameNode(null);
-    setAssetMap({});
-    setAssetLoadingStatus('Not started');
-    setFileKey('');
-    setFigmaToken('');
-    setFigmaUrl('');
-    setDataSource('');
-    setError(null);
-    setUploadError(null);
-    setDataVersion(prev => prev + 1);
-    
-    console.log('🧹 Data cleared without page reload');
-  };
-
-  // Dynamic JSON upload handler
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
-      setUploadError('Please select a valid JSON file');
-      return;
-    }
-
-    setUploadError(null);
-    setLoading(true);
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const jsonData = JSON.parse(e.target?.result as string);
-        
-        console.log('📁 File uploaded, processing data...', jsonData);
-        
-        // Clear existing data first (without page reload)
-        clearDataWithoutReload();
-        
-        // Check if this is plugin data
-        if (isPluginExport(jsonData)) {
-          try {
-            console.log('🚀 Detected plugin export data');
-            const pluginData = parsePluginData(jsonData);
-            
-            // Set data in correct order
-            setFigmaData(pluginData);
-            setDataSource('Plugin Export');
-            
-            // Use plugin image data
-            if (pluginData.imageMap && Object.keys(pluginData.imageMap).length > 0) {
-              setAssetMap(pluginData.imageMap);
-              setAssetLoadingStatus(`✅ Loaded ${Object.keys(pluginData.imageMap).length} assets from plugin`);
-            }
-            
-            // Parse the data last to trigger re-render
-            setTimeout(async () => {
-              await parseFigmaData(pluginData);
-            }, 100);
-            
-            console.log('🚀 Plugin data uploaded and parsed successfully');
-          } catch (pluginError) {
-            console.error('❌ Error parsing plugin data:', pluginError);
-            setUploadError('Invalid plugin export data. Please check the file format.');
-          }
-        } else {
-          // Regular Figma JSON
-          console.log('📄 Processing regular Figma JSON');
-          setFigmaData(jsonData);
-          setDataSource('File Upload');
-          
-          // Use plugin image data if available
-          if (jsonData.imageMap && Object.keys(jsonData.imageMap).length > 0) {
-                          setAssetMap(jsonData.imageMap);
-              setAssetLoadingStatus(`✅ Loaded ${Object.keys(jsonData.imageMap).length} assets from plugin`);
-          }
-          
-          // Parse the data last to trigger re-render
-          setTimeout(async () => {
-            await parseFigmaData(jsonData);
-          }, 100);
-          
-          console.log('✅ File uploaded and parsed successfully');
-        }
-      } catch (error) {
-        console.error('❌ Error parsing JSON file:', error);
-        setUploadError('Invalid JSON file. Please check the file format.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    reader.onerror = () => {
-      setUploadError('Error reading file. Please try again.');
-      setLoading(false);
-    };
-
-    reader.readAsText(file);
-  };
-
-  // Test function to manually call Figma API
-  const testFigmaAPI = async () => {
-    if (!fileKey || !figmaToken) {
-      setAssetLoadingStatus('❌ Cannot test API: Missing file key or token');
-      return;
-    }
-    
-    try {
-      setAssetLoadingStatus('Testing API...');
-      const url = `https://api.figma.com/v1/images/${fileKey}?ids=55446:11667&format=png&scale=2`;
-      console.log('🧪 Testing API call to:', url);
-      
-      const response = await fetch(url, {
-        headers: {
-          'X-Figma-Token': figmaToken,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      console.log('📡 Test response status:', response.status);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Test API Error:', errorText);
-        setAssetLoadingStatus(`API Error: ${response.status} ${response.statusText}`);
-        return;
-      }
-      
-      const data = await response.json();
-      console.log('✅ Test API Response:', data);
-              setAssetLoadingStatus(`API Test Success: ${JSON.stringify(data)}`);
-      
-      // If API test succeeds, update the image map
-      if (data.images && data.images['55446:11667']) {
-        setAssetMap(data.images);
-      }
-      
-    } catch (error) {
-      console.error('❌ Test API Error:', error);
-              setAssetLoadingStatus(`Test Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
-
-  // Add sample banner design with footer
-  const addSampleBanner = () => {
-    const bannerNode = {
-      id: "banner-root",
-      name: "Banner Design",
-      type: "FRAME",
-      absoluteBoundingBox: {
-        x: 0,
-        y: 0,
-        width: 1200,
-        height: 800
-      },
-      children: [
-        // Main headline
-        {
-          id: "headline",
-          name: "Integrated. Agile. All-In.",
-          type: "TEXT",
-          absoluteBoundingBox: {
-            x: 50,
-            y: 50,
-            width: 800,
-            height: 80
-          },
-          characters: "Integrated. Agile. All-In.",
-          fills: [
-            {
-              type: "SOLID",
-              color: { r: 0, g: 0, b: 0 }
-            }
-          ],
-          style: {
-            fontSize: 48,
-            fontWeight: 700,
-            textAlignHorizontal: "LEFT"
-          }
-        },
-        // Circular image 1
-        {
-          id: "circle-1",
-          name: "Manufacturing Image",
-          type: "RECTANGLE",
-          absoluteBoundingBox: {
-            x: 50,
-            y: 200,
-            width: 150,
-            height: 150
-          },
-          cornerRadius: 75,
-          fills: [
-            {
-              type: "IMAGE",
-              imageRef: "manufacturing-image"
-            }
-          ]
-        },
-        // Text under circle 1
-        {
-          id: "text-1",
-          name: "Manufacturing that moves",
-          type: "TEXT",
-          absoluteBoundingBox: {
-            x: 50,
-            y: 370,
-            width: 150,
-            height: 40
-          },
-          characters: "Manufacturing that moves",
-          fills: [
-            {
-              type: "SOLID",
-              color: { r: 0, g: 0, b: 0 }
-            }
-          ],
-          style: {
-            fontSize: 14,
-            fontWeight: 500,
-            textAlignHorizontal: "CENTER"
-          }
-        },
-        // Circular image 2
-        {
-          id: "circle-2",
-          name: "Brands Image",
-          type: "RECTANGLE",
-          absoluteBoundingBox: {
-            x: 250,
-            y: 200,
-            width: 150,
-            height: 150
-          },
-          cornerRadius: 75,
-          fills: [
-            {
-              type: "IMAGE",
-              imageRef: "brands-image"
-            }
-          ]
-        },
-        // Text under circle 2
-        {
-          id: "text-2",
-          name: "Brands that Define Movement",
-          type: "TEXT",
-          absoluteBoundingBox: {
-            x: 250,
-            y: 370,
-            width: 150,
-            height: 40
-          },
-          characters: "Brands that Define Movement",
-          fills: [
-            {
-              type: "SOLID",
-              color: { r: 0, g: 0, b: 0 }
-            }
-          ],
-          style: {
-            fontSize: 14,
-            fontWeight: 500,
-            textAlignHorizontal: "CENTER"
-          }
-        },
-        // Circular image 3
-        {
-          id: "circle-3",
-          name: "Retail Image",
-          type: "RECTANGLE",
-          absoluteBoundingBox: {
-            x: 450,
-            y: 200,
-            width: 150,
-            height: 150
-          },
-          cornerRadius: 75,
-          fills: [
-            {
-              type: "IMAGE",
-              imageRef: "retail-image"
-            }
-          ]
-        },
-        // Text under circle 3
-        {
-          id: "text-3",
-          name: "Retail that Energizes",
-          type: "TEXT",
-          absoluteBoundingBox: {
-            x: 450,
-            y: 370,
-            width: 150,
-            height: 40
-          },
-          characters: "Retail that Energizes",
-          fills: [
-            {
-              type: "SOLID",
-              color: { r: 0, g: 0, b: 0 }
-            }
-          ],
-          style: {
-            fontSize: 14,
-            fontWeight: 500,
-            textAlignHorizontal: "CENTER"
-          }
-        },
-        // Footer section
-        {
-          id: "footer",
-          name: "Footer",
-          type: "FRAME",
-          absoluteBoundingBox: {
-            x: 0,
-            y: 600,
-            width: 1200,
-            height: 200
-          },
-          layoutMode: "HORIZONTAL",
-          primaryAxisAlignItems: "SPACE_BETWEEN",
-          counterAxisAlignItems: "CENTER",
-          paddingLeft: 50,
-          paddingRight: 50,
-          children: [
-            // Logo
-            {
-              id: "footer-logo",
-              name: "Logo",
-              type: "TEXT",
-              absoluteBoundingBox: {
-                x: 50,
-                y: 650,
-                width: 200,
-                height: 40
-              },
-              characters: "DesignStorm",
-              fills: [
-                {
-                  type: "SOLID",
-                  color: { r: 0, g: 0, b: 0 }
-                }
-              ],
-              style: {
-                fontSize: 24,
-                fontWeight: 700,
-                textAlignHorizontal: "LEFT"
-              }
-            },
-            // Navigation links
-            {
-              id: "footer-nav",
-              name: "Navigation Links",
-              type: "FRAME",
-              absoluteBoundingBox: {
-                x: 400,
-                y: 650,
-                width: 400,
-                height: 40
-              },
-              layoutMode: "HORIZONTAL",
-              primaryAxisAlignItems: "CENTER",
-              itemSpacing: 40,
-              children: [
-                {
-                  id: "nav-link-1",
-                  name: "About",
-                  type: "TEXT",
-                  absoluteBoundingBox: {
-                    x: 400,
-                    y: 650,
-                    width: 50,
-                    height: 20
-                  },
-                  characters: "About",
-                  fills: [
-                    {
-                      type: "SOLID",
-                      color: { r: 0.4, g: 0.4, b: 0.4 }
-                    }
-                  ],
-                  style: {
-                    fontSize: 16,
-                    fontWeight: 400,
-                    textAlignHorizontal: "CENTER"
-                  }
-                },
-                {
-                  id: "nav-link-2",
-                  name: "Services",
-                  type: "TEXT",
-                  absoluteBoundingBox: {
-                    x: 490,
-                    y: 650,
-                    width: 70,
-                    height: 20
-                  },
-                  characters: "Services",
-                  fills: [
-                    {
-                      type: "SOLID",
-                      color: { r: 0.4, g: 0.4, b: 0.4 }
-                    }
-                  ],
-                  style: {
-                    fontSize: 16,
-                    fontWeight: 400,
-                    textAlignHorizontal: "CENTER"
-                  }
-                },
-                {
-                  id: "nav-link-3",
-                  name: "Contact",
-                  type: "TEXT",
-                  absoluteBoundingBox: {
-                    x: 600,
-                    y: 650,
-                    width: 70,
-                    height: 20
-                  },
-                  characters: "Contact",
-                  fills: [
-                    {
-                      type: "SOLID",
-                      color: { r: 0.4, g: 0.4, b: 0.4 }
-                    }
-                  ],
-                  style: {
-                    fontSize: 16,
-                    fontWeight: 400,
-                    textAlignHorizontal: "CENTER"
-                  }
-                }
-              ]
-            },
-            // Social icons
-            {
-              id: "social-icons",
-              name: "Social Icons",
-              type: "FRAME",
-              absoluteBoundingBox: {
-                x: 900,
-                y: 650,
-                width: 200,
-                height: 40
-              },
-              layoutMode: "HORIZONTAL",
-              primaryAxisAlignItems: "CENTER",
-              itemSpacing: 20,
-              children: [
-                {
-                  id: "linkedin-icon",
-                  name: "LinkedIn",
-                  type: "RECTANGLE",
-                  absoluteBoundingBox: {
-                    x: 900,
-                    y: 650,
-                    width: 40,
-                    height: 40
-                  },
-                  cornerRadius: 20,
-                  fills: [
-                    {
-                      type: "IMAGE",
-                      imageRef: "linkedin-image"
-                    }
-                  ]
-                },
-                {
-                  id: "instagram-icon",
-                  name: "Instagram",
-                  type: "RECTANGLE",
-                  absoluteBoundingBox: {
-                    x: 960,
-                    y: 650,
-                    width: 40,
-                    height: 40
-                  },
-                  cornerRadius: 20,
-                  fills: [
-                    {
-                      type: "IMAGE",
-                      imageRef: "instagram-image"
-                    }
-                  ]
-                },
-                {
-                  id: "youtube-icon",
-                  name: "YouTube",
-                  type: "RECTANGLE",
-                  absoluteBoundingBox: {
-                    x: 1020,
-                    y: 650,
-                    width: 40,
-                    height: 40
-                  },
-                  cornerRadius: 20,
-                  fills: [
-                    {
-                      type: "IMAGE",
-                      imageRef: "youtube-image"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    };
-    
-    setFrameNode(bannerNode);
-          setAssetLoadingStatus('Added sample banner design with footer');
-  };
-
-  // Parse Figma JSON and extract frame node
-  const parseFigmaData = async (data: FigmaData) => {
-    try {
-      console.log('🔍 Parsing Figma data:', data);
-      
-      let documentNode: FigmaNode | null = null;
-      
-      // Handle different data structures
-      if (data.nodes && Object.keys(data.nodes).length > 0) {
-        // Standard Figma export structure
-        const nodeKeys = Object.keys(data.nodes);
-        console.log('📁 Available node keys:', nodeKeys);
-        
-        // Try to find the main frame or page
-        let foundNode = null;
-        for (const key of nodeKeys) {
-          const node = data.nodes[key];
-          if (node.document) {
-            console.log('🔍 Checking node:', key, node.document.name, node.document.type);
-            
-            // Look for PAGE, FRAME, or CANVAS type nodes
-            if (node.document.type === 'PAGE' || node.document.type === 'CANVAS') {
-              foundNode = node.document;
-              console.log('✅ Found main page/canvas:', node.document.name);
-              break;
-            }
-            
-            // If no page/canvas found, use the first document
-            if (!foundNode) {
-              foundNode = node.document;
-            }
-          }
-        }
-        
-        documentNode = foundNode;
-        console.log('📄 Selected document node:', documentNode);
-      } else if (data.document) {
-        // Direct document structure (from upload page or plugin)
-        documentNode = data.document;
-        console.log('📄 Direct document node:', documentNode);
-      }
-      
-      if (!documentNode) {
-        throw new Error('No document node found in the uploaded data');
-      }
-
-      // Extract available pages/frames
-      const extractAvailablePages = (root: FigmaNode): PageInfo[] => {
-        const pages: PageInfo[] = [];
-        
-        const findFrames = (node: FigmaNode, isTopLevel: boolean = true): void => {
-          if (node.type === 'FRAME' && isTopLevel) {
-            pages.push({ 
-              id: node.id || `frame-${pages.length}`, 
-              name: node.name || `Frame ${pages.length + 1}`, 
-              node 
-            });
-          } else if (node.type === 'CANVAS' || node.type === 'PAGE' || node.type === 'DOCUMENT') {
-            node.children?.forEach(child => {
-              if (child.type === 'FRAME') {
-                pages.push({ 
-                  id: child.id || `frame-${pages.length}`, 
-                  name: child.name || `Frame ${pages.length + 1}`, 
-                  node: child 
-                });
-              } else {
-                findFrames(child, false);
-              }
-            });
-          }
-        };
-        
-        findFrames(root);
-        return pages;
-      };
-
-      const pages = extractAvailablePages(documentNode);
-      let targetNode: FigmaNode = documentNode;
-
-      if (pages.length > 1) {
-        console.log('🔄 Multi-page design detected with', pages.length, 'pages');
-        setIsMultiPageDesign(true);
-        setAvailablePages(pages);
-        const initialPageId = selectedPageId && pages.some(p => p.id === selectedPageId) ? selectedPageId : pages[0].id;
-        setSelectedPageId(initialPageId);
-        const initialPage = pages.find(p => p.id === initialPageId)!;
-        targetNode = initialPage.node;
-      } else if (pages.length === 1) {
-        console.log('📄 Single frame found within document/canvas');
-        setIsMultiPageDesign(false);
-        setAvailablePages(pages);
-        setSelectedPageId(pages[0].id);
-        targetNode = pages[0].node;
-      } else {
-        console.log('📄 Using document node as the render target');
-        setIsMultiPageDesign(false);
-        setAvailablePages([]);
-        setSelectedPageId(null);
-      }
-
-  
-      // Log the structure for debugging
-      console.log('🎨 Document structure:', {
-        name: targetNode.name,
-        type: targetNode.type,
-        childrenCount: targetNode.children?.length || 0,
-        children: targetNode.children?.map(child => ({
-          name: child.name,
-          type: child.type,
-          id: child.id,
-          hasBoundingBox: !!child.absoluteBoundingBox,
-          childrenCount: child.children?.length || 0
-        }))
-      });
-
-      // Load fonts from the target node
-      await loadFontsFromFigmaData(targetNode);
-      
-      // Force re-render by setting frame node and incrementing version
-      setFrameNode(null); // Clear first
-      setDataVersion(prev => prev + 1); // Increment version to force re-render
-      setTimeout(() => {
-        setFrameNode(targetNode);
-        console.log('✅ Frame node updated, triggering re-render');
-      }, 0);
-      
-    } catch (err) {
-      console.error('❌ Error parsing Figma data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to parse Figma data');
-    }
-  };
-
-  // Helper function to extract node styles
-  const extractNodeStyles = (node: FigmaNode): React.CSSProperties => {
-    const styles: React.CSSProperties = {};
-    
-    if (node.absoluteBoundingBox) {
-      styles.position = 'absolute';
-      styles.left = `${node.absoluteBoundingBox.x}px`;
-      styles.top = `${node.absoluteBoundingBox.y}px`;
-      styles.width = `${node.absoluteBoundingBox.width}px`;
-      styles.height = `${node.absoluteBoundingBox.height}px`;
-    }
-    
-    if (node.opacity !== undefined) {
-      styles.opacity = node.opacity;
-    }
-    
-    if (node.visible === false) {
-      styles.display = 'none';
-    }
-    
-    // Add more style extraction as needed
-    return styles;
-  };
-
-  // Helper function to extract node props
-  const extractNodeProps = (node: FigmaNode): Record<string, any> => {
-    const props: Record<string, any> = {};
-    
-    if (node.type === 'TEXT' && node.characters) {
-      props.textContent = node.characters;
-      props.characters = node.characters;
-    }
-    
-    if (node.type === 'IMAGE') {
-      props.alt = node.name || 'Image';
-    }
-    
-    // Add more prop extraction as needed
-    return props;
-  };
-
-  // Load Figma data from URL parameters or localStorage
-  useEffect(() => {
-    const loadFigmaData = async () => {
-      try {
-        setLoading(true);
-        
-        // First try to load from URL parameters
-        const dataParam = searchParams.get('data');
-        
-        if (dataParam) {
-          // Load data from URL parameters
-          const decodedData = decodeURIComponent(dataParam);
-          const figmaData = JSON.parse(decodedData);
-          
-          // Clear any existing data to ensure fresh start
-                setAssetMap({});
-      setAssetLoadingStatus('Processing new data...');
-          
-          let dataSource = '';
-          
-          // Check if this is plugin data
-          if (figmaData.metadata?.exportedBy === 'DesignStorm Plugin') {
-            dataSource = 'Plugin Export';
-            console.log('🚀 Plugin data detected with images and assets');
-          } else {
-            dataSource = 'URL parameters';
-            console.log('📄 Regular JSON data detected');
-          }
-          
-          // Update both IndexedDB and localStorage with new data
-          try {
-            const { saveFigmaData } = await import('@/lib/figmaStorage');
-            await saveFigmaData(figmaData);
-            console.log('✅ Updated IndexedDB with new data from URL');
-          } catch (error) {
-            console.error('❌ Failed to save to IndexedDB:', error);
-          }
-          localStorage.setItem('figmaData', JSON.stringify(figmaData));
-          console.log('✅ Updated localStorage with new data from URL');
-          
-          console.log(`✅ Figma data loaded successfully from ${dataSource}`);
-          setDataSource(dataSource);
-          setFigmaData(figmaData);
-          await parseFigmaData(figmaData);
-          
-          // Extract file key from URL if available
-          const urlParam = searchParams.get('url');
-          if (urlParam) {
-            setFigmaUrl(urlParam);
-            const extractedFileKey = extractFileKeyFromUrl(urlParam);
-            if (extractedFileKey) {
-              setFileKey(extractedFileKey);
-            }
-          }
-          
-          // Load token from localStorage if available
-          const storedToken = localStorage.getItem('figmaToken');
-          if (storedToken) {
-            setFigmaToken(storedToken);
-            console.log('✅ Loaded Figma token from localStorage');
-          }
-          
-          // Check if we need to extract file key from stored URL
-          const storedUrl = localStorage.getItem('figmaUrl');
-          if (storedUrl) {
-            setFigmaUrl(storedUrl);
-            const extractedFileKey = extractFileKeyFromUrl(storedUrl);
-            if (extractedFileKey) {
-              setFileKey(extractedFileKey);
-              console.log('✅ Extracted file key from stored URL:', extractedFileKey);
-            } else {
-              console.log('❌ Could not extract file key from stored URL:', storedUrl);
-            }
-          } else {
-            console.log('❌ No stored Figma URL found');
-          }
-      
-          // Use plugin asset data if available
-          if (figmaData.imageMap && Object.keys(figmaData.imageMap).length > 0) {
-            setAssetMap(figmaData.imageMap);
-            setAssetLoadingStatus(`✅ Loaded ${Object.keys(figmaData.imageMap).length} assets from plugin`);
-            console.log('🚀 Using plugin asset data:', Object.keys(figmaData.imageMap).length, 'assets');
-          }
-        } else {
-          // No URL data, try to load from IndexedDB first, then localStorage (from upload page)
-          console.log('🔄 Loading data from storage (upload page)...');
-          let storedData = null;
-          
-          // Try IndexedDB first
-          try {
-            const { loadFigmaData } = await import('@/lib/figmaStorage');
-            storedData = await loadFigmaData();
-            if (storedData) {
-              console.log('📁 Successfully loaded data from IndexedDB');
-            }
-          } catch (error) {
-            console.error('❌ Failed to load from IndexedDB:', error);
-          }
-          
-          // Fallback to localStorage if IndexedDB failed
-          if (!storedData) {
-            const localData = localStorage.getItem('figmaData');
-            if (localData) {
-              storedData = JSON.parse(localData);
-              console.log('📁 Loaded data from localStorage (fallback)');
-            }
-          }
-          
-          if (storedData) {
-            try {
-              const figmaData = storedData; // Data from IndexedDB is already parsed
-              console.log('📁 Processing loaded data from storage');
-              
-              setAssetMap({});
-              setAssetLoadingStatus('Processing uploaded data...');
-              
-              let dataSource = 'File Upload';
-              
-              // Check if this is plugin data
-              if (figmaData.metadata?.exportedBy === 'DesignStorm Plugin') {
-                dataSource = 'Plugin Export';
-                console.log('🚀 Plugin data detected with images and assets');
-              }
-              
-              console.log(`✅ Figma data loaded successfully from ${dataSource}`);
-              setDataSource(dataSource);
-              setFigmaData(figmaData);
-              await parseFigmaData(figmaData);
-              
-              // Load token from IndexedDB first, then localStorage
-              try {
-                const { loadFigmaToken } = await import('@/lib/figmaStorage');
-                const storedToken = await loadFigmaToken();
-                if (storedToken) {
-                  setFigmaToken(storedToken);
-                  console.log('✅ Loaded Figma token from IndexedDB');
-                } else {
-                  // Fallback to localStorage
-                  const localToken = localStorage.getItem('figmaToken');
-                  if (localToken) {
-                    setFigmaToken(localToken);
-                    console.log('✅ Loaded Figma token from localStorage (fallback)');
-                  }
-                }
-              } catch (error) {
-                console.error('❌ Failed to load token from IndexedDB, trying localStorage:', error);
-                const localToken = localStorage.getItem('figmaToken');
-                if (localToken) {
-                  setFigmaToken(localToken);
-                  console.log('✅ Loaded Figma token from localStorage (fallback)');
-                }
-              }
-              
-              // Load URL from IndexedDB first, then localStorage
-              try {
-                const { loadFigmaUrl } = await import('@/lib/figmaStorage');
-                const storedUrl = await loadFigmaUrl();
-                if (storedUrl) {
-                  setFigmaUrl(storedUrl);
-                  const extractedFileKey = extractFileKeyFromUrl(storedUrl);
-                  if (extractedFileKey) {
-                    setFileKey(extractedFileKey);
-                    console.log('✅ Extracted file key from stored URL (IndexedDB):', extractedFileKey);
-                  } else {
-                    console.log('❌ Could not extract file key from stored URL:', storedUrl);
-                  }
-                } else {
-                  // Fallback to localStorage
-                  const localUrl = localStorage.getItem('figmaUrl');
-                  if (localUrl) {
-                    setFigmaUrl(localUrl);
-                    const extractedFileKey = extractFileKeyFromUrl(localUrl);
-                    if (extractedFileKey) {
-                      setFileKey(extractedFileKey);
-                      console.log('✅ Extracted file key from stored URL (localStorage fallback):', extractedFileKey);
-                    }
-                  } else {
-                    console.log('❌ No stored Figma URL found');
-                  }
-                }
-              } catch (error) {
-                console.error('❌ Failed to load URL from IndexedDB, trying localStorage:', error);
-                const localUrl = localStorage.getItem('figmaUrl');
-                if (localUrl) {
-                  setFigmaUrl(localUrl);
-                  const extractedFileKey = extractFileKeyFromUrl(localUrl);
-                  if (extractedFileKey) {
-                    setFileKey(extractedFileKey);
-                    console.log('✅ Extracted file key from stored URL (localStorage fallback):', extractedFileKey);
-                  }
-                }
-              }
-              
-              // Use plugin asset data if available
-              if (figmaData.imageMap && Object.keys(figmaData.imageMap).length > 0) {
-                setAssetMap(figmaData.imageMap);
-                setAssetLoadingStatus(`✅ Loaded ${Object.keys(figmaData.imageMap).length} assets from plugin`);
-                console.log('🚀 Using plugin asset data:', Object.keys(figmaData.imageMap).length, 'assets');
-              }
-            } catch (err) {
-              console.error('❌ Error loading from localStorage:', err);
-              // Clear invalid localStorage data
-              localStorage.removeItem('figmaData');
-              console.log('📤 No valid data found, ready for file upload');
-              setLoading(false);
-              return;
-            }
-          } else {
-            // No data anywhere, show upload interface
-            console.log('📤 No data found, ready for file upload');
-            setLoading(false);
-            return;
-          }
-        }
-        
-      } catch (err) {
-        console.error('❌ Error loading Figma data:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load Figma data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadFigmaData();
-  }, [searchParams]);
-
-  // Loading state
   if (loading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading Figma design...</p>
+        <div className="h-screen w-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+            <p className="text-gray-600">Loading Figma design...</p>
+          </div>
         </div>
-      </div>
     );
   }
 
-  // Error state
   if (error) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center max-w-md">
-          <div className="text-red-500 text-6xl mb-4">⚠️</div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Design</h1>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button 
-            onClick={() => window.history.back()} 
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Go Back
-          </button>
+        <div className="h-screen w-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center max-w-md">
+            <div className="text-red-500 text-6xl mb-4">⚠️</div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Design</h1>
+            <p className="text-gray-600 mb-4">{error}</p>
+          </div>
         </div>
-      </div>
     );
   }
 
-  // No data state - show upload interface
   if (!figmaData || !frameNode) {
+    // first screen (upload)
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-4xl mx-auto px-4 py-8">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Figma to Code</h1>
-            <p className="text-gray-600">Upload your Figma JSON to see the rendered design</p>
-          </div>
-          
-          {/* File Upload Section */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Figma JSON File</h3>
-            <div className="space-y-4">
-              <input
-                type="file"
-                accept=".json"
-                onChange={handleFileUpload}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm file:mr-4 file:py-1 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-              />
-              {uploadError && (
-                <div className="text-red-600 text-sm bg-red-50 px-3 py-2 rounded">
-                  {uploadError}
-                </div>
-              )}
-              <p className="text-xs text-gray-500">
-                Supports Figma JSON exports and plugin data. The design will render immediately after upload.
+        <div className="min-h-screen bg-gray-50">
+          <div className="max-w-4xl mx-auto px-4 py-8">
+            <div className="text-center mb-8">
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Figma to Code</h1>
+              <p className="text-gray-600">
+                Upload your Figma JSON (or open via <code>?url=</code>) to see the rendered design
               </p>
             </div>
-          </div>
-          <div className="pt-4 border-t border-gray-200">
-            <p className="text-sm text-gray-600 mb-3">Test the scaling functionality:</p>
-            <button 
-              onClick={addSampleBanner}
-              className="w-full bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
-            >
-              🎯 Load Sample Banner (Test Scaling)
-            </button>
-            <p className="text-xs text-gray-500 mt-2">
-              This will load a sample 1200px wide banner to test the universal scaling system.
-            </p>
+
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Figma JSON File</h3>
+              <div className="space-y-4">
+                <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleFileUpload}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm file:mr-4 file:py-1 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+                {uploadError && (
+                    <div className="text-red-600 text-sm bg-red-50 px-3 py-2 rounded">{uploadError}</div>
+                )}
+                <p className="text-xs text-gray-500">
+                  Supports Figma JSON exports and plugin data. The design will render immediately after upload.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
     );
   }
 
+  /* ---------------- render ---------------- */
+
   return (
-    <div className="min-h-screen bg-gray-50" style={{ margin: 0, padding: 0 }}>
-      {/* Sticky Header with Page Selector and Export */}
-      <div className="bg-white border-b border-gray-200 py-2 sticky top-0 z-50 shadow-sm">
-        <div className="flex items-center justify-between space-x-4 px-4">
-          {/* Left Section - Brand & Page Selector */}
-          <div className="flex items-center space-x-3 min-w-0 flex-1">
-            {/* Brand */}
-            <div className="flex items-center space-x-2 text-sm font-semibold text-gray-900">
-              <span className="px-2 py-1 rounded bg-gray-100">Figma</span>
-              <span className="text-gray-400">→</span>
-              <span className="px-2 py-1 rounded bg-gray-100">React</span>
-            </div>
-            
-            {/* Page Selector */}
-            {isMultiPageDesign && availablePages.length > 0 && (
-              <select
-                value={selectedPageId ?? ''}
-                onChange={(e) => {
-                  const pageId = e.target.value;
-                  setSelectedPageId(pageId);
-                  const selected = availablePages.find(p => p.id === pageId);
-                  if (selected) {
-                    // Reset assets so we only load for the selected page
-                    setAssetMap({});
-                    setAssetLoadingStatus('Not started');
-                    setFrameNode(null);
-                    setTimeout(() => setFrameNode(selected.node), 0);
-                    // Optionally reload fonts for the selected frame
-                    loadFontsFromFigmaData(selected.node);
-                  }
-                }}
-                className="h-8 px-2 text-sm bg-white border border-gray-300 rounded hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 py-2 sticky top-0 z-50 shadow-sm">
+          <div className="flex items-center justify-between space-x-4 px-4">
+            <div className="flex items-center space-x-3 min-w-0 flex-1">
+              <div className="flex items-center space-x-2 text-sm font-semibold text-gray-900">
+                <span className="px-2 py-1 rounded bg-gray-100">Figma</span>
+                <span className="text-gray-400">→</span>
+                <span className="px-2 py-1 rounded bg-gray-100">React</span>
+              </div>
+
+              <button
+                  onClick={() => setShowBrowser(true)}
+                  className="h-8 px-2 text-sm bg-white border border-gray-300 rounded hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
               >
-                {availablePages.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            )}
-            
-            {/* Current frame info */}
-            <span className="text-sm text-gray-600 truncate">
+                Pick target…
+              </button>
+
+              <span className="text-sm text-gray-600 truncate">
               {frameNode?.name} ({frameNode?.children?.length || 0} elements)
             </span>
-          </div>
-          
-          {/* Center Section - File Upload */}
-          <div className="flex items-center space-x-2 flex-shrink-0">
-            <input
-              type="file"
-              accept=".json"
-              onChange={handleFileUpload}
-              className="text-xs border border-gray-300 rounded file:mr-1 file:py-0.5 file:px-1.5 file:rounded file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-            />
-            {uploadError && (
-              <span className="text-red-600 text-xs bg-red-50 px-1.5 py-0.5 rounded">
-                {uploadError}
-              </span>
-            )}
-          </div>
-          
-          {/* Right Section - Controls */}
-          <div className="flex items-center space-x-1 flex-shrink-0">
-            {/* Render Mode removed */}
-            
-            {/* Dev Mode */}
-            <button
-              onClick={() => setDevMode(!devMode)}
-              className={`px-2 py-1 text-xs rounded transition-colors font-medium ${
-                devMode 
-                  ? 'bg-yellow-100 hover:bg-yellow-200 text-yellow-800' 
-                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-              }`}
-            >
-              {devMode ? '🔧' : '⚙️'} Dev
-            </button>
-            
-            {/* Debug Toggle */}
-            <button
-              onClick={() => setShowDebug(!showDebug)}
-              className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors font-medium"
-            >
-              {showDebug ? 'Hide' : 'Show'} Debug
-            </button>
-            
-            {/* Debug Panel */}
-            <button
-              onClick={() => setShowDebugPanel(!showDebugPanel)}
-              className={`px-2 py-1 text-xs rounded transition-colors font-medium ${
-                showDebugPanel 
-                  ? 'bg-purple-100 hover:bg-purple-200 text-purple-800' 
-                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-              }`}
-            >
-              {showDebugPanel ? '📊' : '📈'} Panel
-            </button>
-            
-            {/* Scaling Toggle */}
-            <button
-              onClick={() => setEnableScaling(!enableScaling)}
-              className={`px-2 py-1 text-xs rounded transition-colors font-medium ${
-                enableScaling 
-                  ? 'bg-blue-100 hover:bg-blue-200 text-blue-800' 
-                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-              }`}
-            >
-              {enableScaling ? '📏' : '📐'} Scale
-            </button>
-            
-            {/* Export Button */}
-            <button
-              onClick={handleExport}
-              className="px-3 py-1 text-xs font-medium text-white rounded bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 active:scale-[0.98] transition-transform shadow-sm flex items-center gap-1"
-              title="Export React component"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
-                <path d="M12 3a1 1 0 011 1v8.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L11 12.586V4a1 1 0 011-1z"/>
-                <path d="M5 19a2 2 0 002 2h10a2 2 0 002-2v-3a1 1 0 112 0v3a4 4 0 01-4 4H7a4 4 0 01-4-4v-3a1 1 0 112 0v3z"/>
-              </svg>
-              Export
-            </button>
-            
-            {/* Clear Data */}
-            <button
-              onClick={clearAllData}
-              className="px-2 py-1 text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded transition-colors font-medium"
-            >
-              🗑️ Clear
-            </button>
-            
-            {/* Back Button */}
-            <button
-              onClick={() => window.history.back()}
-              className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors font-medium"
-            >
-              ← Back
-            </button>
+            </div>
+
+            <div className="flex items-center space-x-2 flex-shrink-0">
+              {authUser && (
+                  <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-2 py-0.5 shadow-sm">
+                    {authUser.img_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={authUser.img_url} alt="avatar" className="w-5 h-5 rounded-full object-cover" />
+                    ) : (
+                        <div className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-[10px] font-semibold text-gray-700">
+                          {(authUser.handle || authUser.email || '?').slice(0, 1).toUpperCase()}
+                        </div>
+                    )}
+                    <span className="text-xs text-gray-700 max-w-[10rem] truncate" title={authUser.handle || authUser.email}>
+                  {authUser.handle || authUser.email}
+                </span>
+                    <button onClick={handleLogout} className="text-[10px] text-gray-500 hover:text-gray-700 ml-1" title="Logout">
+                      Logout
+                    </button>
+                  </div>
+              )}
+
+              <button onClick={() => setShowSettings(true)} className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200">
+                Settings
+              </button>
+
+              <button
+                  onClick={handleExport}
+                  className="px-3 py-1 text-xs font-medium text-white rounded bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 active:scale-[0.98] transition-transform shadow-sm flex items-center gap-1"
+                  title="Export React component"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
+                  <path d="M12 3a1 1 0 011 1v8.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L11 12.586V4a1 1 0 011-1z"/>
+                  <path d="M5 19a2 2 0 002 2h10a2 2 0 002-2v-3a1 1 0 112 0v3a4 4 0 01-4 4H7a4 4 0 01-4-4v-3a1 1 0 112 0v-3z"/>
+                </svg>
+                Export
+              </button>
+
+              {/* Cancel export button appears only while exporting */}
+              {exportProgress.isExporting && (
+                  <button
+                      onClick={() => {
+                        exportJobRef.current?.abort.abort();
+                        exportJobRef.current = null;
+                        setExportProgress({ isExporting: false, total: 0, loaded: 0, label: '' });
+                      }}
+                      className="px-2 py-1 text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded transition-colors font-medium"
+                      title="Cancel export"
+                  >
+                    Cancel
+                  </button>
+              )}
+
+              <button
+                  onClick={() => {
+                    try { localStorage.clear(); } catch {}
+                    location.reload();
+                  }}
+                  className="px-2 py-1 text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded transition-colors font-medium"
+              >
+                🗑️ Clear
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-      
-      {/* Minimal Asset Loading Progress Bar - Below Header */}
-      {assetLoadingProgress.isLoading && (
-        <div className="bg-blue-50/80 border-b border-blue-200/50 shadow-sm sticky top-12 z-40">
-          <div className="h-8 flex items-center justify-between px-4">
-            <div className="flex items-center space-x-2">
-              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
-              <span className="text-blue-800 text-xs font-medium">
-                {assetLoadingProgress.total > 0 
-                  ? `${assetLoadingProgress.loaded}/${assetLoadingProgress.total} assets`
-                  : 'Searching...'
-                }
-              </span>
+
+        {/* Asset progress / info */}
+        {assetLoadingStatus && !assetLoadingProgress.isLoading && (
+            <div className="bg-blue-50/60 border-b border-blue-200/40 sticky top-12 z-40">
+              <div className="h-8 flex items-center px-4 text-xs text-blue-900">{assetLoadingStatus}</div>
             </div>
-            {assetLoadingProgress.total > 0 && (
-              <div className="flex items-center space-x-2">
-                <div className="w-24 bg-blue-200/50 rounded-full h-1.5">
-                  <div 
-                    className="bg-blue-600 h-1.5 rounded-full transition-all duration-300 ease-out"
-                    style={{ 
-                      width: `${Math.round((assetLoadingProgress.loaded / assetLoadingProgress.total) * 100)}%` 
-                    }}
-                  ></div>
+        )}
+        {assetLoadingProgress.isLoading && (
+            <div className="bg-blue-50/80 border-b border-blue-200/50 shadow-sm sticky top-12 z-40">
+              <div className="h-8 flex items-center justify-between px-4">
+                <div className="flex items-center space-x-2">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600" />
+                  <span className="text-blue-800 text-xs font-medium">
+                {assetLoadingProgress.total > 0 ? `${assetLoadingProgress.loaded}/${assetLoadingProgress.total} assets` : 'Searching...'}
+              </span>
                 </div>
-                <span className="text-blue-600 text-xs font-medium">
+                {assetLoadingProgress.total > 0 && (
+                    <div className="flex items-center space-x-2">
+                      <div className="w-24 bg-blue-200/50 rounded-full h-1.5">
+                        <div
+                            className="bg-blue-600 h-1.5 rounded-full transition-all duration-300 ease-out"
+                            style={{ width: `${Math.round((assetLoadingProgress.loaded / assetLoadingProgress.total) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-blue-600 text-xs font-medium">
                   {Math.round((assetLoadingProgress.loaded / assetLoadingProgress.total) * 100)}%
                 </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Export Progress Bar - mirrors loading bar UX */}
-      {exportProgress.isExporting && (
-        <div className="bg-emerald-50/80 border-b border-emerald-200/50 shadow-sm sticky top-12 z-40">
-          <div className="h-8 flex items-center justify-between px-4">
-            <div className="flex items-center space-x-2">
-              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-emerald-600"></div>
-              <span className="text-emerald-800 text-xs font-medium">
-                {exportProgress.label || 'Exporting…'}
-              </span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-24 bg-emerald-200/50 rounded-full h-1.5">
-                <div
-                  className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300 ease-out"
-                  style={{
-                    width: `${Math.min(100, Math.round(((exportProgress.loaded) / Math.max(1, exportProgress.total)) * 100))}%`,
-                  }}
-                ></div>
-              </div>
-              <span className="text-emerald-600 text-xs font-medium">
-                {Math.min(100, Math.round(((exportProgress.loaded) / Math.max(1, exportProgress.total)) * 100))}%
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main render area */}
-      <div className="bg-white w-screen figma-renderer-container" style={{ margin: 0, padding: 0 }}>
-        <div className="relative w-screen figma-renderer-container overflow-hidden" style={{ margin: 0, padding: 0 }}>
-          
-          {/* Smart Debug Panel Overlay */}
-          {showDebugPanel && (
-            <div className="absolute inset-0 bg-white bg-opacity-95 backdrop-blur-sm z-50 rounded-lg border-2 border-purple-300 shadow-2xl">
-              <div className="p-6 h-full overflow-y-auto">
-                {/* Debug Panel Header */}
-                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-2xl">📊</span>
-                    <h3 className="text-lg font-bold text-gray-900">Debug Information Panel</h3>
-                    <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full font-medium">
-                      Smart Overlay
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setShowDebugPanel(false)}
-                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
-                  >
-                    ✕
-                  </button>
-                </div>
-                
-                {/* Debug Content Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Left Column - Basic Info */}
-                  <div className="space-y-4">
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
-                        <span className="mr-2">📋</span>Basic Information
-                      </h4>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Frame:</span>
-                          <span className="font-medium">{frameNode?.name || 'N/A'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Type:</span>
-                          <span className="font-medium">{frameNode?.type || 'N/A'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Children:</span>
-                          <span className="font-medium">{frameNode?.children?.length || 0}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Data Source:</span>
-                          <span className="font-medium">{dataSource}</span>
-                        </div>
-                        {/* Render Mode removed from debug info */}
-                      </div>
                     </div>
-                    
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
-                        <span className="mr-2">🔧</span>Configuration
-                      </h4>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Dev Mode:</span>
-                          <span className={`font-medium ${devMode ? 'text-green-600' : 'text-gray-600'}`}>
-                            {devMode ? 'On' : 'Off'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Layout Debug:</span>
-                          <span className={`font-medium ${false ? 'text-green-600' : 'text-gray-600'}`}>
-                            Off
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Scaling:</span>
-                          <span className={`font-medium ${enableScaling ? 'text-blue-600' : 'text-gray-600'}`}>
-                            {enableScaling ? 'On' : 'Off'}
-                          </span>
-                        </div>
-                        {enableScaling && (
-                          <>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Max Scale:</span>
-                              <span className="font-medium">{maxScale}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Transform Origin:</span>
-                              <span className="font-medium">{transformOrigin}</span>
-                            </div>
-                          </>
-                        )}
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Overflow:</span>
-                          <span className={`font-medium ${false ? 'text-orange-600' : 'text-purple-600'}`}>
-                            Visible
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Right Column - Advanced Info */}
-                  <div className="space-y-4">
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
-                        <span className="mr-2">🖼️</span>Image Information
-                      </h4>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Assets Found:</span>
-                          <span className="font-medium">{Object.keys(assetMap).length}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Asset Status:</span>
-                                                      <span className={`font-medium ${assetLoadingStatus === 'Not started' ? 'text-yellow-600' : 'text-green-600'}`}>
-                              {assetLoadingStatus}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">File Key:</span>
-                          <span className="font-medium">{fileKey || 'Not provided'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Token Status:</span>
-                          <span className={`font-medium ${figmaToken ? 'text-green-600' : 'text-yellow-600'}`}>
-                            {figmaToken ? 'Loaded' : 'Not provided'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Plugin Data:</span>
-                          <span className={`font-medium ${figmaData?.metadata?.exportedBy === 'DesignStorm Plugin' ? 'text-purple-600' : 'text-gray-600'}`}>
-                            {figmaData?.metadata?.exportedBy === 'DesignStorm Plugin' ? 'Yes' : 'No'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
-                        <span className="mr-2">⚡</span>Quick Actions
-                      </h4>
-                      <div className="space-y-2">
-                        <button
-                          onClick={testFigmaAPI}
-                          className="w-full px-3 py-2 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors font-medium"
-                        >
-                          Test API Connection
-                        </button>
-                        <button
-                          onClick={() => {
-                            console.log('🔍 Manual Load Assets button clicked');
-                            console.log('Current state:');
-                            console.log('  - fileKey:', fileKey);
-                            console.log('  - figmaToken:', figmaToken ? '***' : 'missing');
-                            console.log('  - frameNode:', frameNode?.name, frameNode?.id);
-                            console.log('  - assetMap:', assetMap);
-                            if (frameNode && fileKey && figmaToken) {
-                              loadAssetsFromFigmaAPI(frameNode);
-                            } else {
-                              console.log('❌ Cannot load assets - missing required data');
-                            }
-                          }}
-                          disabled={!fileKey || !figmaToken}
-                          className={`w-full px-3 py-2 text-xs rounded-md transition-colors font-medium ${
-                            fileKey && figmaToken
-                              ? 'bg-green-600 hover:bg-green-700 text-white'
-                              : 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                          }`}
-                        >
-                          Load Assets from API
-                        </button>
-                        <button
-                          onClick={() => setEnableScaling(!enableScaling)}
-                          className={`w-full px-3 py-2 text-xs rounded-md transition-colors font-medium ${
-                            enableScaling 
-                              ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                              : 'bg-gray-600 hover:bg-gray-700 text-white'
-                          }`}
-                        >
-                          {enableScaling ? 'Disable' : 'Enable'} Scaling
-                        </button>
-                        {enableScaling && (
-                          <>
-                            <button
-                              onClick={() => setMaxScale(Math.max(0.5, maxScale - 0.1))}
-                              className="w-full px-3 py-2 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded-md transition-colors font-medium"
-                            >
-                              Scale -
-                            </button>
-                            <button
-                              onClick={() => setMaxScale(Math.min(3.0, maxScale + 0.1))}
-                              className="w-full px-3 py-2 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded-md transition-colors font-medium"
-                            >
-                              Scale +
-                            </button>
-                          </>
-                        )}
-                        <button
-                          onClick={() => {
-                            console.log('Current frame node:', frameNode);
-                            console.log('Current figma data:', figmaData);
-                          }}
-                          className="w-full px-3 py-2 text-xs bg-gray-600 hover:bg-gray-700 text-white rounded-md transition-colors font-medium"
-                        >
-                          Log Debug Data
-                        </button>
-                        <button
-                          onClick={clearAllData}
-                          className="w-full px-3 py-2 text-xs bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors font-medium"
-                        >
-                          Clear All Data
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Asset URLs Section (if assets exist) */}
-                {Object.keys(assetMap).length > 0 && (
-                  <div className="mt-6 bg-gray-50 p-4 rounded-lg">
-                    <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
-                      <span className="mr-2">🔗</span>Asset URLs ({Object.keys(assetMap).length})
-                    </h4>
-                    <div className="max-h-32 overflow-y-auto text-xs font-mono bg-white p-3 rounded border">
-                      {Object.entries(assetMap).map(([nodeId, url]) => (
-                        <div key={nodeId} className="mb-1">
-                          <span className="text-blue-600">{nodeId}:</span> {url}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
                 )}
               </div>
             </div>
-          )}
-          {/* Debug container outline */}
-          {showDebug && (
-            <div 
-              className="absolute inset-0 border-4 border-red-500 border-dashed pointer-events-none z-10"
-              style={{
-                background: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(239, 68, 68, 0.1) 10px, rgba(239, 68, 68, 0.1) 20px)'
-              }}
-            >
-              <div className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded">
-                Container Boundary
+        )}
+
+        {/* Export progress */}
+        {exportProgress.isExporting && (
+            <div className="bg-emerald-50/80 border-b border-emerald-200/50 shadow-sm sticky top-12 z-40">
+              <div className="h-8 flex items-center justify-between px-4">
+                <div className="flex items-center space-x-2">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-emerald-600" />
+                  <span className="text-emerald-800 text-xs font-medium">
+                {exportProgress.label || 'Exporting…'}
+              </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-24 bg-emerald-200/50 rounded-full h-1.5">
+                    <div
+                        className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300 ease-out"
+                        style={{
+                          width: `${Math.min(100, Math.round((exportProgress.loaded / Math.max(1, exportProgress.total)) * 100))}%`,
+                        }}
+                    />
+                  </div>
+                  <span className="text-emerald-600 text-xs font-medium">
+                {Math.min(100, Math.round((exportProgress.loaded / Math.max(1, exportProgress.total)) * 100))}%
+              </span>
+                </div>
               </div>
             </div>
-          )}
-          
-          {/* Render the Figma content */}
-          {frameNode && (
-            <SimpleFigmaRenderer
-              key={`renderer-${frameNode.id}-${dataSource}-${dataVersion}`}
-              node={frameNode}
-              showDebug={showDebug}
-              isRoot={true}
-              imageMap={assetMap}
-              devMode={devMode}
-              enableScaling={enableScaling}
-              maxScale={maxScale}
+        )}
+
+        {/* Renderer */}
+        <div className="bg-white w-screen figma-renderer-container">
+          <div className="relative w-screen figma-renderer-container overflow-hidden">
+            {showDebug && <div className="absolute inset-0 border-4 border-red-500 border-dashed pointer-events-none z-10" />}
+            {frameNode && (
+                <SimpleFigmaRenderer
+                    key={`renderer-${frameNode.id}-${dataSource}-${dataVersion}`}
+                    node={frameNode}
+                    showDebug={showDebug}
+                    isRoot
+                    imageMap={assetMap}
+                    devMode={devMode}
+                    enableScaling={enableScaling}
+                    maxScale={maxScale}
+                />
+            )}
+          </div>
+        </div>
+
+        {/* Overlays */}
+        {showBrowser && figmaData?.document && (
+            <NodeBrowser
+                root={figmaData.document as any}
+                fileKey={fileKey}
+                figmaToken={figmaToken}
+                fileThumbnailUrl={figmaData.thumbnailUrl ?? null}
+                onClose={() => setShowBrowser(false)}
+                onPick={async (picked) => {
+                  setShowBrowser(false);
+                  const node = synthesizeAbsoluteBB(picked);
+                  setAssetMap({});
+                  setAssetLoadingStatus('');
+                  setFrameNode(null);
+                  setTimeout(async () => {
+                    setFrameNode(node);
+                    setHasUserPickedTarget(true);
+                    const best = await hydrateBestToken();
+                    if (fileKey && best) await startAssetJob(node, best);
+                    else setAssetLoadingStatus('ℹ️ Add a Figma token in Settings or login with OAuth');
+                    void loadFontsFromFigmaData(node);
+                  }, 0);
+                }}
             />
-          )}
-          
-          {/* Coordinate overlay for debugging removed */}
-              </div>
+        )}
+
+        <SettingsPanel
+            isOpen={showSettings}
+            onClose={() => setShowSettings(false)}
+            devMode={devMode}
+            setDevMode={setDevMode}
+            showDebug={showDebug}
+            setShowDebug={setShowDebug}
+            enableScaling={enableScaling}
+            setEnableScaling={setEnableScaling}
+            maxScale={maxScale}
+            setMaxScale={setMaxScale}
+            figmaToken={figmaToken}
+            setFigmaToken={(v) => {
+              setFigmaToken(v);
+              try { localStorage.setItem('figmaToken', v); } catch {}
+            }}
+            fileKey={fileKey}
+        />
       </div>
-    </div>
   );
 }
 
 export default function OutputPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading...</div>}>
-      <OutputPageContent />
-    </Suspense>
+      <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading…</div>}>
+        <OutputPageContent />
+      </Suspense>
   );
-} 
+}

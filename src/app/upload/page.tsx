@@ -57,6 +57,7 @@ function UploadPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'preview' | 'json' | 'layout'>('layout');
   const [figmaUrl, setFigmaUrl] = useState<string>('');
+  const [urlInput, setUrlInput] = useState<string>('');
   const [figmaToken, setFigmaToken] = useState<string>('');
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>('oauth');
   const [selectedFileKey, setSelectedFileKey] = useState<string>('');
@@ -82,6 +83,26 @@ function UploadPageContent() {
     clearError: clearOAuthError
   } = useFigmaFile();
 
+  // Ensure we hydrate auth state from cookie when page loads/refocuses
+  useEffect(() => {
+    const syncFromCookie = async () => {
+      try {
+        const res = await fetch('/api/auth/figma/me', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.authenticated) {
+            // Trigger hook refresh by dispatching our custom event
+            try { window.dispatchEvent(new Event('figma-auth-updated')); } catch {}
+          }
+        }
+      } catch {}
+    };
+    syncFromCookie();
+    const onFocus = () => syncFromCookie();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, []);
+
   // Load files when authenticated
   useEffect(() => {
     if (isAuthenticated && availableFiles.length === 0) {
@@ -105,17 +126,22 @@ function UploadPageContent() {
   useEffect(() => {
     const success = searchParams.get('success');
     const error = searchParams.get('error');
-    
+
     if (success === 'true') {
       console.log('✅ OAuth completed successfully');
       // Clear the URL parameters and show success message
       router.replace('/upload');
       setError(null);
+      // Ensure auth UI sync
+      try {
+        // @ts-ignore
+        document.dispatchEvent(new Event('figma-auth-updated'));
+      } catch {}
       // You can add a success message here if needed
     } else if (error) {
       console.error('❌ OAuth error:', error);
       let errorMessage = 'OAuth authentication failed';
-      
+
       switch (error) {
         case 'oauth_error':
           errorMessage = 'OAuth authorization was denied or failed';
@@ -135,7 +161,7 @@ function UploadPageContent() {
         default:
           errorMessage = `OAuth error: ${error}`;
       }
-      
+
       setError(errorMessage);
       // Clear the URL parameters
       router.replace('/upload');
@@ -145,11 +171,11 @@ function UploadPageContent() {
   const parseFigmaJSON = useCallback((jsonString: string) => {
     try {
       const data = JSON.parse(jsonString);
-      
+
       if (data.document) {
         return data as FigmaDocument;
       }
-      
+
       if (data.nodes && typeof data.nodes === 'object') {
         const nodeKeys = Object.keys(data.nodes);
         if (nodeKeys.length > 0) {
@@ -163,7 +189,7 @@ function UploadPageContent() {
           }
         }
       }
-      
+
       if (typeof data === 'object' && data !== null) {
         const keys = Object.keys(data);
         if (keys.length > 0) {
@@ -191,7 +217,7 @@ function UploadPageContent() {
           } as FigmaDocument;
         }
       }
-      
+
       throw new Error('Invalid JSON structure: No recognizable document or data structure found');
     } catch (err) {
       if (err instanceof SyntaxError) {
@@ -204,7 +230,7 @@ function UploadPageContent() {
   const handleFileUpload = useCallback(async (file: File) => {
     setIsParsing(true);
     setError(null);
-    
+
     try {
       const text = await file.text();
       const parsedData = parseFigmaJSON(text);
@@ -219,17 +245,17 @@ function UploadPageContent() {
 
   const handleGenerateOutput = useCallback(async () => {
     if (!figmaData) return;
-    
+
     // Save to IndexedDB instead of localStorage
     try {
       await saveFigmaData(figmaData);
       console.log('✅ Saved Figma data to IndexedDB');
-      
+
       if (figmaToken) {
         await saveFigmaToken(figmaToken);
         console.log('✅ Saved Figma token to IndexedDB');
       }
-      
+
       if (figmaUrl) {
         await saveFigmaUrl(figmaUrl);
         console.log('✅ Saved Figma URL to IndexedDB');
@@ -248,23 +274,23 @@ function UploadPageContent() {
         return;
       }
     }
-    
+
     const params = new URLSearchParams();
     params.set('source', 'upload'); // Indicate data was uploaded
     if (figmaUrl) {
       params.set('url', figmaUrl);
     }
-    
+
     router.push(`/output?${params.toString()}`);
   }, [figmaData, figmaUrl, figmaToken, router, saveFigmaData, saveFigmaToken, saveFigmaUrl]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    
+
     const files = Array.from(e.dataTransfer.files);
     const jsonFile = files.find(file => file.type === 'application/json' || file.name.endsWith('.json'));
-    
+
     if (jsonFile) {
       setUploadMethod('file');
       handleFileUpload(jsonFile);
@@ -306,25 +332,31 @@ function UploadPageContent() {
   }, [handleFileUpload]);
 
   const handleUrlSubmit = useCallback(async (url: string) => {
-    if (!url.trim()) return;
-    
+    const u = url.trim();
+    if (!u) return;
     setUploadMethod('url');
     setError(null);
-    
+    // Persist URL first so /output can fetch live
     try {
-      await loadFileByLink(url.trim());
-      setFigmaUrl(url.trim());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load file from URL');
+      const { saveFigmaUrl } = await import('@/lib/figmaStorage');
+      await saveFigmaUrl(u);
+    } catch {}
+    localStorage.setItem('figmaUrl', u);
+    setFigmaUrl(u);
+    // Navigate immediately; /output now prefers url param and fetches the file there
+    try {
+      router.push('/output?source=upload&url=' + encodeURIComponent(u));
+    } catch {
+      (window as any).location.href = '/output?source=upload&url=' + encodeURIComponent(u);
     }
-  }, [loadFileByLink]);
+  }, [router]);
 
   const handleFileSelect = useCallback(async (fileKey: string) => {
     if (!fileKey) return;
-    
+
     setSelectedFileKey(fileKey);
     setError(null);
-    
+
     try {
       await loadFileByKey(fileKey);
     } catch (err) {
@@ -334,7 +366,7 @@ function UploadPageContent() {
 
   const renderNode = (node: FigmaNode, depth: number = 0): React.JSX.Element => {
     const indent = depth * 20;
-    
+
     const getNodeStyles = () => {
       const baseStyles = {
         marginLeft: `${indent}px`,
@@ -477,6 +509,31 @@ function UploadPageContent() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-8">
       <div className="max-w-6xl mx-auto px-4">
+        {/* Auth status bar */}
+        <div className="flex items-center justify-end mb-2">
+          {isAuthenticated && user ? (
+            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-3 py-1 shadow-sm">
+              {user.img_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.img_url} alt="avatar" className="w-6 h-6 rounded-full object-cover" />
+              ) : (
+                <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs font-semibold text-gray-700">
+                  {(user.handle || user.email || '?').slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              <span className="text-sm text-gray-700 max-w-[12rem] truncate" title={user.handle || user.email}>
+                {user.handle || user.email}
+              </span>
+              <button
+                onClick={logout}
+                className="text-xs text-gray-500 hover:text-gray-700 ml-1"
+                title="Logout"
+              >
+                Logout
+              </button>
+            </div>
+          ) : null}
+        </div>
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center space-x-3 mb-4">
@@ -612,18 +669,37 @@ function UploadPageContent() {
                 <input
                   type="url"
                   placeholder="https://figma.com/file/..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  onBlur={(e) => {
-                    if (e.target.value.trim()) {
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && urlInput.trim()) {
                       setUploadMethod('url');
-                      handleUrlSubmit(e.target.value.trim());
+                      handleUrlSubmit(urlInput.trim());
                     }
                   }}
+                  onPaste={(e) => {
+                    const txt = e.clipboardData.getData('text');
+                    if (txt) {
+                      const t = txt.trim();
+                      setUrlInput(t);
+                      setUploadMethod('url');
+                      setTimeout(() => handleUrlSubmit(t), 0);
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
 
               <button
-                onClick={() => setUploadMethod('url')}
+                onClick={() => {
+                  setUploadMethod('url');
+                  if (urlInput.trim()) {
+                    console.log('🔗 Loading from URL (button):', urlInput.trim());
+                    handleUrlSubmit(urlInput.trim());
+                  } else {
+                    setError('Please paste a valid Figma file URL');
+                  }
+                }}
                 className="w-full bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors font-medium flex items-center justify-center space-x-2"
               >
                 <Link className="w-5 h-5" />
@@ -664,9 +740,9 @@ function UploadPageContent() {
               onChange={handleFileInputChange}
               className="hidden"
             />
-            
+
             <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-            
+
             <div className="space-y-2">
               <h3 className="text-lg font-medium text-gray-900">
                 Drop your Figma JSON file here
@@ -705,7 +781,7 @@ function UploadPageContent() {
                 <X className="h-5 w-5 text-red-400" />
                 <p className="text-red-700">{error || oauthError}</p>
               </div>
-              <button
+                <button
                 onClick={() => { setError(null); clearOAuthError(); }}
                 className="text-red-500 hover:text-red-700"
               >
@@ -810,4 +886,4 @@ export default function UploadPage() {
       <UploadPageContent />
     </Suspense>
   );
-} 
+}

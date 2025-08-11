@@ -1,608 +1,287 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+/* ──────────────────────────────────────────────────────────
+   Auth + URL helpers (exported)
+─────────────────────────────────────────────────────────── */
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+/** Header builder that supports PAT (X-Figma-Token) or OAuth (Bearer) */
+export function figmaAuthHeaders(token?: string) {
+  const h: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (!token) return h;
+  // heuristic: PATs often look like long opaque strings or start with FG/figd_
+  if (/^(FG|figd_)/i.test(token) || /^[A-Za-z0-9-_]{20,}$/.test(token)) {
+    h['X-Figma-Token'] = token;
+  } else {
+    h['Authorization'] = `Bearer ${token}`;
+  }
+  return h;
 }
 
-// Enhanced Figma API utilities with better error handling and rate limiting
-export function findImageNodeIds(node: any): string[] {
-  const imageIds: string[] = [];
-  
-  const traverse = (currentNode: any) => {
-    // Check if current node has image fills
-    if (currentNode.fills && currentNode.fills.length > 0) {
-      const imageFill = currentNode.fills.find((fill: any) => fill.type === 'IMAGE');
-      if (imageFill && currentNode.id) {
-        imageIds.push(currentNode.id);
-      }
-    }
-    
-    // Recursively traverse children
-    if (currentNode.children && currentNode.children.length > 0) {
-      currentNode.children.forEach((child: any) => traverse(child));
-    }
-  };
-  
-  traverse(node);
-  return imageIds;
+/** Try the primary auth header; on 401/403, auto-retry with the alternate header. */
+export async function fetchFigmaJSON(url: string, token: string, signal?: AbortSignal) {
+  const primary = figmaAuthHeaders(token);
+  let res = await fetch(url, { headers: primary, signal });
+  if ((res.status === 401 || res.status === 403) && token) {
+    const useAlt =
+        primary['X-Figma-Token'] !== undefined
+            ? { Authorization: `Bearer ${token}` }
+            : { 'X-Figma-Token': token };
+    const alt: Record<string, string> = { 'Content-Type': 'application/json', ...(useAlt as unknown as Record<string, string>) };
+    res = await fetch(url, { headers: alt as HeadersInit, signal });
+  }
+  return res;
 }
 
-// Enhanced image URL fetching with better error handling
-export async function getImageUrls(fileKey: string, nodeIds: string[], token: string): Promise<Record<string, string>> {
-  if (nodeIds.length === 0) return {};
-  
+/** Accepts web link (/file|/design|/proto), REST file url, or nodes url and returns canonical /file web link */
+export function normalizeFigmaUrl(raw: string): string {
   try {
-    // Batch requests to avoid rate limiting - Figma allows up to 50 IDs per request
-    const batchSize = 50;
-    const batches = [];
-    
-    for (let i = 0; i < nodeIds.length; i += batchSize) {
-      batches.push(nodeIds.slice(i, i + batchSize));
-    }
-    
-    console.log(`📦 Processing ${nodeIds.length} images in ${batches.length} batches`);
-    
-    const allImages: Record<string, string> = {};
-    
-    for (let i = 0; i < batches.length; i++) {
-      const batch = batches[i];
-      const idsParam = batch.join(',');
-      const url = `https://api.figma.com/v1/images/${fileKey}?ids=${idsParam}&format=png&scale=2`;
-      
-      console.log(`🔄 Fetching batch ${i + 1}/${batches.length} with ${batch.length} images...`);
-      
-      const response = await fetch(url, {
-        headers: {
-          'X-Figma-Token': token,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        if (response.status === 429) {
-          console.warn(`⚠️ Rate limit hit for batch ${i + 1}, waiting 2 seconds...`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-          // Retry once after waiting
-          const retryResponse = await fetch(url, {
-            headers: {
-              'X-Figma-Token': token,
-              'Content-Type': 'application/json',
-            },
-          });
-          
-          if (!retryResponse.ok) {
-            throw new Error(`Figma API error after retry: ${retryResponse.status} ${retryResponse.statusText}`);
-          }
-          
-          const retryData = await retryResponse.json();
-          const retryImages = retryData.images || {};
-          
-          // Filter out null/undefined values
-          Object.entries(retryImages).forEach(([nodeId, url]) => {
-            if (url && typeof url === 'string' && url.length > 0) {
-              allImages[nodeId] = url;
-            }
-          });
-        } else {
-          throw new Error(`Figma API error: ${response.status} ${response.statusText}`);
-        }
-      } else {
-        const data = await response.json();
-        const batchImages = data.images || {};
-        
-        // Filter out null/undefined values and log them
-        Object.entries(batchImages).forEach(([nodeId, url]) => {
-          if (url && typeof url === 'string' && url.length > 0) {
-            allImages[nodeId] = url;
-          } else {
-            console.warn(`⚠️ Figma API returned null/empty URL for node ${nodeId}`);
-          }
-        });
-      }
-      
-      // Add delay between batches to respect rate limits
-      if (i < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-    }
-    
-    console.log(`✅ Successfully fetched ${Object.keys(allImages).length} images`);
-    return allImages;
-  } catch (error) {
-    console.error('Error fetching image URLs:', error);
-    throw error;
+    const u = new URL(raw);
+
+    // API -> web
+    const apiMatch =
+        u.hostname.includes('api.figma.com') && u.pathname.match(/\/v1\/files\/([a-zA-Z0-9]+)/);
+    if (apiMatch) return `https://www.figma.com/file/${apiMatch[1]}`;
+
+    // nodes endpoint -> web
+    const nodesMatch =
+        u.hostname.includes('api.figma.com') &&
+        u.pathname.match(/\/v1\/files\/([a-zA-Z0-9]+)\/nodes/);
+    if (nodesMatch) return `https://www.figma.com/file/${nodesMatch[1]}`;
+
+    // web /file|/design|/proto -> canonical /file
+    const webMatch =
+        u.hostname.includes('figma.com') &&
+        u.pathname.match(/\/(file|design|proto)\/([a-zA-Z0-9]+)/);
+    if (webMatch) return `https://www.figma.com/file/${webMatch[2]}`;
+
+    return raw;
+  } catch {
+    return raw;
   }
 }
 
-// ✅ STEP-BY-STEP — EXPORT IMAGE LOGIC FROM Figma API
-// 🔁 Step 1: Collect All Image Node IDs
-// Traverse the Figma JSON tree to find all nodes with fills[].type === 'IMAGE', and collect their id.
+/** If someone saved an API or /design link previously, convert to canonical web /file link */
+export function normalizeToWebLink(raw: string) {
+  return normalizeFigmaUrl(raw);
+}
+
+/** Extract file key from /file|/design|/proto links, API urls, nodes urls, or a raw key string */
+export function extractFileKeyFromUrl(raw: string): string | '' {
+  const s = (raw || '').trim();
+
+  // raw key (no slashes, looks like a figma key)
+  if (/^[A-Za-z0-9]{10,}$/i.test(s) && !s.includes('/')) return s;
+
+  try {
+    const u = new URL(s);
+
+    // web links
+    const web = u.pathname.match(/\/(file|design|proto)\/([a-zA-Z0-9]+)/);
+    if (web) return web[2];
+
+    // API links
+    const api = u.hostname.includes('api.figma.com') && u.pathname.match(/\/v1\/files\/([a-zA-Z0-9]+)/);
+    if (api) return api[1];
+
+    // nodes endpoint
+    const nodes = u.hostname.includes('api.figma.com') && u.pathname.match(/\/v1\/files\/([a-zA-Z0-9]+)\/nodes/);
+    if (nodes) return nodes[1];
+
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+/* ──────────────────────────────────────────────────────────
+   Asset helpers
+─────────────────────────────────────────────────────────── */
+
+/** Exported in case other renderers need it. */
+export function collectImageishNodeIds(root: any): string[] {
+  const ids = new Set<string>();
+  const visit = (n?: any) => {
+    if (!n) return;
+    if (Array.isArray(n.fills)) {
+      for (const f of n.fills) if (f?.type === 'IMAGE' && n.id) ids.add(n.id);
+    }
+    if (Array.isArray((n as any).background)) {
+      for (const b of (n as any).background) if (b?.type === 'IMAGE' && n.id) ids.add(n.id);
+    }
+    if (['VECTOR', 'LINE', 'ELLIPSE', 'RECTANGLE'].includes(n.type) && n.id) ids.add(n.id);
+    (n.children || []).forEach(visit);
+  };
+  visit(root);
+  return Array.from(ids);
+}
+
+/* ──────────────────────────────────────────────────────────
+   Enhanced asset loader (single authoritative export)
+─────────────────────────────────────────────────────────── */
+
 export async function loadFigmaAssetsFromNodes({
-  figmaFileKey,
-  figmaToken,
-  rootNode,
-  onProgress,
-}: {
+                                                 figmaFileKey,
+                                                 figmaToken,
+                                                 rootNode,
+                                                 onProgress,
+                                                 signal,
+                                               }: {
   figmaFileKey: string;
   figmaToken: string;
   rootNode: any;
   onProgress?: (total: number, loaded: number) => void;
+  signal?: AbortSignal;
 }): Promise<Record<string, string>> {
-  // Validate required parameters
-  if (!figmaFileKey || !figmaToken) {
-    console.warn('⚠️ Missing required parameters for Figma API call:', {
-      hasFileKey: !!figmaFileKey,
-      hasToken: !!figmaToken
-    });
-    return {};
-  }
-  console.log('🚀 Starting Figma assets export process...');
-  console.log('📁 File Key:', figmaFileKey);
-  console.log('🔑 Token available:', !!figmaToken);
-  console.log('📄 Root Node:', rootNode?.name, rootNode?.type);
-  
-  // Step 1: Collect all asset node IDs (images, vectors, lines, rectangles, mask groups)
+  if (!figmaFileKey || !figmaToken || !rootNode) return {};
+
   const imageNodeIds: string[] = [];
   const imageRefIds: string[] = [];
   const svgNodeIds: string[] = [];
   const maskGroupIds: string[] = [];
-  
-  function findAssetNodes(node: any) {
-    // Smart mask group detection
-    if (isMaskGroup(node)) {
-      maskGroupIds.push(node.id);
-      console.log(`🎭 Found mask group: ${node.id} (${node.name}) - treating as single asset`);
-      // Do NOT return: still traverse children to collect fallback child image nodes
-      // so that if the group export URL isn't available we can still render using a child image.
-    }
-    
-    // Find image nodes (even if inside a mask group, as fallback)
-    if (node?.fills?.some((f: any) => f.type === "IMAGE")) {
-      imageNodeIds.push(node.id);
-      for (const f of node.fills) {
-        if (f?.type === 'IMAGE' && f.imageRef) imageRefIds.push(f.imageRef);
-      }
-      console.log(`🖼️ Found image node: ${node.id} (${node.name})`);
-    }
-    // Frames can have background paints separate from fills
-    if (Array.isArray((node as any).background)) {
-      for (const b of (node as any).background) {
-        if (b?.type === 'IMAGE' && b.imageRef) {
-          imageRefIds.push(b.imageRef);
-          console.log(`🖼️ Found background imageRef on ${node.id} (${node.name})`);
-        }
-      }
-    }
-    
-    // Find vector, line, and rectangle nodes for SVG export (skip masked contents to avoid duplicates)
-    if ((node?.type === 'VECTOR' || node?.type === 'LINE' || 
-        (node?.type === 'RECTANGLE' && (node?.strokes?.length > 0 || node?.fills?.some((f: any) => f.type === 'SOLID')))) && 
-        !isMaskGroup(node)) {
-      svgNodeIds.push(node.id);
-      console.log(`📐 Found SVG node: ${node.id} (${node.name}) - ${node.type}`);
-    }
-    
-    node.children?.forEach(findAssetNodes);
-  }
-  
-  // Helper function to detect mask groups
-  function isMaskGroup(node: any): boolean {
-    if (node?.type !== 'GROUP') return false;
-    
-    // Check if it's a mask group by name or structure
-    const isMaskByName = node.name?.toLowerCase().includes('mask');
-    const hasMaskChildren = node.children?.some((child: any) => child.isMask === true);
-    const hasExportSettings = node.exportSettings && node.exportSettings.length > 0;
-    
+
+  const isMaskGroup = (n: any): boolean => {
+    if (n?.type !== 'GROUP') return false;
+    const isMaskByName = n.name?.toLowerCase().includes('mask');
+    const hasMaskChildren = n.children?.some((c: any) => c?.isMask === true);
+    const hasExportSettings = Array.isArray(n.exportSettings) && n.exportSettings.length > 0;
     return isMaskByName || hasMaskChildren || hasExportSettings;
-  }
-  
-  // Helper function to check if a node is part of a mask group
-  function isPartOfMaskGroup(node: any): boolean {
-    // Check if any parent is a mask group
-    let current = node;
-    while (current) {
-      if (isMaskGroup(current)) {
-        return true;
-      }
-      // Move up to parent (this is a simplified check - in real implementation you'd need parent references)
-      current = current.parent;
-    }
-    return false;
-  }
-  
-  findAssetNodes(rootNode);
-  
-  const uniqueImageRefs = Array.from(new Set(imageRefIds));
-  const totalAssets = imageNodeIds.length + svgNodeIds.length + maskGroupIds.length + uniqueImageRefs.length;
-  console.log(`📊 Found ${imageNodeIds.length} image nodes, ${svgNodeIds.length} SVG nodes, and ${maskGroupIds.length} mask groups:`, { 
-    images: imageNodeIds, 
-    svgs: svgNodeIds, 
-    maskGroups: maskGroupIds,
-    imageRefs: uniqueImageRefs,
-  });
-  
-  // Update progress with total count
-  onProgress?.(totalAssets, 0);
-  
-  if (totalAssets === 0) {
-    console.log('ℹ️ No assets found in the design');
-    return {};
-  }
-  
-  const assetMap: Record<string, string> = {};
-  let loadedCount = 0;
-  
-  // Step 2: Export images as PNG
-  if (imageNodeIds.length > 0) {
-    try {
-      console.log(`🖼️ Exporting ${imageNodeIds.length} images as PNG...`);
-      const idsParam = encodeURIComponent(imageNodeIds.join(","));
-      const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${idsParam}&format=png`;
-      
-      console.log(`🔗 Calling Figma API for images: ${url}`);
-      
-      // Add timeout and better error handling
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-      
-      const res = await fetch(url, {
-        headers: {
-          "X-Figma-Token": figmaToken,
-          "Content-Type": "application/json",
-        },
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!res.ok) {
-        throw new Error(`Figma API error for images: ${res.status} ${res.statusText}`);
-      }
-      
-      const data = await res.json();
-      const imageMap = data.images ?? {};
-      
-      // Add images to asset map
-      Object.assign(assetMap, imageMap);
-      loadedCount += Object.keys(imageMap).length;
-      onProgress?.(totalAssets, loadedCount);
-      
-      console.log(`✅ Successfully loaded ${Object.keys(imageMap).length} images from Figma API`);
-    } catch (error) {
-      console.error('❌ Error loading Figma images:', error);
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          console.warn('⏰ Request timed out for Figma images');
-        } else if (error.message.includes('Failed to fetch')) {
-          console.warn('🌐 Network error - check internet connection and Figma API status');
-        } else {
-          console.warn('🔧 API error - check file key and token validity');
+  };
+
+  const walk = (n: any) => {
+    if (!n) return;
+
+    if (isMaskGroup(n) && n.id) maskGroupIds.push(n.id);
+
+    if (Array.isArray(n.fills)) {
+      for (const f of n.fills) {
+        if (f?.type === 'IMAGE') {
+          if (n.id) imageNodeIds.push(n.id);
+          if (f.imageRef) imageRefIds.push(f.imageRef);
         }
       }
-      // Continue with SVG export even if images fail
+    }
+    if (Array.isArray((n as any).background)) {
+      for (const b of (n as any).background) if (b?.type === 'IMAGE' && b.imageRef) imageRefIds.push(b.imageRef);
+    }
+
+    if (
+        n.type === 'VECTOR' ||
+        n.type === 'LINE' ||
+        (n.type === 'RECTANGLE' &&
+            ((n.strokes && n.strokes.length > 0) || (n.fills && n.fills.some((f: any) => f?.type === 'SOLID'))))
+    ) {
+      if (n.id) svgNodeIds.push(n.id);
+    }
+
+    if (Array.isArray(n.children)) n.children.forEach(walk);
+  };
+
+  walk(rootNode);
+
+  const uniqueImageRefs = Array.from(new Set(imageRefIds));
+  const total = imageNodeIds.length + svgNodeIds.length + maskGroupIds.length + uniqueImageRefs.length;
+  onProgress?.(total, 0);
+
+  const assetMap: Record<string, string> = {};
+  let loaded = 0;
+
+  const fetchImagesBatched = async (ids: string[], format: 'png' | 'svg', batchSize: number) => {
+    const out: Record<string, string> = {};
+    for (let i = 0; i < ids.length; i += batchSize) {
+      if (signal?.aborted) return out;
+      const chunk = ids.slice(i, i + batchSize);
+      if (!chunk.length) continue;
+      const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${encodeURIComponent(
+          chunk.join(',')
+      )}&format=${format}${format === 'png' ? '&scale=2' : ''}`;
+
+      try {
+        let res = await fetchFigmaJSON(url, figmaToken, signal);
+        if (!res.ok) throw res;
+        const data = await res.json();
+        const img: Record<string, string | null> = data.images || {};
+        for (const [k, v] of Object.entries(img)) if (v) out[k] = v;
+      } catch (err: any) {
+        if (signal?.aborted) return out;
+        const text = typeof err?.text === 'function' ? await err.text() : '';
+        console.warn('Figma /images error:', err?.status, text);
+      }
+    }
+    return out;
+  };
+
+  // PNGs for nodes with image fills
+  if (imageNodeIds.length) {
+    const map = await fetchImagesBatched(imageNodeIds, 'png', 20);
+    Object.assign(assetMap, map);
+    loaded += Object.keys(map).length;
+    onProgress?.(total, loaded);
+  }
+
+  // PNGs via imageRef (covers frame backgrounds etc.)
+  if (uniqueImageRefs.length) {
+    try {
+      if (signal?.aborted) return assetMap;
+      const url = `https://api.figma.com/v1/files/${figmaFileKey}/images?ids=${encodeURIComponent(
+          uniqueImageRefs.join(',')
+      )}&format=png&scale=2`;
+      const res = await fetchFigmaJSON(url, figmaToken, signal);
+      if (res.ok) {
+        const data = await res.json();
+        const refMap: Record<string, string | null> = data.images || {};
+        let added = 0;
+        for (const [k, v] of Object.entries(refMap)) {
+          if (v) {
+            assetMap[k] = v;
+            added++;
+          }
+        }
+        loaded += added;
+        onProgress?.(total, loaded);
+      } else {
+        console.warn('Figma imageRefs fetch failed with status', res.status);
+      }
+    } catch (e) {
+      if (signal?.aborted) return assetMap;
+      console.warn('Figma imageRefs fetch failed:', e);
     }
   }
 
-  // Step 2b: Export image fills by imageRef (covers frame backgrounds and fills reliably)
-  if (uniqueImageRefs.length > 0) {
-    try {
-      console.log(`🖼️ Exporting ${uniqueImageRefs.length} image fills by imageRef...`);
-      const idsParam = encodeURIComponent(uniqueImageRefs.join(","));
-      const url = `https://api.figma.com/v1/files/${figmaFileKey}/images?ids=${idsParam}&format=png&scale=2`;
-      console.log(`🔗 Calling Figma API for imageRefs: ${url}`);
-      const res = await fetch(url, {
-        headers: {
-          "X-Figma-Token": figmaToken,
-          "Content-Type": "application/json",
-        },
-      });
-      if (!res.ok) {
-        throw new Error(`Figma API error for imageRefs: ${res.status} ${res.statusText}`);
-      }
-      const data = await res.json();
-      const refMap = data.images ?? {};
-      // Some APIs can return null for not-yet-ready images; filter those out
-      for (const [k, v] of Object.entries(refMap)) {
-        if (v) (assetMap as any)[k] = v as string;
-      }
-      const added = Object.values(refMap).filter(Boolean).length;
-      loadedCount += added;
-      onProgress?.(totalAssets, loadedCount);
-      console.log(`✅ Loaded ${added} imageRefs from Figma API`);
-    } catch (error) {
-      console.error('❌ Error loading imageRefs from Figma API:', error);
-    }
+  // SVGs for vectors/lines/rectangles
+  if (svgNodeIds.length) {
+    const map = await fetchImagesBatched(svgNodeIds, 'svg', 15);
+    Object.assign(assetMap, map);
+    loaded += Object.keys(map).length;
+    onProgress?.(total, loaded);
   }
-  
-  // Step 3: Export vectors, lines, and rectangles as SVG
-  if (svgNodeIds.length > 0) {
-    try {
-      console.log(`📐 Exporting ${svgNodeIds.length} vectors/lines/rectangles as SVG...`);
-      const idsParam = encodeURIComponent(svgNodeIds.join(","));
-      const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${idsParam}&format=svg&scale=2`;
-      
-      console.log(`🔗 Calling Figma API for SVGs: ${url}`);
-      
-      const res = await fetch(url, {
-        headers: {
-          "X-Figma-Token": figmaToken,
-          "Content-Type": "application/json",
-        },
-      });
-      
-      if (!res.ok) {
-        throw new Error(`Figma API error for SVGs: ${res.status} ${res.statusText}`);
-      }
-      
-      const data = await res.json();
-      const svgMap = data.images ?? {};
-      
-      // Add SVGs to asset map
-      Object.assign(assetMap, svgMap);
-      loadedCount += Object.keys(svgMap).length;
-      onProgress?.(totalAssets, loadedCount);
-      
-      console.log(`✅ Successfully loaded ${Object.keys(svgMap).length} SVGs from Figma API`);
-    } catch (error) {
-      console.error('❌ Error loading Figma SVGs:', error);
-    }
+
+  // PNGs for mask groups
+  if (maskGroupIds.length) {
+    const map = await fetchImagesBatched(maskGroupIds, 'png', 20);
+    Object.assign(assetMap, map);
+    loaded += Object.keys(map).length;
+    onProgress?.(total, loaded);
   }
-  
-  // Step 4: Export mask groups as PNG (complete masked content)
-  if (maskGroupIds.length > 0) {
-    try {
-      console.log(`🎭 Exporting ${maskGroupIds.length} mask groups as PNG...`);
-      const idsParam = encodeURIComponent(maskGroupIds.join(","));
-      const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${idsParam}&format=png&scale=2`;
-      
-      console.log(`🔗 Calling Figma API for mask groups: ${url}`);
-      
-      const res = await fetch(url, {
-        headers: {
-          "X-Figma-Token": figmaToken,
-          "Content-Type": "application/json",
-        },
-      });
-      
-      if (!res.ok) {
-        throw new Error(`Figma API error for mask groups: ${res.status} ${res.statusText}`);
-      }
-      
-      const data = await res.json();
-      const maskGroupMap = data.images ?? {};
-      
-      // Add mask groups to asset map
-      Object.assign(assetMap, maskGroupMap);
-      loadedCount += Object.keys(maskGroupMap).length;
-      onProgress?.(totalAssets, loadedCount);
-      
-      console.log(`✅ Successfully loaded ${Object.keys(maskGroupMap).length} mask groups from Figma API`);
-    } catch (error) {
-      console.error('❌ Error loading Figma mask groups:', error);
-    }
-  }
-  
-  console.log(`🎉 Total assets loaded: ${Object.keys(assetMap).length}/${totalAssets}`);
-  console.log('📦 Asset map:', assetMap);
-  
+
   return assetMap;
 }
 
-// Backward compatibility function
-export async function loadFigmaImagesFromNodes({
-  figmaFileKey,
-  figmaToken,
-  rootNode,
-  onProgress,
-}: {
-  figmaFileKey: string;
-  figmaToken: string;
-  rootNode: any;
-  onProgress?: (total: number, loaded: number) => void;
-}): Promise<Record<string, string>> {
-  console.log('🔄 Using backward compatibility function - consider using loadFigmaAssetsFromNodes instead');
-  return loadFigmaAssetsFromNodes({ figmaFileKey, figmaToken, rootNode, onProgress });
-}
+/* ──────────────────────────────────────────────────────────
+   Misc
+─────────────────────────────────────────────────────────── */
 
-// Enhanced image loading with better error handling
-export async function loadFigmaImages(node: any, fileKey: string, token: string): Promise<{ imageMap: Record<string, string>; updatedNode: any }> {
-  try {
-    // Find all image node IDs
-    const imageNodeIds = findImageNodeIds(node);
-    console.log('🖼️ Found image node IDs:', imageNodeIds);
-    
-    if (imageNodeIds.length === 0) {
-      console.log('ℹ️ No image nodes found');
-      return { imageMap: {}, updatedNode: node };
-    }
-    
-    // Fetch image URLs from Figma API with retry logic
-    let imageMap: Record<string, string> = {};
-    let retryCount = 0;
-    const maxRetries = 3;
-    
-    while (retryCount < maxRetries) {
-      try {
-        imageMap = await getImageUrls(fileKey, imageNodeIds, token);
-        console.log('📸 Fetched image URLs:', Object.keys(imageMap).length);
-        break; // Success, exit retry loop
-      } catch (error: any) {
-        retryCount++;
-        console.warn(`⚠️ Attempt ${retryCount}/${maxRetries} failed:`, error.message);
-        
-        if (error.message.includes('429') && retryCount < maxRetries) {
-          const waitTime = retryCount * 2000; // Exponential backoff: 2s, 4s, 6s
-          console.log(`⏳ Rate limited, waiting ${waitTime}ms before retry...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-        } else if (retryCount >= maxRetries) {
-          console.error('❌ All retry attempts failed, proceeding without images');
-          // Return empty imageMap but don't throw error to allow rendering without images
-          imageMap = {};
-          break;
-        } else {
-          throw error; // Re-throw non-rate-limit errors
-        }
-      }
-    }
-    
-    // Create a deep copy of the node to avoid mutating the original
-    const updatedNode = JSON.parse(JSON.stringify(node));
-    
-    // Inject image URLs into the node structure
-    const injectImageUrls = (currentNode: any) => {
-      if (currentNode.fills && currentNode.fills.length > 0) {
-        currentNode.fills.forEach((fill: any) => {
-          if (fill.type === 'IMAGE' && currentNode.id && imageMap[currentNode.id]) {
-            fill.imageUrl = imageMap[currentNode.id];
-          }
-        });
-      }
-      
-      // Recursively process children
-      if (currentNode.children && currentNode.children.length > 0) {
-        currentNode.children.forEach((child: any) => injectImageUrls(child));
-      }
-    };
-    
-    injectImageUrls(updatedNode);
-    
-    return { imageMap, updatedNode };
-  } catch (error) {
-    console.error('Error loading Figma images:', error);
-    // Return empty result instead of throwing to allow rendering without images
-    return { imageMap: {}, updatedNode: node };
-  }
-}
-
-// Enhanced file key extraction
-export function extractFileKeyFromUrl(url: string): string | null {
-  console.log('🔍 Extracting file key from URL:', url);
-  
-  // Extract file key from Figma URL patterns
-  const patterns = [
-    /figma\.com\/file\/([a-zA-Z0-9]+)/,
-    /figma\.com\/proto\/([a-zA-Z0-9]+)/,
-    /figma\.com\/embed\?embed_host=share&url=.*?file%2F([a-zA-Z0-9]+)/,
-    /api\.figma\.com\/v1\/images\/([a-zA-Z0-9]+)/,
-    /api\.figma\.com\/v1\/files\/([a-zA-Z0-9]+)/
-  ];
-  
-  for (let i = 0; i < patterns.length; i++) {
-    const pattern = patterns[i];
-    const match = url.match(pattern);
-    if (match) {
-      const fileKey = match[1];
-      console.log(`✅ Extracted file key "${fileKey}" using pattern ${i + 1}`);
-      return fileKey;
-    }
-  }
-  
-  console.log('❌ No file key found in URL');
-  return null;
-}
-
-// Enhanced layout calculation utilities
-export function calculateLayoutBounds(node: any): { minX: number; minY: number; maxX: number; maxY: number } {
-  const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-  
-  const traverse = (currentNode: any) => {
-    if (currentNode.absoluteBoundingBox) {
-      const { x, y, width, height } = currentNode.absoluteBoundingBox;
-      bounds.minX = Math.min(bounds.minX, x);
-      bounds.minY = Math.min(bounds.minY, y);
-      bounds.maxX = Math.max(bounds.maxX, x + width);
-      bounds.maxY = Math.max(bounds.maxY, y + height);
-    }
-    
-    if (currentNode.children) {
-      currentNode.children.forEach((child: any) => traverse(child));
-    }
-  };
-  
-  traverse(node);
-  
-  // Handle case where no bounds were found
-  if (bounds.minX === Infinity) {
-    bounds.minX = bounds.minY = bounds.maxX = bounds.maxY = 0;
-  }
-  
-  return bounds;
-}
-
-// Enhanced responsive scaling calculation
-export function calculateResponsiveScale(node: any, containerWidth: number = 1200): number {
-  const bounds = calculateLayoutBounds(node);
-  const designWidth = bounds.maxX - bounds.minX;
-  
-  if (designWidth === 0) return 1;
-  
-  return Math.min(1, containerWidth / designWidth);
-}
-
-// Enhanced pixel-perfect positioning utilities
-export function normalizeCoordinates(
-  bbox: { x: number; y: number; width: number; height: number },
-  offset: { x: number; y: number },
-  scale: number = 1
-): { x: number; y: number; width: number; height: number } {
-  return {
-    x: (bbox.x - offset.x) * scale,
-    y: (bbox.y - offset.y) * scale,
-    width: bbox.width * scale,
-    height: bbox.height * scale,
-  };
-}
-
-// Enhanced color utilities with exact color matching
-export function rgbToHex(r: number, g: number, b: number): string {
-  const toHex = (n: number) => {
-    const hex = Math.round(n * 255).toString(16);
-    return hex.length === 1 ? '0' + hex : hex;
-  };
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
-export function rgbaToCss(r: number, g: number, b: number, a: number = 1): string {
+export function rgbaToCss(r: number, g: number, b: number, a = 1): string {
   return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a})`;
 }
 
-// Special color handling for specific design elements
-export function getSpecialColor(nodeName: string, defaultColor: string): string {
-  // Add null check to prevent runtime errors
-  if (!nodeName || typeof nodeName !== 'string') {
-    return defaultColor;
-  }
-  
-  const name = nodeName.toLowerCase();
-  
-  
-  return defaultColor;
-}
-
-// Dynamic font loading utility for Google Fonts
 export const loadGoogleFont = (fontFamily: string): void => {
-  // Skip if already loaded or not a Google Font
   if (typeof window === 'undefined' || !fontFamily) return;
-  
   const googleFonts = [
-    'Inter', 'Roboto', 'Open Sans', 'Lato', 'Poppins', 'Montserrat', 
-    'Source Sans Pro', 'Raleway', 'Ubuntu', 'Nunito', 'Work Sans', 
-    'DM Sans', 'Noto Sans', 'Fira Sans', 'PT Sans', 'Oswald', 
-    'Bebas Neue', 'Playfair Display', 'Merriweather', 'Lora'
+    'Inter', 'Roboto', 'Open Sans', 'Lato', 'Poppins', 'Montserrat', 'Source Sans Pro', 'Raleway',
+    'Ubuntu', 'Nunito', 'Work Sans', 'DM Sans', 'Noto Sans', 'Fira Sans', 'PT Sans', 'Oswald',
+    'Bebas Neue', 'Playfair Display', 'Merriweather', 'Lora',
   ];
-  
   const fontName = fontFamily.split(',')[0].trim().replace(/['"]/g, '');
-  
   if (!googleFonts.includes(fontName)) return;
-  
-  // Check if font is already loaded
-  const existingLink = document.querySelector(`link[href*="${fontName}"]`);
-  if (existingLink) return;
-  
-  // Create and append Google Fonts link
+  if (document.querySelector(`link[href*="${fontName}"]`)) return;
   const link = document.createElement('link');
   link.href = `https://fonts.googleapis.com/css2?family=${fontName.replace(' ', '+')}:wght@300;400;500;600;700;800;900&display=swap`;
   link.rel = 'stylesheet';
@@ -610,52 +289,21 @@ export const loadGoogleFont = (fontFamily: string): void => {
   document.head.appendChild(link);
 };
 
-// Enhanced font family mapping with dynamic loading
 export const getFontFamilyWithFallback = (family: string): string => {
   if (!family) return 'inherit';
-  
-  // Load Google Font if needed
   loadGoogleFont(family);
-  
-  // Use the new comprehensive font utility with emoji support
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { createReactFontFamily } = require('./fontUtils');
   return createReactFontFamily(family);
 };
 
-// Enhanced corner radius utilities with improved circular detection
 export function getCornerRadius(radius: number, width?: number, height?: number): string {
   if (radius === 0) return '0';
-  
-  // Check if this should be a perfect circle
-  if (width && height && Math.abs(width - height) < 2 && radius >= Math.min(width, height) / 2) {
-    return '50%';
-  }
-  
+  if (width && height && Math.abs(width - height) < 2 && radius >= Math.min(width, height) / 2) return '50%';
   if (radius >= 50) return '50%';
   return `${radius}px`;
 }
 
-// Enhanced circular detection for icons and avatars
-export function isCircularElement(node: any): boolean {
-  // Add null check to prevent runtime errors
-  if (!node || typeof node !== 'object') {
-    return false;
-  }
-  
-  const { width, height } = node.absoluteBoundingBox || {};
-  const radius = node.cornerRadius || 0;
-  
-  
-  // Check by dimensions and radius for perfect circles
-  if (width && height && radius) {
-    return Math.abs(width - height) < 2 && radius >= Math.min(width, height) / 2;
-  }
-
-  
-  return false;
-}
-
-// Enhanced text alignment utilities
 export function getTextAlign(align: string): string {
   switch (align) {
     case 'CENTER': return 'center';
@@ -673,304 +321,29 @@ export function getVerticalAlign(align: string): string {
   }
 }
 
-// Enhanced layout mode utilities
-export function getLayoutMode(node: any): React.CSSProperties {
-  const styles: React.CSSProperties = {};
-  
-  if (node.layoutMode === 'HORIZONTAL') {
-    styles.display = 'flex';
-    styles.flexDirection = 'row';
-  } else if (node.layoutMode === 'VERTICAL') {
-    styles.display = 'flex';
-    styles.flexDirection = 'column';
-  }
-  
-  // Handle alignment
-  if (node.primaryAxisAlignItems) {
-    switch (node.primaryAxisAlignItems) {
-      case 'CENTER':
-        styles.justifyContent = 'center';
-        break;
-      case 'SPACE_BETWEEN':
-        styles.justifyContent = 'space-between';
-        break;
-      case 'SPACE_AROUND':
-        styles.justifyContent = 'space-around';
-        break;
-      case 'SPACE_EVENLY':
-        styles.justifyContent = 'space-evenly';
-        break;
-      case 'MAX':
-        styles.justifyContent = 'flex-end';
-        break;
-      default:
-        styles.justifyContent = 'flex-start';
-    }
-  }
-  
-  if (node.counterAxisAlignItems) {
-    switch (node.counterAxisAlignItems) {
-      case 'CENTER':
-        styles.alignItems = 'center';
-        break;
-      case 'MAX':
-        styles.alignItems = 'flex-end';
-        break;
-      case 'BASELINE':
-        styles.alignItems = 'baseline';
-        break;
-      default:
-        styles.alignItems = 'flex-start';
-    }
-  }
-  
-  // Handle spacing
-  if (node.itemSpacing) {
-    styles.gap = `${node.itemSpacing}px`;
-  }
-  
-  // Handle padding
-  if (node.paddingLeft || node.paddingRight || node.paddingTop || node.paddingBottom) {
-    styles.padding = `${node.paddingTop || 0}px ${node.paddingRight || 0}px ${node.paddingBottom || 0}px ${node.paddingLeft || 0}px`;
-  }
-  
-  return styles;
-}
-
-// Enhanced effect utilities
-export function getEffectStyles(effects: any[]): React.CSSProperties {
-  if (!effects || effects.length === 0) return {};
-  
-  const styles: React.CSSProperties = {};
-  
-  effects.forEach((effect: any) => {
-    if (effect.visible === false) return;
-    
-    switch (effect.type) {
-      case 'DROP_SHADOW':
-        const offsetX = effect.offset?.x || 0;
-        const offsetY = effect.offset?.y || 0;
-        const radius = effect.radius || 0;
-        const color = effect.color ? rgbaToCss(effect.color.r, effect.color.g, effect.color.b, effect.color.a) : 'rgba(0, 0, 0, 0.5)';
-        styles.boxShadow = `${offsetX}px ${offsetY}px ${radius}px ${color}`;
-        break;
-      case 'INNER_SHADOW':
-        const innerOffsetX = effect.offset?.x || 0;
-        const innerOffsetY = effect.offset?.y || 0;
-        const innerRadius = effect.radius || 0;
-        const innerColor = effect.color ? rgbaToCss(effect.color.r, effect.color.g, effect.color.b, effect.color.a) : 'rgba(0, 0, 0, 0.5)';
-        styles.boxShadow = `inset ${innerOffsetX}px ${innerOffsetY}px ${innerRadius}px ${innerColor}`;
-        break;
-      case 'BACKGROUND_BLUR':
-        styles.backdropFilter = `blur(${effect.radius || 0}px)`;
-        break;
-    }
-  });
-  
-  return styles;
-}
-
-// Enhanced visibility utilities
 export function isNodeVisible(node: any): boolean {
-  if (node.visible === false) return false;
-  if (node.opacity === 0) return false;
+  if (node?.visible === false) return false;
+  if (node?.opacity === 0) return false;
   return true;
 }
 
-// Enhanced component detection utilities
 export function isFooterComponent(node: any): boolean {
-  // Add null check to prevent runtime errors
-  if (!node || typeof node !== 'object') {
-    return false;
-  }
-  
+  if (!node || typeof node !== 'object') return false;
   const footerKeywords = ['footer', 'social', 'linkedin', 'instagram', 'youtube', 'twitter'];
-  const nodeName = node.name?.toLowerCase() || '';
-  
-  return footerKeywords.some(keyword => nodeName.includes(keyword));
+  const name = String(node.name || '').toLowerCase();
+  return footerKeywords.some((k) => name.includes(k));
 }
 
-// Enhanced image scale mode utilities
 export function getImageScaleMode(node: any): string {
-  // Add null check to prevent runtime errors
-  if (!node || typeof node !== 'object') {
-    return 'cover';
-  }
-  
-  // Default to cover for most cases
-  if (isFooterComponent(node)) {
-    return 'cover'; // Footer icons should be cover to maintain aspect ratio
-  }
-  
-  // Check for specific scale mode in node properties
+  if (!node || typeof node !== 'object') return 'cover';
+  if (isFooterComponent(node)) return 'cover';
   if (node.scaleMode) {
     switch (node.scaleMode) {
-      case 'FILL':
-        return 'cover';
-      case 'FIT':
-        return 'contain';
-      case 'CROP':
-        return 'cover';
-      default:
-        return 'cover';
+      case 'FILL': return 'cover';
+      case 'FIT': return 'contain';
+      case 'CROP': return 'cover';
+      default: return 'cover';
     }
   }
-  
   return 'cover';
-}
-
-// Enhanced responsive breakpoint utilities
-export function getResponsiveBreakpoints(): Record<string, string> {
-  return {
-    sm: '640px',
-    md: '768px',
-    lg: '1024px',
-    xl: '1280px',
-    '2xl': '1536px',
-  };
-}
-
-// Enhanced Tailwind class generation utilities
-export function generateTailwindClasses(node: any): string {
-  const classes: string[] = [];
-  
-  // Add layout classes
-  if (node.layoutMode === 'HORIZONTAL') {
-    classes.push('flex', 'flex-row');
-  } else if (node.layoutMode === 'VERTICAL') {
-    classes.push('flex', 'flex-col');
-  }
-  
-  // Add alignment classes
-  if (node.primaryAxisAlignItems === 'CENTER') {
-    classes.push('justify-center');
-  } else if (node.primaryAxisAlignItems === 'SPACE_BETWEEN') {
-    classes.push('justify-between');
-  }
-  
-  if (node.counterAxisAlignItems === 'CENTER') {
-    classes.push('items-center');
-  }
-  
-  // Add spacing classes
-  if (node.itemSpacing) {
-    classes.push(`gap-${Math.round(node.itemSpacing / 4)}`);
-  }
-  
-  // Add padding classes
-  if (node.paddingLeft || node.paddingRight || node.paddingTop || node.paddingBottom) {
-    const padding = Math.max(node.paddingLeft || 0, node.paddingRight || 0, node.paddingTop || 0, node.paddingBottom || 0);
-    if (padding > 0) {
-      classes.push(`p-${Math.round(padding / 4)}`);
-    }
-  }
-  
-  return classes.join(' ');
-}
-
-// Handle section transitions and angled cuts
-export function getSectionTransition(node: any): string | null {
-  if (!node || typeof node !== 'object') {
-    return null;
-  }
-  
-  const name = node.name?.toLowerCase() || '';
-  
-  // Determine section transition based on node name and context
-  if (name.includes('angled-cut') || name.includes('diagonal') || name.includes('transition')) {
-    if (name.includes('upward') || name.includes('positive')) {
-      return 'angled-cut';
-    }
-    if (name.includes('downward') || name.includes('negative')) {
-      return 'reverse-angled';
-    }
-    return 'diagonal';
-  }
-  
-  // Auto-detect based on section names
-  if (name.includes('manufacturing') || name.includes('brands') || name.includes('stores')) {
-    // These sections typically have angled transitions
-    return 'angled-cut';
-  }
-  
-  return null;
-}
-
-// Get geometric line properties for accent lines
-export function getGeometricLineProperties(node: any): {
-  geometricType: string;
-  angleDegrees: number;
-  lineColor: string;
-} {
-  if (!node || typeof node !== 'object') {
-    return {
-      geometricType: 'vertical',
-      angleDegrees: 0,
-      lineColor: '#FF0A54'
-    };
-  }
-  
-  const name = node.name?.toLowerCase() || '';
-  
-  // Determine line properties based on node name
-  if (name.includes('diagonal') || name.includes('angled')) {
-    return {
-      geometricType: 'diagonal',
-      angleDegrees: 45,
-      lineColor: '#FF0A54'
-    };
-  }
-  
-  if (name.includes('horizontal')) {
-    return {
-      geometricType: 'horizontal',
-      angleDegrees: 0,
-      lineColor: '#FF0A54'
-    };
-  }
-  
-  if (name.includes('vertical') || name.includes('accent')) {
-    return {
-      geometricType: 'vertical',
-      angleDegrees: 0,
-      lineColor: '#FF0A54'
-    };
-  }
-  
-  // Default to vertical pink accent line
-  return {
-    geometricType: 'vertical',
-    angleDegrees: 0,
-    lineColor: '#FF004F'
-  };
-}
-
-// Check if node is an angled box
-export function isAngledBox(node: any): boolean {
-  if (!node || typeof node !== 'object') return false;
-  
-  const nodeName = node.name?.toLowerCase() || '';
-  
-  // Check for angled keywords in name
-  if (nodeName.includes('angled') || nodeName.includes('skewed') || nodeName.includes('tilted') || 
-      nodeName.includes('diagonal') || nodeName.includes('transformed')) {
-    return true;
-  }
-  
-  // Check for transform properties
-  if (node.transform && Array.isArray(node.transform)) {
-    return true;
-  }
-  
-  // Check for skew properties
-  if (node.skew !== undefined && node.skew !== 0) {
-    return true;
-  }
-  
-  // Check for rotation
-  if (node.rotation !== undefined && node.rotation !== 0) {
-    return true;
-  }
-  
-  return false;
 }

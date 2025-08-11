@@ -179,22 +179,20 @@ class FigmaAuthManager {
     }
 
     try {
-      const response = await fetch(`${FIGMA_CONFIG.API_BASE}/projects`, {
-        headers: {
-          'Authorization': `Bearer ${this.authState.accessToken}`
-        }
+      // Figma does not provide a top-level /projects listing.
+      // We validate the token via /me and return an empty list so the UI can proceed with URL input or explicit file loads.
+      const me = await fetch(`${FIGMA_CONFIG.API_BASE}/me`, {
+        headers: { 'Authorization': `Bearer ${this.authState.accessToken}` },
+        cache: 'no-store',
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch projects');
+      if (!me.ok) {
+        throw new Error('Failed to validate token');
       }
-
-      const projects = await response.json();
-      return projects.projects || [];
+      return [];
 
     } catch (error) {
-      console.error('Error fetching Figma files:', error);
-      throw error;
+      console.warn('Projects listing not available; continuing without project data.', error);
+      return [];
     }
   }
 
@@ -235,14 +233,18 @@ class FigmaAuthManager {
       throw new Error('Invalid Figma URL');
     }
 
-    // For public files, try public access first, then authenticated access
-    try {
-      console.log('🔍 Trying public access first for file:', fileKey);
-      return await this.getPublicFileData(fileKey);
-    } catch (error) {
-      console.log('🔍 Public access failed, trying authenticated access for file:', fileKey);
-      return await this.getFileData(fileKey);
+    // Prefer authenticated access if available, then fall back to public
+    if (this.isAuthenticated() && this.authState.accessToken) {
+      try {
+        console.log('🔐 Trying authenticated access for file:', fileKey);
+        return await this.getFileData(fileKey);
+      } catch (error) {
+        console.log('🔄 Authenticated access failed, falling back to public for file:', fileKey);
+        return await this.getPublicFileData(fileKey);
+      }
     }
+    console.log('🌐 Not authenticated, trying public access for file:', fileKey);
+    return await this.getPublicFileData(fileKey);
   }
 
   /**
@@ -255,6 +257,7 @@ class FigmaAuthManager {
     }
 
     try {
+      console.log('📄 Fetching file data (auth) for key:', fileKey);
       const response = await fetch(`${FIGMA_CONFIG.API_BASE}/files/${fileKey}`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -272,6 +275,7 @@ class FigmaAuthManager {
       }
 
       const fileData = await response.json();
+      console.log('📄 File fetched:', fileData?.name);
       
       return {
         document: fileData.document,
@@ -442,11 +446,41 @@ class FigmaAuthManager {
   }
 
   /**
+   * Hydrate client auth state from server cookie via API route
+   */
+  async hydrateFromServerCookie(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+    try {
+      const res = await fetch('/api/auth/figma/me', { cache: 'no-store' });
+      if (!res.ok) return false;
+      const data = await res.json();
+      if (data?.authenticated && data?.access_token) {
+        this.authState = {
+          isAuthenticated: true,
+          accessToken: data.access_token,
+          user: data.user,
+          // Fallback expiration: 1 hour if not provided
+          expiresAt: Date.now() + 60 * 60 * 1000,
+        };
+        await this.saveAuthState();
+        try { window.dispatchEvent(new Event('figma-auth-updated')); } catch {}
+        return true;
+      }
+    } catch (e) {
+      // ignore
+    }
+    return false;
+  }
+
+  /**
    * Logout user
    */
   async logout(): Promise<void> {
     this.authState = { isAuthenticated: false };
     await this.saveAuthState();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('figma-auth-updated'));
+    }
   }
 
   /**
@@ -490,6 +524,7 @@ class FigmaAuthManager {
         localStorage.setItem(FIGMA_CONFIG.STORAGE_KEY, JSON.stringify(this.authState));
         console.log('✅ Saved auth state to localStorage (fallback)');
       }
+      try { window.dispatchEvent(new Event('figma-auth-updated')); } catch {}
     }
   }
 
@@ -507,6 +542,7 @@ class FigmaAuthManager {
           if (this.authState.expiresAt && Date.now() >= this.authState.expiresAt) {
             await this.logout();
           }
+          try { window.dispatchEvent(new Event('figma-auth-updated')); } catch {}
         } else {
           console.log('📭 No auth state found in IndexedDB');
         }
@@ -522,6 +558,7 @@ class FigmaAuthManager {
             if (this.authState.expiresAt && Date.now() >= this.authState.expiresAt) {
               await this.logout();
             }
+            try { window.dispatchEvent(new Event('figma-auth-updated')); } catch {}
           } catch (parseError) {
             console.error('Error parsing auth state from localStorage:', parseError);
             await this.logout();
