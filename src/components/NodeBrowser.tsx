@@ -7,7 +7,7 @@ import { figmaAuthHeaders } from '@/lib/utils';
 
 type BrowserTarget = { id: string; name: string; type: string; node: FigmaNode };
 
-const CHUNK = 90;
+const CHUNK = 20; // Reduced from 90 to prevent URL length issues
 
 function displayChildrenOf(node: FigmaNode): FigmaNode[] {
     if (node.type === 'DOCUMENT') {
@@ -37,13 +37,13 @@ function highlight(text: string, q: string) {
 }
 
 export default function NodeBrowser({
-                                        root,
-                                        fileKey,
-                                        figmaToken,
-                                        fileThumbnailUrl,
-                                        onClose,
-                                        onPick,
-                                    }: {
+    root,
+    fileKey,
+    figmaToken,
+    fileThumbnailUrl,
+    onClose,
+    onPick,
+}: {
     root: FigmaNode;
     fileKey?: string;
     figmaToken?: string;
@@ -110,16 +110,31 @@ export default function NodeBrowser({
         if (!want.length) return;
         for (let i = 0; i < want.length; i += CHUNK) {
             const chunk = want.slice(i, i + CHUNK);
-            const url = `https://api.figma.com/v1/images/${fileKey}?ids=${encodeURIComponent(
+            const figmaUrl = `https://api.figma.com/v1/images/${fileKey}?ids=${encodeURIComponent(
                 chunk.join(','),
             )}&format=png&scale=2`;
+            const url = `/api/assets?url=${encodeURIComponent(figmaUrl)}`;
+            
+            console.log(`Fetching chunk ${Math.floor(i/CHUNK) + 1}/${Math.ceil(want.length/CHUNK)} with ${chunk.length} images`);
+            
             try {
-                const res = await fetch(url, { headers: figmaAuthHeaders(figmaToken) });
-                if (!res.ok) continue;
+                const res = await fetch(url, { headers: { 'X-Figma-Token': figmaToken } });
+                if (!res.ok) {
+                    console.warn(`Chunk failed with status ${res.status}: ${chunk.length} images`);
+                    continue;
+                }
                 const data = await res.json();
-                if (data?.images) setPreviewMap((prev) => ({ ...prev, ...data.images }));
-            } catch {
-                /* ignore */
+                if (data?.images) {
+                    setPreviewMap((prev) => ({ ...prev, ...data.images }));
+                    console.log(`Successfully loaded ${Object.keys(data.images).length} images from chunk`);
+                }
+            } catch (error) {
+                console.warn(`Chunk failed with error:`, error);
+            }
+            
+            // Add a small delay between chunks to prevent overwhelming the server
+            if (i + CHUNK < want.length) {
+                await new Promise(resolve => setTimeout(resolve, 100));
             }
         }
     }
@@ -168,9 +183,8 @@ export default function NodeBrowser({
                         <div key={n.id} className="flex items-center gap-2">
                             <button
                                 onClick={() => setPath(path.slice(0, idx + 1))}
-                                className={`px-2 py-0.5 rounded ${
-                                    idx === path.length - 1 ? 'bg-gray-200' : 'bg-gray-100 hover:bg-gray-200'
-                                }`}
+                                className={`px-2 py-0.5 rounded ${idx === path.length - 1 ? 'bg-gray-200' : 'bg-gray-100 hover:bg-gray-200'
+                                    }`}
                                 title={n.name}
                             >
                                 [{n.type}] {n.name || n.id}
@@ -223,8 +237,8 @@ export default function NodeBrowser({
                     </label>
                     {debouncedQuery && (
                         <span className="text-xs text-gray-500">
-              {gridTargets.length} result{gridTargets.length === 1 ? '' : 's'}
-            </span>
+                            {gridTargets.length} result{gridTargets.length === 1 ? '' : 's'}
+                        </span>
                     )}
                 </div>
 
@@ -265,8 +279,8 @@ export default function NodeBrowser({
                                             {highlight(t.name || t.id, debouncedQuery)}
                                         </div>
                                         <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
-                      {t.type}
-                    </span>
+                                            {t.type}
+                                        </span>
                                     </div>
                                 </div>
                             ))}

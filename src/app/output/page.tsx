@@ -84,6 +84,9 @@ function OutputPageContent() {
   const [authUser, setAuthUser] = useState<any>(null);
   const [fileKey, setFileKey] = useState<string>('');
   const [figmaToken, setFigmaToken] = useState<string>(''); // PAT or OAuth goes here
+  const [tokenMode, setTokenMode] = useState<'auto' | 'oauth' | 'pat'>(() => {
+    try { return (localStorage.getItem('tokenMode') as any) || 'auto'; } catch { return 'auto'; }
+  });
   const [figmaUrl, setFigmaUrl] = useState<string>('');
 
   // assets
@@ -140,29 +143,37 @@ function OutputPageContent() {
 
   // Find the best available token from: state -> localStorage -> IndexedDB -> OAuth
   const hydrateBestToken = async () => {
-    if (figmaToken) return figmaToken;
+    // Respect explicit mode first
+    if (tokenMode === 'oauth') {
+      const t = figmaAuth.getAccessToken?.();
+      if (t) { setFigmaToken(t); return t; }
+      return '';
+    }
+    if (tokenMode === 'pat') {
+      try {
+        const local = localStorage.getItem('figmaToken');
+        if (local) { setFigmaToken(local); return local; }
+      } catch {}
+      try {
+        const { loadFigmaToken } = await import('@/lib/figmaStorage');
+        const t = await loadFigmaToken();
+        if (t) { setFigmaToken(t); try { localStorage.setItem('figmaToken', t); } catch {}; return t; }
+      } catch {}
+      return '';
+    }
+    // Auto: prefer OAuth, fallback PAT
+    try {
+      const t = figmaAuth.getAccessToken?.();
+      if (t) { setFigmaToken(t); return t; }
+    } catch {}
     try {
       const local = localStorage.getItem('figmaToken');
-      if (local) {
-        setFigmaToken(local);
-        return local;
-      }
+      if (local) { setFigmaToken(local); return local; }
     } catch {}
     try {
       const { loadFigmaToken } = await import('@/lib/figmaStorage');
       const t = await loadFigmaToken();
-      if (t) {
-        setFigmaToken(t);
-        try { localStorage.setItem('figmaToken', t); } catch {}
-        return t;
-      }
-    } catch {}
-    try {
-      const t = figmaAuth.getAccessToken?.();
-      if (t) {
-        setFigmaToken(t);
-        return t;
-      }
+      if (t) { setFigmaToken(t); try { localStorage.setItem('figmaToken', t); } catch {}; return t; }
     } catch {}
     return '';
   };
@@ -580,13 +591,12 @@ function OutputPageContent() {
       familiesToLoad.add('Inter'); // ensure alias target always present
 
       const googleFontHrefs = Array.from(familiesToLoad).map((f) => {
-        const fam = encodeURIComponent(f).replace(/%20/g, '+');
-        return `https://fonts.googleapis.com/css2?family=${fam}:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap`;
+        const fam = f.replace(/\s+/g, '+');
+        return `/api/fonts/css2?family=${fam}:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap`;
       });
 
       const headLinks = [
-        `<link rel="preconnect" href="https://fonts.googleapis.com" />`,
-        `<link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />`,
+        `<link rel="preconnect" href="/api/fonts" />`,
         ...googleFontHrefs.map((h) => `<link href="${h}" rel="stylesheet" />`),
       ].join('\n    ');
 
@@ -632,6 +642,27 @@ function OutputPageContent() {
       );
 
       // ---------- style helpers ----------
+      // Round numeric values to 2 decimal places for cleaner CSS
+      const roundToTwo = (value: number): number => {
+        return Math.round(value * 100) / 100;
+      };
+
+      // Format CSS values with proper rounding
+      const formatCSSValue = (value: any): string => {
+        if (typeof value === 'number') {
+          return String(roundToTwo(value));
+        }
+        if (typeof value === 'string' && value.includes('px')) {
+          // Handle values like "28.599609375px" -> "28.60px"
+          const match = value.match(/^([\d.]+)px$/);
+          if (match) {
+            const num = parseFloat(match[1]);
+            return `${roundToTwo(num)}px`;
+          }
+        }
+        return String(value);
+      };
+
       // Escape content for JSX while preserving Unicode glyphs (icons/emojis)
       const esc = (txt: string) => {
         const s = txt || '';
@@ -650,8 +681,12 @@ function OutputPageContent() {
         const parts: string[] = [];
         for (const [k, v] of Object.entries(obj)) {
           if (v === undefined || v === null || v === '') continue;
-          const value = typeof v === 'number' ? String(v) : JSON.stringify(v);
-          parts.push(`${k}: ${value}`);
+          if (typeof v === 'number') {
+            parts.push(`${k}: ${String(roundToTwo(v))}`);
+          } else {
+            const formatted = formatCSSValue(v);
+            parts.push(`${k}: ${JSON.stringify(formatted)}`);
+          }
         }
         return `{{ ${parts.join(', ')} }}`;
       };
@@ -669,14 +704,14 @@ function OutputPageContent() {
         if (bb) {
           if (parentBB) {
             s.position = 'absolute';
-            s.left = `${bb.x - parentBB.x}px`;
-            s.top = `${bb.y - parentBB.y}px`;
-            s.width = `${bb.width}px`;
-            s.height = `${bb.height}px`;
+            s.left = `${roundToTwo(bb.x - parentBB.x)}px`;
+            s.top = `${roundToTwo(bb.y - parentBB.y)}px`;
+            s.width = `${roundToTwo(bb.width)}px`;
+            s.height = `${roundToTwo(bb.height)}px`;
           } else {
             s.position = 'relative';
-            s.width = `${bb.width}px`;
-            s.height = `${bb.height}px`;
+            s.width = `${roundToTwo(bb.width)}px`;
+            s.height = `${roundToTwo(bb.height)}px`;
           }
         }
         // background
@@ -726,9 +761,9 @@ function OutputPageContent() {
         if ([tl, tr, bl, br].some((v: any) => v !== undefined)) {
           const cr = node.cornerRadius ?? 0;
           const TL = tl ?? cr ?? 0, TR = tr ?? cr ?? 0, BL = bl ?? cr ?? 0, BR = br ?? cr ?? 0;
-          s.borderRadius = `${TL}px ${TR}px ${BR}px ${BL}px`;
+          s.borderRadius = `${roundToTwo(TL)}px ${roundToTwo(TR)}px ${roundToTwo(BR)}px ${roundToTwo(BL)}px`;
         } else if (node.cornerRadius) {
-          s.borderRadius = `${node.cornerRadius}px`;
+          s.borderRadius = `${roundToTwo(node.cornerRadius)}px`;
         } else if (node.type === 'ELLIPSE') {
           s.borderRadius = '50%';
         }
@@ -742,11 +777,11 @@ function OutputPageContent() {
           if (w > 0 && color) {
             if (node.type === 'LINE') {
               const bb2 = node.absoluteBoundingBox || { width: 0, height: 0 };
-              if ((bb2.width || 0) >= (bb2.height || 0)) s.borderTop = `${w}px solid ${color}`;
-              else s.borderLeft = `${w}px solid ${color}`;
+              if ((bb2.width || 0) >= (bb2.height || 0)) s.borderTop = `${roundToTwo(w)}px solid ${color}`;
+              else s.borderLeft = `${roundToTwo(w)}px solid ${color}`;
             } else {
               const isDashed = Array.isArray((st as any).dashPattern) && (st as any).dashPattern.length;
-              s.border = `${w}px ${isDashed ? 'dashed' : 'solid'} ${color}`;
+              s.border = `${roundToTwo(w)}px ${isDashed ? 'dashed' : 'solid'} ${color}`;
             }
           }
         }
@@ -757,8 +792,8 @@ function OutputPageContent() {
           const inners: string[] = [];
           for (const e of node.effects) {
             if (!e?.visible) continue;
-            if (e.type === 'DROP_SHADOW') drops.push(`drop-shadow(${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${rgba(e.color || {})})`);
-            else if (e.type === 'INNER_SHADOW') inners.push(`inset ${e.offset?.x || 0}px ${e.offset?.y || 0}px ${e.radius || 0}px ${rgba(e.color || {})}`);
+            if (e.type === 'DROP_SHADOW') drops.push(`drop-shadow(${roundToTwo(e.offset?.x || 0)}px ${roundToTwo(e.offset?.y || 0)}px ${roundToTwo(e.radius || 0)}px ${rgba(e.color || {})})`);
+            else if (e.type === 'INNER_SHADOW') inners.push(`inset ${roundToTwo(e.offset?.x || 0)}px ${roundToTwo(e.offset?.y || 0)}px ${roundToTwo(e.radius || 0)}px ${rgba(e.color || {})}`);
           }
           if (node.type === 'TEXT') {
             if (drops.length) (s as any).textShadow = drops.map(d => d.replace(/^drop-shadow\(|\)$/g, '')).join(', ');
@@ -817,10 +852,10 @@ function OutputPageContent() {
             const baseTextStyle: Record<string, any> = {
               whiteSpace: 'pre-wrap',
               fontFamily: createReactFontFamily(mapped || st.fontFamily || ''),
-              fontSize: st.fontSize ? `${st.fontSize}px` : undefined,
+              fontSize: st.fontSize ? `${roundToTwo(st.fontSize)}px` : undefined,
               fontWeight: st.fontWeight ?? 'normal',
-              lineHeight: st.lineHeightPx ? `${st.lineHeightPx}px` : st.lineHeightPercent ? `${st.lineHeightPercent}%` : undefined,
-              letterSpacing: st.letterSpacing ? `${st.letterSpacing}px` : undefined,
+              lineHeight: st.lineHeightPx ? `${roundToTwo(st.lineHeightPx)}px` : st.lineHeightPercent ? `${roundToTwo(st.lineHeightPercent)}%` : undefined,
+              letterSpacing: st.letterSpacing ? `${roundToTwo(st.letterSpacing)}px` : undefined,
               textAlign: align,
               backgroundColor: 'transparent',
               color: (() => {
@@ -846,8 +881,8 @@ function OutputPageContent() {
             (textBox as any).justifyContent = align === 'center' ? 'center' : 'flex-start';
             (textBox as any).textAlign = align;
             if (node.absoluteBoundingBox) {
-              const bw = Math.round(node.absoluteBoundingBox.width || 0) + TEXT_W_BUFFER ;
-              const bh = Math.round(node.absoluteBoundingBox.height || 0) + TEXT_H_BUFFER;
+              const bw = roundToTwo(node.absoluteBoundingBox.width || 0) + TEXT_W_BUFFER*2 ;
+              const bh = roundToTwo(node.absoluteBoundingBox.height || 0) + TEXT_H_BUFFER*2;
               textBox.width = `calc(${bw}px)`;
               textBox.height = `calc(${bh}px)`;
               textBox.maxWidth = '100%';
@@ -864,15 +899,15 @@ function OutputPageContent() {
             const toSpanStyle = (cs: any) => {
               const style: Record<string, any> = {};
               if (cs.fontFamily) style.fontFamily = createReactFontFamily(normalizeFamily(cs.fontFamily));
-              if (cs.fontSize) style.fontSize = `${cs.fontSize}px`;
+              if (cs.fontSize) style.fontSize = `${roundToTwo(cs.fontSize)}px`;
               if (cs.fontWeight) style.fontWeight = cs.fontWeight;
               if (cs.fontStyle) {
                 const v = String(cs.fontStyle).toLowerCase();
                 if (v === 'italic' || v === 'oblique') style.fontStyle = v;
               }
-              if (cs.letterSpacing) style.letterSpacing = `${cs.letterSpacing}px`;
-              if (cs.lineHeightPx) style.lineHeight = `${cs.lineHeightPx}px`;
-              else if (cs.lineHeightPercent) style.lineHeight = `${cs.lineHeightPercent}%`;
+              if (cs.letterSpacing) style.letterSpacing = `${roundToTwo(cs.letterSpacing)}px`;
+              if (cs.lineHeightPx) style.lineHeight = `${roundToTwo(cs.lineHeightPx)}px`;
+              else if (cs.lineHeightPercent) style.lineHeight = `${roundToTwo(cs.lineHeightPercent)}%`;
               const f = cs.fills?.[0];
               if (f?.type === 'SOLID' && f.color) style.color = rgba(f.color);
               const deco = (cs.textDecoration || cs.textDecorationLine || '').toString().toLowerCase();
@@ -886,21 +921,59 @@ function OutputPageContent() {
               if (cs.textCase === 'TITLE') style.textTransform = 'capitalize';
               return toStyleJSX(style);
             };
-            let content = '';
+            // Group characters by their style override for cleaner HTML
+            const groups: Array<{ style: string; text: string; href?: string }> = [];
+            let currentGroup: { style: string; text: string; href?: string } | null = null;
+            
             for (let i = 0; i < chars.length; i++) {
               const ch = chars[i];
               if (ch === '\n') {
+                // End current group and add line break
+                if (currentGroup) {
+                  groups.push(currentGroup);
+                  currentGroup = null;
+                }
                 let count = 1;
                 while (i + 1 < chars.length && chars[i + 1] === '\n') { count++; i++; }
-                for (let k = 0; k < count; k++) content += '<br/>';
+                for (let k = 0; k < count; k++) groups.push({ style: '', text: '<br/>' });
                 continue;
               }
+              
               const cs = runForIndex(i);
               const styleAttr = toSpanStyle(cs);
               const href = cs?.hyperlink?.url;
               const inner = esc(ch);
-              if (href) content += `<a href="${href}" style=${styleAttr}>${inner}</a>`;
-              else content += `<span style=${styleAttr}>${inner}</span>`;
+              
+              // Check if we can continue with current group
+              const groupKey = `${styleAttr}|${href || ''}`;
+              if (currentGroup && currentGroup.style === styleAttr && currentGroup.href === href) {
+                currentGroup.text += inner;
+              } else {
+                // End current group and start new one
+                if (currentGroup) {
+                  groups.push(currentGroup);
+                }
+                currentGroup = { style: styleAttr, text: inner, href };
+              }
+            }
+            
+            // Add final group
+            if (currentGroup) {
+              groups.push(currentGroup);
+            }
+            
+            // Build content from groups
+            let content = '';
+            for (const group of groups) {
+              if (group.text === '<br/>') {
+                content += group.text;
+              } else if (group.href) {
+                content += `<a href="${group.href}" style=${group.style}>${group.text}</a>`;
+              } else if (group.style && group.style !== '{{}}') {
+                content += `<span style=${group.style}>${group.text}</span>`;
+              } else {
+                content += group.text;
+              }
             }
             return `${pad}<div style=${sText} data-figma-node-id="${node.id}">\n${pad}  <span style=${tStyle}>${content}</span>\n${pad}</div>`;
           }
@@ -1155,6 +1228,66 @@ function OutputPageContent() {
                 </p>
               </div>
             </div>
+
+            <div className="bg-white rounded-lg border border-gray-200 p-6 mt-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Authentication</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center gap-2 text-gray-700">
+                  <span className="font-medium">Signed in as:</span>
+                  <span className="font-mono text-gray-600">{authUser?.email || 'Not signed in'}</span>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="font-medium">Token mode</div>
+                  <div className="flex flex-wrap gap-6">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="tokenMode"
+                        value="auto"
+                        checked={tokenMode === 'auto'}
+                        onChange={() => { setTokenMode('auto'); try { localStorage.setItem('tokenMode', 'auto'); } catch {} }}
+                      />
+                      Auto (prefer OAuth, fallback PAT)
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="tokenMode"
+                        value="oauth"
+                        checked={tokenMode === 'oauth'}
+                        onChange={() => { setTokenMode('oauth'); try { localStorage.setItem('tokenMode', 'oauth'); } catch {} }}
+                      />
+                      OAuth only
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="tokenMode"
+                        value="pat"
+                        checked={tokenMode === 'pat'}
+                        onChange={() => { setTokenMode('pat'); try { localStorage.setItem('tokenMode', 'pat'); } catch {} }}
+                      />
+                      PAT only
+                    </label>
+                  </div>
+                </div>
+
+                <label className="block">
+                  <div className="font-medium mb-1">Personal Access Token (optional)</div>
+                  <input
+                    type="password"
+                    value={figmaToken}
+                    onChange={(e) => { const v = e.target.value.trim(); setFigmaToken(v); try { localStorage.setItem('figmaToken', v); } catch {} }}
+                    placeholder="Paste PAT (used if OAuth not available)"
+                    className="mt-1 w-full border rounded px-2 py-1 text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    We’ll send <code>X-Figma-Token</code> for PATs or <code>Authorization: Bearer</code> for OAuth via the server proxy.
+                  </p>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
     );
@@ -1163,7 +1296,7 @@ function OutputPageContent() {
   /* ---------------- render ---------------- */
 
   return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="bg-gray-50">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 py-2 sticky top-0 z-50 shadow-sm">
           <div className="flex items-center justify-between space-x-4 px-4">
@@ -1311,7 +1444,7 @@ function OutputPageContent() {
 
         {/* Renderer */}
         <div className="bg-white w-screen figma-renderer-container">
-          <div className="relative w-screen figma-renderer-container overflow-hidden">
+          <div className="relative w-screen figma-renderer-container overflow-hidden h-auto">
             {showDebug && <div className="absolute inset-0 border-4 border-red-500 border-dashed pointer-events-none z-10" />}
             {frameNode && (
                 <SimpleFigmaRenderer
@@ -1371,6 +1504,8 @@ function OutputPageContent() {
               try { localStorage.setItem('figmaToken', v); } catch {}
             }}
             fileKey={fileKey}
+            tokenMode={tokenMode}
+            setTokenMode={(v) => { setTokenMode(v); try { localStorage.setItem('tokenMode', v); } catch {} }}
         />
       </div>
   );

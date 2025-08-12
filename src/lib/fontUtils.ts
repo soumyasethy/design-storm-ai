@@ -185,10 +185,52 @@ export function createTailwindFontFamily(fontName: string): string {
  * @returns Font family string for React style prop
  */
 export function createReactFontFamily(fontName: string): string {
-  return createFontFamily(fontName, {
-    includeEmoji: true,
-    forceQuotes: false
-  });
+  // Clean the font name
+  const cleanFontName = fontName.trim();
+  
+  // Determine if we need quotes around the font name
+  const needsQuotes = cleanFontName.includes(' ') || 
+    cleanFontName.includes(',') ||
+    cleanFontName.includes('"') ||
+    cleanFontName.includes("'");
+
+  // Build minimal font stack: just the Figma font + basic system fallback
+  const fontStack: string[] = [];
+
+  // 1. Primary font (with quotes if needed)
+  if (needsQuotes) {
+    fontStack.push(`"${cleanFontName}"`);
+  } else {
+    fontStack.push(cleanFontName);
+  }
+
+  // 2. Minimal system fallback based on font type
+  if (isSerifFont(cleanFontName)) {
+    fontStack.push('serif');
+  } else if (isMonospaceFont(cleanFontName)) {
+    fontStack.push('monospace');
+  } else {
+    fontStack.push('sans-serif');
+  }
+
+  return fontStack.join(', ');
+}
+
+/**
+ * Create a minimal font-family value with only the Figma font name
+ * @param fontName - The Figma font name
+ * @returns Font family string with only the primary font
+ */
+export function createMinimalFontFamily(fontName: string): string {
+  const cleanFontName = fontName.trim();
+  
+  // Determine if we need quotes around the font name
+  const needsQuotes = cleanFontName.includes(' ') || 
+    cleanFontName.includes(',') ||
+    cleanFontName.includes('"') ||
+    cleanFontName.includes("'");
+
+  return needsQuotes ? `"${cleanFontName}"` : cleanFontName;
 }
 
 /**

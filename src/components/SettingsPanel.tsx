@@ -15,7 +15,9 @@ export default function SettingsPanel({
                                           setMaxScale,
                                           figmaToken,
                                           setFigmaToken,
-                                          fileKey,
+                                           fileKey,
+                                           tokenMode,
+                                           setTokenMode,
                                       }: {
     isOpen: boolean;
     onClose: () => void;
@@ -30,6 +32,8 @@ export default function SettingsPanel({
     figmaToken: string;
     setFigmaToken: (v: string) => void;
     fileKey: string;
+    tokenMode: 'auto' | 'oauth' | 'pat';
+    setTokenMode: (v: 'auto' | 'oauth' | 'pat') => void;
 }) {
     if (!isOpen) return null;
 
@@ -97,6 +101,23 @@ export default function SettingsPanel({
                         <h4 className="font-semibold">Figma API</h4>
                         <div className="text-xs text-gray-600">
                             File key: <span className="font-mono">{fileKey || '—'}</span>
+                        </div>
+                        <div className="text-sm space-y-1">
+                            <div className="font-medium">Token selection</div>
+                            <div className="flex gap-4">
+                                <label className="flex items-center gap-2">
+                                    <input type="radio" name="tokenMode" value="auto" checked={tokenMode === 'auto'} onChange={() => setTokenMode('auto')} />
+                                    Auto (prefer OAuth, fallback to PAT)
+                                </label>
+                                <label className="flex items-center gap-2">
+                                    <input type="radio" name="tokenMode" value="oauth" checked={tokenMode === 'oauth'} onChange={() => setTokenMode('oauth')} />
+                                    OAuth only
+                                </label>
+                                <label className="flex items-center gap-2">
+                                    <input type="radio" name="tokenMode" value="pat" checked={tokenMode === 'pat'} onChange={() => setTokenMode('pat')} />
+                                    PAT only
+                                </label>
+                            </div>
                         </div>
                         <label className="block text-sm">
                             Personal Access Token (or OAuth token)

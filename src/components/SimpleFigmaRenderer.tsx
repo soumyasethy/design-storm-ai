@@ -306,45 +306,84 @@ const TextRenderer: Renderer = ({ node, styles, showDebug, devMode }) => {
     const rich =
         !overrides.length || !Object.keys(table).length
             ? characters
-            : characters.split('').map((ch, i) => {
-                if (ch === '\n') return <br key={`br-${i}`} />;
-                const cs = table[String(overrides[i] || 0)] || {};
-                const span: React.CSSProperties = {};
-                if (cs.fontFamily) span.fontFamily = createReactFontFamily(cs.fontFamily);
-                if (cs.fontSize) span.fontSize = `${cs.fontSize}px`;
-                if (cs.fontWeight) span.fontWeight = cs.fontWeight;
-                if (cs.fontStyle) span.fontStyle = String(cs.fontStyle).toLowerCase();
-                if (cs.letterSpacing) span.letterSpacing = `${cs.letterSpacing}px`;
-                if (cs.lineHeightPx) span.lineHeight = `${cs.lineHeightPx}px`;
-                else if (cs.lineHeightPercent) span.lineHeight = `${cs.lineHeightPercent}%`;
-                const fill = cs.fills?.[0];
-                if (fill?.type === 'SOLID' && fill.color)
-                    span.color = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
+            : (() => {
+                // Group characters by their style override
+                const groups: Array<{ style: React.CSSProperties; text: string; key: string }> = [];
+                let currentGroup: { style: React.CSSProperties; text: string; key: string } | null = null;
+                
+                characters.split('').forEach((ch, i) => {
+                    if (ch === '\n') {
+                        // End current group and add line break
+                        if (currentGroup) {
+                            groups.push(currentGroup);
+                            currentGroup = null;
+                        }
+                        groups.push({ style: {}, text: '\n', key: `br-${i}` });
+                        return;
+                    }
+                    
+                    const overrideIndex = overrides[i] || 0;
+                    const cs = table[String(overrideIndex)] || {};
+                    
+                    // Create style object
+                    const style: React.CSSProperties = {};
+                    if (cs.fontFamily) style.fontFamily = createReactFontFamily(cs.fontFamily);
+                    if (cs.fontSize) style.fontSize = `${cs.fontSize}px`;
+                    if (cs.fontWeight) style.fontWeight = cs.fontWeight;
+                    if (cs.fontStyle) style.fontStyle = String(cs.fontStyle).toLowerCase();
+                    if (cs.letterSpacing) style.letterSpacing = `${cs.letterSpacing}px`;
+                    if (cs.lineHeightPx) style.lineHeight = `${cs.lineHeightPx}px`;
+                    else if (cs.lineHeightPercent) style.lineHeight = `${cs.lineHeightPercent}%`;
+                    
+                    const fill = cs.fills?.[0];
+                    if (fill?.type === 'SOLID' && fill.color)
+                        style.color = rgbaToCss(fill.color.r, fill.color.g, fill.color.b, fill.color.a);
 
-                const deco = (cs.textDecoration || cs.textDecorationLine || '').toString().toLowerCase();
-                if (deco.includes('underline')) {
-                    span.textDecoration = 'underline';
-                    (span as any).textUnderlineOffset = '2px';
-                    (span as any).textDecorationThickness = '1px';
+                    const deco = (cs.textDecoration || cs.textDecorationLine || '').toString().toLowerCase();
+                    if (deco.includes('underline')) {
+                        style.textDecoration = 'underline';
+                        (style as any).textUnderlineOffset = '2px';
+                        (style as any).textDecorationThickness = '1px';
+                    }
+                    if (cs.textCase === 'UPPER') style.textTransform = 'uppercase';
+                    if (cs.textCase === 'LOWER') style.textTransform = 'lowercase';
+                    if (cs.textCase === 'TITLE') style.textTransform = 'capitalize';
+
+                    // Check if we can continue with current group
+                    const styleKey = JSON.stringify(style);
+                    if (currentGroup && currentGroup.key === styleKey) {
+                        currentGroup.text += ch;
+                    } else {
+                        // End current group and start new one
+                        if (currentGroup) {
+                            groups.push(currentGroup);
+                        }
+                        currentGroup = { style, text: ch, key: styleKey };
+                    }
+                });
+                
+                // Add final group
+                if (currentGroup) {
+                    groups.push(currentGroup);
                 }
-                if (cs.textCase === 'UPPER') span.textTransform = 'uppercase';
-                if (cs.textCase === 'LOWER') span.textTransform = 'lowercase';
-                if (cs.textCase === 'TITLE') span.textTransform = 'capitalize';
-
-                if (cs.hyperlink?.url && ch.trim())
+                
+                // Render groups
+                return groups.map((group, index) => {
+                    if (group.text === '\n') {
+                        return <br key={group.key} />;
+                    }
+                    
+                    if (group.text.trim() && Object.keys(group.style).length === 0) {
+                        return <span key={`group-${index}`}>{group.text}</span>;
+                    }
+                    
                     return (
-                        <a key={`c-${i}`} href={cs.hyperlink.url} style={span}>
-                            {ch}
-                        </a>
+                        <span key={`group-${index}`} style={group.style}>
+                            {group.text}
+                        </span>
                     );
-                return Object.keys(span).length ? (
-                    <span key={`c-${i}`} style={span}>
-                        {ch}
-                    </span>
-                ) : (
-                    <span key={`c-${i}`}>{ch}</span>
-                );
-            });
+                });
+            })();
 
     return (
         <div style={container} title={`${node.name} (TEXT)`} data-figma-node-id={node.id}>
@@ -613,7 +652,12 @@ const NodeInner: React.FC<{
     if (!node || !isNodeVisible(node)) return null;
     const styles = layoutStyles(node, (node as any).__parentBB);
     const R = Registry[node.type] || ((p: RegistryProps) => <ContainerRenderer {...p} />);
-    return R({ node, styles, imageMap, showDebug, devMode });
+    const component = R({ node, styles, imageMap, showDebug, devMode });
+    // console.log(`***** ${node.type}:`, React.isValidElement(component) ?
+    //     `<${typeof component.type === 'string' ? component.type : (component.type?.name || 'Anonymous')} ${Object.entries(component.props ?? {}).filter(([k,v]) => k !== 'children').map(([k,v]) => `${k}={${typeof v === 'string' ? `"${v}"` : JSON.stringify(v)}}`).join(' ')} />` :
+    //     String(component)
+    // );
+    return component;
 };
 
 const Node = React.memo(
@@ -676,11 +720,14 @@ const SimpleFigmaRenderer: React.FC<Props> = ({
         <div
             style={{
                 width: '100vw',
-                minHeight: '100vh',
+                height: `${(rootBox?.height || 800) * scale + 40}px`,
                 overflowX: 'hidden',
                 overflowY: 'auto',
                 display: 'flex',
                 justifyContent: 'center',
+                alignItems: 'flex-start',
+                paddingTop: '20px',
+                paddingBottom: '20px',
             }}
         >
             <div
@@ -713,7 +760,6 @@ const SimpleFigmaRenderer: React.FC<Props> = ({
                 )}
                 {content}
             </div>
-            <div style={{ height: `${(rootBox?.height || 800) * scale}px` }} />
         </div>
     );
 };

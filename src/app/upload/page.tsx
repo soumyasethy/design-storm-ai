@@ -59,6 +59,9 @@ function UploadPageContent() {
   const [figmaUrl, setFigmaUrl] = useState<string>('');
   const [urlInput, setUrlInput] = useState<string>('');
   const [figmaToken, setFigmaToken] = useState<string>('');
+  const [tokenMode, setTokenMode] = useState<'auto'|'oauth'|'pat'>(() => {
+    try { return (localStorage.getItem('tokenMode') as any) || 'auto'; } catch { return 'auto'; }
+  });
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>('oauth');
   const [selectedFileKey, setSelectedFileKey] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -343,13 +346,20 @@ function UploadPageContent() {
     } catch {}
     localStorage.setItem('figmaUrl', u);
     setFigmaUrl(u);
+    // Persist token + mode for output page
+    try {
+      const { saveFigmaToken, saveFigmaTokenMode } = await import('@/lib/figmaStorage');
+      if (figmaToken) await saveFigmaToken(figmaToken);
+      await saveFigmaTokenMode(tokenMode);
+    } catch {}
+    try { localStorage.setItem('tokenMode', tokenMode); } catch {}
     // Navigate immediately; /output now prefers url param and fetches the file there
     try {
       router.push('/output?source=upload&url=' + encodeURIComponent(u));
     } catch {
       (window as any).location.href = '/output?source=upload&url=' + encodeURIComponent(u);
     }
-  }, [router]);
+  }, [router, figmaToken, tokenMode]);
 
   const handleFileSelect = useCallback(async (fileKey: string) => {
     if (!fileKey) return;
@@ -609,35 +619,10 @@ function UploadPageContent() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select a file from your projects
-                  </label>
-                  <select
-                    value={selectedFileKey}
-                    onChange={(e) => handleFileSelect(e.target.value)}
-                    disabled={oauthLoading}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  >
-                    <option value="">Choose a file...</option>
-                    {projects.map(project => (
-                      <optgroup key={project.id} label={project.name}>
-                        {project.files.map((file: any) => (
-                          <option key={file.key} value={file.key}>
-                            {file.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
+                  {/* Project file picker removed per feedback */}
                 </div>
 
-                <button
-                  onClick={loadFiles}
-                  disabled={oauthLoading}
-                  className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 disabled:opacity-50"
-                >
-                  {oauthLoading ? 'Loading...' : 'Refresh Files'}
-                </button>
+                {/* Refresh files button removed per feedback */}
               </div>
             )}
           </div>
@@ -666,28 +651,13 @@ function UploadPageContent() {
               </div>
 
               <div>
-                <input
-                  type="url"
-                  placeholder="https://figma.com/file/..."
-                  value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && urlInput.trim()) {
-                      setUploadMethod('url');
-                      handleUrlSubmit(urlInput.trim());
-                    }
-                  }}
-                  onPaste={(e) => {
-                    const txt = e.clipboardData.getData('text');
-                    if (txt) {
-                      const t = txt.trim();
-                      setUrlInput(t);
-                      setUploadMethod('url');
-                      setTimeout(() => handleUrlSubmit(t), 0);
-                    }
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
+                  <input
+                    type="url"
+                    placeholder="https://figma.com/file/..."
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
               </div>
 
               <button
@@ -705,6 +675,23 @@ function UploadPageContent() {
                 <Link className="w-5 h-5" />
                 <span>Load from URL</span>
               </button>
+              <div className="mt-4 space-y-2">
+                <div className="font-medium text-sm">Token mode</div>
+                <div className="flex flex-wrap gap-6 text-sm">
+                  <label className="flex items-center gap-2">
+                    <input type="radio" name="tokenModeUrl" value="auto" checked={tokenMode==='auto'} onChange={() => { setTokenMode('auto'); try{localStorage.setItem('tokenMode','auto');}catch{}}} />
+                    Auto (prefer OAuth, fallback PAT)
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="radio" name="tokenModeUrl" value="oauth" checked={tokenMode==='oauth'} onChange={() => { setTokenMode('oauth'); try{localStorage.setItem('tokenMode','oauth');}catch{}}} />
+                    OAuth only
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="radio" name="tokenModeUrl" value="pat" checked={tokenMode==='pat'} onChange={() => { setTokenMode('pat'); try{localStorage.setItem('tokenMode','pat');}catch{}}} />
+                    PAT only
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
         </div>

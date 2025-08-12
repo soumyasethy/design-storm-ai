@@ -24,8 +24,7 @@ class FontLoader {
       document.head.appendChild(l);
     };
     try {
-      add('https://fonts.googleapis.com');
-      add('https://fonts.gstatic.com', 'anonymous');
+      add('/api/fonts');
     } catch {
       // no-op
     }
@@ -34,19 +33,36 @@ class FontLoader {
   /**
    * Convert font family name to Google Fonts URL
    */
-  private getGoogleFontsUrl(fontFamily: string, weights: number[] = [400, 700], styles: string[] = ['normal'], display: string = 'swap'): string {
-    const familyParam = fontFamily.replace(/\s+/g, '+');
-    const weightParam = weights.join(';');
-    const styleParam = styles.join(';');
+  private normalizeFontFamily(fontFamily: string): string {
+    // Map common font family names to their Google Fonts equivalents
+    const fontMap: Record<string, string> = {
+      'Cormorant Garamond': 'Cormorant',
+      'IBM Plex Sans': 'IBM Plex Sans',
+      'Space Grotesk': 'Space Grotesk',
+      'Inter': 'Inter',
+      'K2D': 'K2D',
+      // Add more mappings as needed
+    };
     
-    return `https://fonts.googleapis.com/css2?family=${familyParam}:wght@${weightParam}&display=${display}`;
+    return fontMap[fontFamily] || fontFamily;
+  }
+
+  private getGoogleFontsUrl(fontFamily: string, weights: number[] = [400, 700], styles: string[] = ['normal'], display: string = 'swap'): string {
+    const normalizedFamily = this.normalizeFontFamily(fontFamily);
+    const familyParam = normalizedFamily.replace(/\s+/g, '+');
+    // Deduplicate and sort weights to avoid 700;700
+    const uniqueWeights = Array.from(new Set(weights)).sort((a, b) => a - b);
+    const weightParam = uniqueWeights.join(';');
+    // (styles currently unused by css2 shorthand we're forming)
+    return `/api/fonts/css2?family=${familyParam}:wght@${weightParam}&display=${display}`;
   }
 
   /**
    * Load a single font family
    */
   async loadFont(fontFamily: string, weights: number[] = [400, 700], styles: string[] = ['normal'], display: string = 'swap'): Promise<void> {
-    const fontKey = `${fontFamily}-${weights.join('-')}-${styles.join('-')}`;
+    const normalizedFamily = this.normalizeFontFamily(fontFamily);
+    const fontKey = `${normalizedFamily}-${weights.join('-')}-${styles.join('-')}`;
     
     // Return if already loaded
     if (this.loadedFonts.has(fontKey)) {
@@ -71,6 +87,7 @@ class FontLoader {
   private async loadFontInternal(fontFamily: string, weights: number[], styles: string[], display: string, fontKey: string): Promise<void> {
     try {
       this.ensurePreconnects();
+      const normalizedFamily = this.normalizeFontFamily(fontFamily);
       const url = this.getGoogleFontsUrl(fontFamily, weights, styles, display);
       
       // Check if link already exists
@@ -112,7 +129,7 @@ class FontLoader {
       if (document?.fonts && weights?.length) {
         try {
           await Promise.race([
-            Promise.all(weights.map(w => (document as any).fonts.load(`${w} 1em ${fontFamily}`))),
+            Promise.all(weights.map(w => (document as any).fonts.load(`${w} 1em ${normalizedFamily}`))),
             new Promise((r) => setTimeout(r, 1500)),
           ]);
         } catch {/* ignore */}
@@ -155,6 +172,8 @@ class FontLoader {
    * Get CSS font-family value with fallbacks
    */
   getFontFamilyCSS(fontFamily: string): string {
+    const normalizedFamily = this.normalizeFontFamily(fontFamily);
+    
     // Add fallbacks for better compatibility
     const fallbacks = {
       'Space Grotesk': '"Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -166,10 +185,13 @@ class FontLoader {
       'Montserrat': '"Montserrat", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       'Source Sans Pro': '"Source Sans Pro", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       'Raleway': '"Raleway", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      'Ubuntu': '"Ubuntu", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+      'Ubuntu': '"Ubuntu", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      'Cormorant': '"Cormorant", serif',
+      'IBM Plex Sans': '"IBM Plex Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      'K2D': '"K2D", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     };
 
-    return fallbacks[fontFamily as keyof typeof fallbacks] || `"${fontFamily}", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    return fallbacks[normalizedFamily as keyof typeof fallbacks] || `"${normalizedFamily}", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
   }
 
   /**

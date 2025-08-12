@@ -15,6 +15,7 @@ export const STORAGE_KEYS = {
   FIGMA_TOKEN: 'figmaToken', 
   FIGMA_URL: 'figmaUrl',
   FIGMA_AUTH: 'figmaAuth',
+  FIGMA_TOKEN_MODE: 'figmaTokenMode',
 } as const;
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS];
@@ -167,6 +168,10 @@ export const removeFigmaData = () => FigmaStorage.remove(STORAGE_KEYS.FIGMA_DATA
 export const saveFigmaToken = (token: string) => FigmaStorage.save(STORAGE_KEYS.FIGMA_TOKEN, token);
 export const loadFigmaToken = () => FigmaStorage.load<string>(STORAGE_KEYS.FIGMA_TOKEN);
 export const removeFigmaToken = () => FigmaStorage.remove(STORAGE_KEYS.FIGMA_TOKEN);
+
+// Figma Token Mode operations
+export const saveFigmaTokenMode = (mode: 'auto'|'oauth'|'pat') => FigmaStorage.save(STORAGE_KEYS.FIGMA_TOKEN_MODE, mode);
+export const loadFigmaTokenMode = () => FigmaStorage.load<'auto'|'oauth'|'pat'>(STORAGE_KEYS.FIGMA_TOKEN_MODE);
 
 // Figma URL operations
 export const saveFigmaUrl = (url: string) => FigmaStorage.save(STORAGE_KEYS.FIGMA_URL, url);

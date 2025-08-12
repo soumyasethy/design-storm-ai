@@ -189,12 +189,16 @@ export async function loadFigmaAssetsFromNodes({
       if (signal?.aborted) return out;
       const chunk = ids.slice(i, i + batchSize);
       if (!chunk.length) continue;
-      const url = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${encodeURIComponent(
+      const figmaUrl = `https://api.figma.com/v1/images/${figmaFileKey}?ids=${encodeURIComponent(
           chunk.join(',')
       )}&format=${format}${format === 'png' ? '&scale=2' : ''}`;
+      const url = `/api/assets?url=${encodeURIComponent(figmaUrl)}`;
 
       try {
-        let res = await fetchFigmaJSON(url, figmaToken, signal);
+        let res = await fetch(url, { 
+          headers: { 'X-Figma-Token': figmaToken },
+          signal 
+        });
         if (!res.ok) throw res;
         const data = await res.json();
         const img: Record<string, string | null> = data.images || {};
@@ -218,31 +222,10 @@ export async function loadFigmaAssetsFromNodes({
 
   // PNGs via imageRef (covers frame backgrounds etc.)
   if (uniqueImageRefs.length) {
-    try {
-      if (signal?.aborted) return assetMap;
-      const url = `https://api.figma.com/v1/files/${figmaFileKey}/images?ids=${encodeURIComponent(
-          uniqueImageRefs.join(',')
-      )}&format=png&scale=2`;
-      const res = await fetchFigmaJSON(url, figmaToken, signal);
-      if (res.ok) {
-        const data = await res.json();
-        const refMap: Record<string, string | null> = data.images || {};
-        let added = 0;
-        for (const [k, v] of Object.entries(refMap)) {
-          if (v) {
-            assetMap[k] = v;
-            added++;
-          }
-        }
-        loaded += added;
-        onProgress?.(total, loaded);
-      } else {
-        console.warn('Figma imageRefs fetch failed with status', res.status);
-      }
-    } catch (e) {
-      if (signal?.aborted) return assetMap;
-      console.warn('Figma imageRefs fetch failed:', e);
-    }
+    const map = await fetchImagesBatched(uniqueImageRefs, 'png', 20);
+    Object.assign(assetMap, map);
+    loaded += Object.keys(map).length;
+    onProgress?.(total, loaded);
   }
 
   // SVGs for vectors/lines/rectangles
@@ -272,26 +255,48 @@ export function rgbaToCss(r: number, g: number, b: number, a = 1): string {
   return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a})`;
 }
 
+// Track loaded fonts to prevent duplicate loading
+// NOTE: This function is currently disabled in getFontFamilyWithFallback to prevent duplicate loading
+// Fonts are now loaded centrally via loadFontsFromFigmaData using the fontLoader
+const loadedFonts = new Set<string>();
+
 export const loadGoogleFont = (fontFamily: string): void => {
   if (typeof window === 'undefined' || !fontFamily) return;
   const googleFonts = [
     'Inter', 'Roboto', 'Open Sans', 'Lato', 'Poppins', 'Montserrat', 'Source Sans Pro', 'Raleway',
     'Ubuntu', 'Nunito', 'Work Sans', 'DM Sans', 'Noto Sans', 'Fira Sans', 'PT Sans', 'Oswald',
-    'Bebas Neue', 'Playfair Display', 'Merriweather', 'Lora',
+    'Bebas Neue', 'Playfair Display', 'Merriweather', 'Lora', 'Space Grotesk', 'IBM Plex Sans',
   ];
   const fontName = fontFamily.split(',')[0].trim().replace(/['"]/g, '');
   if (!googleFonts.includes(fontName)) return;
-  if (document.querySelector(`link[href*="${fontName}"]`)) return;
+  
+  // Check if font is already loaded or being loaded
+  if (loadedFonts.has(fontName) || document.querySelector(`link[href*="${fontName}"]`)) {
+    return;
+  }
+  
+  // Mark as loading to prevent duplicates
+  loadedFonts.add(fontName);
+  console.log('Loading font:', fontName);
+  
   const link = document.createElement('link');
-  link.href = `https://fonts.googleapis.com/css2?family=${fontName.replace(' ', '+')}:wght@300;400;500;600;700;800;900&display=swap`;
+  link.href = `/api/fonts/css2?family=${fontName.replace(' ', '+')}:wght@300;400;500;600;700;800;900&display=swap`;
   link.rel = 'stylesheet';
   link.type = 'text/css';
+  
+  link.onload = () => console.log('Font loaded successfully:', fontName);
+  link.onerror = () => {
+    console.error('Font failed to load:', fontName);
+    loadedFonts.delete(fontName); // Remove from set on error to allow retry
+  };
+  
   document.head.appendChild(link);
 };
 
 export const getFontFamilyWithFallback = (family: string): string => {
   if (!family) return 'inherit';
-  loadGoogleFont(family);
+  // Fonts are loaded centrally via loadFontsFromFigmaData, so we don't need to load here
+  // loadGoogleFont(family); // Disabled to prevent duplicate loading
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { createReactFontFamily } = require('./fontUtils');
   return createReactFontFamily(family);
