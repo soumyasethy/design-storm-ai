@@ -714,13 +714,21 @@ function OutputPageContent() {
             s.height = `${roundToTwo(bb.height)}px`;
           }
         }
-        // background
-        if (node.type !== 'TEXT' && node.backgroundColor) s.backgroundColor = rgba(node.backgroundColor);
+         // background (skip pure white placeholders)
+         if (node.type !== 'TEXT' && node.backgroundColor) {
+           const c = node.backgroundColor as any;
+           const R = Math.round((c?.r || 0) * 255);
+           const G = Math.round((c?.g || 0) * 255);
+           const B = Math.round((c?.b || 0) * 255);
+           const A = c?.a ?? 1;
+           const isPureWhite = R === 255 && G === 255 && B === 255 && A >= 1;
+           if (!isPureWhite) s.backgroundColor = rgba(node.backgroundColor);
+         }
 
-        // fills
-        if (node.fills?.[0]) {
-          const f = node.fills[0];
-          if (node.type !== 'TEXT' && f.type === 'SOLID' && f.color) {
+         // fills
+         if (node.fills?.[0]) {
+           const f = node.fills[0];
+           if (node.type !== 'TEXT' && f.type === 'SOLID' && f.color) {
             const hasVisualChildren =
                 Array.isArray(node.children) &&
                 node.children.some((c: any) => ['VECTOR', 'RECTANGLE', 'ELLIPSE', 'LINE'].includes(c?.type) ||
@@ -730,9 +738,12 @@ function OutputPageContent() {
                 Math.round((f.color?.g || 0) * 255) === 255 &&
                 Math.round((f.color?.b || 0) * 255) === 255 &&
                 (f.color?.a ?? 1) >= 1;
-            if (!(hasVisualChildren && isPureWhite)) s.backgroundColor = rgba(f.color);
+            const isNearBlack = Math.round((f.color?.r || 0) * 255) <= 3 && Math.round((f.color?.g || 0) * 255) <= 3 && Math.round((f.color?.b || 0) * 255) <= 3;
+            const lowAlpha = (f.color?.a ?? 1) <= 0.12;
+            const isContainer = ['FRAME','GROUP','INSTANCE','COMPONENT','PAGE','CANVAS'].includes(node.type);
+            if (!(isContainer && (isPureWhite || lowAlpha || (isNearBlack && (f.color?.a ?? 1) <= 0.2)))) s.backgroundColor = rgba(f.color);
           }
-          if (f.type === 'IMAGE') {
+           if (f.type === 'IMAGE') {
             const p = (f.imageRef && getLocalImagePathByRef(f.imageRef)) || getLocalImagePath(node.id);
             if (p) {
               s.backgroundImage = `url('${p}')`;
@@ -741,7 +752,7 @@ function OutputPageContent() {
               s.backgroundRepeat = 'no-repeat';
             }
           }
-          if (f.type?.startsWith('GRADIENT') && Array.isArray(f.gradientStops) && f.gradientStops.length) {
+           if (f.type?.startsWith('GRADIENT') && Array.isArray(f.gradientStops) && f.gradientStops.length) {
             const stops = f.gradientStops.map((st: any) => `${rgba(st.color)} ${st.position * 100}%`).join(', ');
             let dir = '';
             if (Array.isArray(f.gradientTransform)) {
@@ -756,7 +767,7 @@ function OutputPageContent() {
           }
         }
 
-        // corner radii
+         // corner radii (apply to frames/containers as well)
         const tl = node.cornerRadiusTopLeft, tr = node.cornerRadiusTopRight, bl = node.cornerRadiusBottomLeft, br = node.cornerRadiusBottomRight;
         if ([tl, tr, bl, br].some((v: any) => v !== undefined)) {
           const cr = node.cornerRadius ?? 0;
@@ -768,7 +779,7 @@ function OutputPageContent() {
           s.borderRadius = '50%';
         }
 
-        // STROKES (apply only to shape nodes; fix the unwanted box borders)
+         // STROKES (apply only to shape nodes; fix the unwanted box borders)
         const SHAPE_TYPES = new Set(['VECTOR','LINE','ELLIPSE','RECTANGLE','POLYGON','STAR','BOOLEAN_OPERATION']);
         if (SHAPE_TYPES.has(node.type) && node.strokes?.[0]) {
           const st = node.strokes[0];

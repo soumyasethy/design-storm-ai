@@ -64,13 +64,26 @@ const resolveFillImageUrl = (
 const fillStyles = (
     fills: any[],
     nodeId?: string,
-    imageMap?: Record<string, string>
+    imageMap?: Record<string, string>,
+    node?: any
 ): React.CSSProperties => {
     if (!fills || !fills.length) return { backgroundColor: 'transparent' };
     const f = fills[0];
     const s: React.CSSProperties = {};
     if (f.type === 'SOLID' && f.color) {
-        s.backgroundColor = rgbaToCss(f.color.r, f.color.g, f.color.b, f.color.a);
+        const R = Math.round((f.color.r || 0) * 255);
+        const G = Math.round((f.color.g || 0) * 255);
+        const B = Math.round((f.color.b || 0) * 255);
+        const A = f.color.a == null ? 1 : f.color.a;
+        const isPureWhite = R === 255 && G === 255 && B === 255 && A >= 1;
+        const isNearBlack = R <= 3 && G <= 3 && B <= 3; // ~#000
+        const isShape = ['RECTANGLE', 'ELLIPSE', 'VECTOR', 'LINE'].includes(node?.type);
+        const isContainer = ['FRAME','GROUP','INSTANCE','COMPONENT','PAGE','CANVAS'].includes(node?.type);
+        const lowAlpha = A <= 0.12;
+        // Skip common placeholder/overlay backgrounds on containers
+        if (!(isContainer && (isPureWhite || lowAlpha || (isNearBlack && A <= 0.2)))) {
+            s.backgroundColor = rgbaToCss(f.color.r, f.color.g, f.color.b, f.color.a);
+        }
     } else if (f.type === 'IMAGE') {
         const url = resolveFillImageUrl(f, nodeId, imageMap);
         if (url) {
@@ -493,16 +506,23 @@ const ContainerRenderer: Renderer = ({ node, styles, imageMap, showDebug, devMod
     // background for frames/containers
     const bg = useMemo<React.CSSProperties>(() => {
         const base: React.CSSProperties = { ...styles };
-        if (node.backgroundColor) {
-            base.backgroundColor = rgbaToCss(
-                node.backgroundColor.r,
-                node.backgroundColor.g,
-                node.backgroundColor.b,
-                node.backgroundColor.a
-            );
-        } else if (Array.isArray(node.fills) && node.fills.length) {
-            Object.assign(base, fillStyles(node.fills, node.id, imageMap));
+        const hasFills = Array.isArray(node.fills) && node.fills.length > 0;
+        if (hasFills) {
+            Object.assign(base, fillStyles(node.fills, node.id, imageMap, node));
+        } else if (node.backgroundColor) {
+            const { r, g, b, a } = node.backgroundColor;
+            const R = Math.round((r || 0) * 255);
+            const G = Math.round((g || 0) * 255);
+            const B = Math.round((b || 0) * 255);
+            const A = a == null ? 1 : a;
+            const isPureWhite = R === 255 && G === 255 && B === 255 && A >= 1;
+            if (!isPureWhite) {
+                base.backgroundColor = rgbaToCss(r, g, b, a);
+            }
         }
+        // Border radius for frames/containers
+        (base as any).borderRadius = cornerRadius(node);
+
         // Never show default placeholder gray backgrounds for containers
         if (base.backgroundColor === 'rgba(200,200,200,0.25)') {
             delete (base as any).backgroundColor;
@@ -638,6 +658,51 @@ const layoutStyles = (node: any, parentBB?: any): React.CSSProperties => {
     else if ((node as any).__order !== undefined) s.zIndex = (node as any).__order;
 
     if (node.clipContent === true || ['CANVAS', 'PAGE'].includes(node.type)) s.overflow = 'hidden';
+
+    // ----- Figma Auto-Layout ➜ CSS Flexbox -----
+    const mapMain = (v?: string) => {
+        switch (String(v || '').toUpperCase()) {
+            case 'SPACE_BETWEEN':
+                return 'space-between';
+            case 'CENTER':
+                return 'center';
+            case 'MAX':
+            case 'END':
+                return 'flex-end';
+            case 'MIN':
+            case 'START':
+            default:
+                return 'flex-start';
+        }
+    };
+    const mapCross = (v?: string) => {
+        switch (String(v || '').toUpperCase()) {
+            case 'CENTER':
+                return 'center';
+            case 'MAX':
+            case 'END':
+                return 'flex-end';
+            case 'BASELINE':
+                return 'baseline';
+            case 'STRETCH':
+                return 'stretch';
+            case 'MIN':
+            case 'START':
+            default:
+                return 'flex-start';
+        }
+    };
+    if (node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL') {
+        s.display = 'flex';
+        s.flexDirection = node.layoutMode === 'HORIZONTAL' ? 'row' : 'column';
+        (s as any).justifyContent = mapMain(node.primaryAxisAlignItems);
+        (s as any).alignItems = mapCross(node.counterAxisAlignItems || node.primaryAxisAlignItems);
+        if (typeof node.itemSpacing === 'number') (s as any).gap = `${node.itemSpacing}px`;
+        if (typeof node.paddingLeft === 'number') (s as any).paddingLeft = `${node.paddingLeft}px`;
+        if (typeof node.paddingRight === 'number') (s as any).paddingRight = `${node.paddingRight}px`;
+        if (typeof node.paddingTop === 'number') (s as any).paddingTop = `${node.paddingTop}px`;
+        if (typeof node.paddingBottom === 'number') (s as any).paddingBottom = `${node.paddingBottom}px`;
+    }
 
     return sanitize(s);
 };

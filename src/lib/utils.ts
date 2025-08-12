@@ -304,9 +304,15 @@ export const getFontFamilyWithFallback = (family: string): string => {
 
 export function getCornerRadius(radius: number, width?: number, height?: number): string {
   if (radius === 0) return '0';
-  if (width && height && Math.abs(width - height) < 2 && radius >= Math.min(width, height) / 2) return '50%';
-  if (radius >= 50) return '50%';
-  return `${radius}px`;
+  // Use exact px radius, clamped to half the smallest dimension to avoid overshoot.
+  // This preserves Figma's pill radii and avoids weird full-oval 50% rendering.
+  const round2 = (v: number) => Math.round(v * 100) / 100;
+  if (width !== undefined && height !== undefined) {
+    const half = Math.min(width, height) / 2;
+    const clamped = Math.min(radius, half);
+    return `${round2(clamped)}px`;
+  }
+  return `${round2(radius)}px`;
 }
 
 export function getTextAlign(align: string): string {
