@@ -355,50 +355,14 @@ class FigmaAuthManager {
    */
   async getPublicFileDataAlternative(fileKey: string): Promise<FigmaFileData> {
     try {
-      console.log('🔍 Trying alternative public file access method for:', fileKey);
+      console.log('🔍 Public file requires authentication or is not accessible');
       
-      // Try to fetch the file data using a different approach
-      // Some public files might be accessible through a different endpoint or method
-      const response = await fetch(`https://www.figma.com/file/${fileKey}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Alternative method failed: ${response.status}`);
-      }
-
-      const htmlContent = await response.text();
-      
-      // Try to extract JSON data from the HTML response
-      const jsonMatch = htmlContent.match(/window\.__INITIAL_STATE__\s*=\s*({.*?});/);
-      if (jsonMatch) {
-        const jsonData = JSON.parse(jsonMatch[1]);
-        console.log('✅ Alternative public file data retrieved successfully');
-        
-        // Extract file data from the JSON response
-        const fileData = jsonData.file || jsonData.files?.[fileKey];
-        if (fileData) {
-          return {
-            document: fileData.document || fileData,
-            components: fileData.components || {},
-            componentSets: fileData.componentSets || {},
-            styles: fileData.styles || {},
-            name: fileData.name || 'Public Figma File',
-            lastModified: fileData.lastModified || new Date().toISOString(),
-            version: fileData.version || '1',
-            thumbnailUrl: fileData.thumbnailUrl
-          };
-        }
-      }
-      
-      throw new Error('Could not extract file data from alternative method');
+      // Instead of trying to scrape the website (which is unreliable),
+      // we'll provide a clear error message and suggest authentication
+      throw new Error('This Figma file requires authentication. Please log in with your Figma account or use a Personal Access Token to access this file.');
 
     } catch (error) {
-      console.error('Error with alternative public file access:', error);
+      console.error('Error with public file access:', error);
       throw new Error('Public file access not available - file may require authentication');
     }
   }

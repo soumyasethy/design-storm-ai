@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect, Suspense } from 'react';
-import { Upload, X, Eye, Code, ArrowRight, Figma, Link, Zap, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, X, Eye, Code, ArrowRight, Figma, Zap, CheckCircle, AlertCircle, Link as LinkIcon } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { useFigmaFile } from '@/lib/useFigmaFile';
 import { useFigmaData } from '@/lib/useFigmaData';
 
@@ -517,8 +518,36 @@ function UploadPageContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-8">
-      <div className="max-w-6xl mx-auto px-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* Header */}
+      <header className="border-b border-gray-200 bg-white/80 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">DS</span>
+              </div>
+              <h1 className="text-xl font-bold text-gray-900">LazyCode.ai</h1>
+            </div>
+            <nav className="flex items-center space-x-6">
+              <Link href="/" className="text-gray-600 hover:text-gray-900 transition-colors">
+                Home
+              </Link>
+              <Link href="/upload" className="text-blue-600 font-medium">
+                Upload
+              </Link>
+              <Link href="/pricing" className="text-gray-600 hover:text-gray-900 transition-colors">
+                Pricing
+              </Link>
+              <Link href="/upload" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                Get Started
+              </Link>
+            </nav>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Auth status bar */}
         <div className="flex items-center justify-end mb-2">
           {isAuthenticated && user ? (
@@ -544,16 +573,10 @@ function UploadPageContent() {
             </div>
           ) : null}
         </div>
-        {/* Header */}
+        {/* Page Title */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center space-x-3 mb-4">
-            <div className="bg-blue-600 p-3 rounded-full">
-              <Zap className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-4xl font-bold text-gray-900">DesignStorm</h1>
-          </div>
-          <p className="text-xl text-gray-600 mb-2">Transform Figma designs into production-ready code</p>
-          <p className="text-gray-500">Choose your preferred method to import your design</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Transform Figma designs into production-ready code</h1>
+          <p className="text-gray-600">Choose your preferred method to import your design</p>
         </div>
 
         {/* Upload Methods */}
@@ -631,7 +654,7 @@ function UploadPageContent() {
           <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
             <div className="flex items-center space-x-3 mb-4">
               <div className="bg-purple-100 p-2 rounded-lg">
-                <Link className="w-6 h-6 text-purple-600" />
+                <LinkIcon className="w-6 h-6 text-purple-600" />
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Direct Link</h3>
@@ -672,7 +695,7 @@ function UploadPageContent() {
                 }}
                 className="w-full bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors font-medium flex items-center justify-center space-x-2"
               >
-                <Link className="w-5 h-5" />
+                                  <LinkIcon className="w-5 h-5" />
                 <span>Load from URL</span>
               </button>
               <div className="mt-4 space-y-2">
@@ -826,7 +849,7 @@ function UploadPageContent() {
         {/* Instructions */}
         {!figmaData && !error && !oauthError && (
           <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">How to use DesignStorm:</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">How to use LazyCode.ai:</h3>
             <div className="grid md:grid-cols-3 gap-6">
               <div className="text-center">
                 <div className="bg-blue-100 p-3 rounded-full w-12 h-12 mx-auto mb-3 flex items-center justify-center">

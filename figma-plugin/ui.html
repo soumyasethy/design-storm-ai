@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>DesignStorm Exporter</title>
+      <title>LazyCode.ai Exporter</title>
   <style>
     * {
       margin: 0;
@@ -283,7 +283,7 @@
   <div class="container">
     <div class="header">
       <div class="logo">DS</div>
-      <h1 class="title">DesignStorm Exporter</h1>
+              <h1 class="title">LazyCode.ai Exporter</h1>
       <p class="subtitle">Export your design with all assets for better code generation</p>
     </div>
     
@@ -592,7 +592,7 @@
       switch (type) {
         case 'json':
           data = JSON.stringify(exportData, null, 2);
-          filename = 'designstorm-export.json';
+                      filename = 'lazycode-export.json';
           mimeType = 'application/json';
           break;
           
@@ -604,7 +604,7 @@
             fonts: exportData.fonts || []
           };
           data = JSON.stringify(assetsData, null, 2);
-          filename = 'designstorm-assets.json';
+                      filename = 'lazycode-assets.json';
           mimeType = 'application/json';
           break;
           
@@ -612,7 +612,7 @@
           // For ZIP, we'd need to create a blob with all assets
           // This is a simplified version
           data = JSON.stringify(exportData, null, 2);
-          filename = 'designstorm-complete.zip';
+                      filename = 'lazycode-complete.zip';
           mimeType = 'application/zip';
           break;
       }

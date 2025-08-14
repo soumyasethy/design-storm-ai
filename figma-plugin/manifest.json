@@ -1,6 +1,6 @@
 {
-  "name": "DesignStorm Exporter",
-  "id": "designstorm-exporter",
+  "name": "LazyCode.ai Exporter",
+  "id": "lazycode-exporter",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",

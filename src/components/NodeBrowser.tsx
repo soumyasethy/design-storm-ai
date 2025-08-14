@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { FigmaNode } from '@/lib/figmaTypes';
 import { NAV_TYPES, PREVIEWABLE_TYPES, hasChildren } from '@/lib/figmaNavigation';
 import { figmaAuthHeaders } from '@/lib/utils';
+import { Search, ArrowUp, X, ChevronRight, FolderOpen, Eye, Zap, Grid3X3 } from 'lucide-react';
 
 type BrowserTarget = { id: string; name: string; type: string; node: FigmaNode };
 
@@ -30,7 +31,7 @@ function highlight(text: string, q: string) {
     return (
         <>
             {before}
-            <mark className="bg-yellow-200">{match}</mark>
+            <mark className="bg-gradient-to-r from-yellow-200 to-orange-200 px-1 rounded">{match}</mark>
             {after}
         </>
     );
@@ -58,6 +59,7 @@ export default function NodeBrowser({
     const [deepSearch, setDeepSearch] = useState(false);
     const debouncedQueryRef = useRef<number | null>(null);
     const [debouncedQuery, setDebouncedQuery] = useState('');
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (debouncedQueryRef.current) window.clearTimeout(debouncedQueryRef.current);
@@ -66,6 +68,29 @@ export default function NodeBrowser({
             if (debouncedQueryRef.current) window.clearTimeout(debouncedQueryRef.current);
         };
     }, [query]);
+
+    // Keyboard shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Cmd/Ctrl + K for search
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+                searchInputRef.current?.select();
+            }
+            // Escape to clear search or close
+            if (e.key === 'Escape') {
+                if (query) {
+                    setQuery('');
+                } else {
+                    onClose();
+                }
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [query, onClose]);
 
     const children = useMemo(() => displayChildrenOf(current), [current]);
     const targetsImmediate: BrowserTarget[] = useMemo(
@@ -146,148 +171,197 @@ export default function NodeBrowser({
     const goEnter = (n: FigmaNode) => setPath((prev) => [...prev, n]);
     const goPick = (n: FigmaNode) => onPick(n);
     const goPickHere = () => onPick(current);
+    const goUp = () => setPath((p) => p.slice(0, -1));
 
     const clearSearch = () => setQuery('');
 
     return (
-        <div className="fixed inset-0 z-[100] bg-white/95 backdrop-blur-sm">
-            <div className="max-w-7xl mx-auto px-4 py-4 h-full flex flex-col">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b pb-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                        {fileThumbnailUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={fileThumbnailUrl} alt="file" className="w-8 h-8 rounded object-cover border" />
-                        ) : (
-                            <div className="w-8 h-8 rounded bg-gray-200" />
-                        )}
-                        <div className="font-semibold truncate">Browse & pick any level</div>
-                        <div className="text-xs text-gray-500 hidden sm:block">Search & drill down as far as you like</div>
+        <div className="fixed inset-0 z-[100] bg-gradient-to-br from-blue-50 via-white to-purple-50 backdrop-blur-sm">
+            <div className="max-w-7xl mx-auto px-6 py-6 h-full flex flex-col">
+                {/* Modern Header */}
+                <div className="flex items-center justify-between border-b border-gray-200 pb-4">
+                    <div className="flex items-center gap-4 min-w-0">
+                        <div className="flex items-center gap-3">
+                            {fileThumbnailUrl ? (
+                                <img src={fileThumbnailUrl} alt="file" className="w-10 h-10 rounded-lg object-cover border-2 border-gray-200 shadow-sm" />
+                            ) : (
+                                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                                    <Zap className="w-5 h-5 text-white" />
+                                </div>
+                            )}
+                            <div>
+                                <h1 className="text-xl font-bold text-gray-900">
+                                    Browse & pick any{' '}
+                                    <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                                        level
+                                    </span>
+                                </h1>
+                                <p className="text-sm text-gray-600">Search & drill down as far as you like</p>
+                            </div>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                         <button
                             onClick={goPickHere}
-                            className="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700"
+                            className="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
                         >
                             Use current level
                         </button>
-                        <button onClick={onClose} className="px-3 py-1.5 text-sm rounded bg-gray-100 hover:bg-gray-200">
+                        <button 
+                            onClick={onClose} 
+                            className="px-4 py-2 text-sm font-medium rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 shadow-sm"
+                        >
                             Close
                         </button>
                     </div>
                 </div>
 
-                {/* Breadcrumb */}
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                {/* Modern Breadcrumb */}
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
                     {path.map((n, idx) => (
                         <div key={n.id} className="flex items-center gap-2">
                             <button
                                 onClick={() => setPath(path.slice(0, idx + 1))}
-                                className={`px-2 py-0.5 rounded ${idx === path.length - 1 ? 'bg-gray-200' : 'bg-gray-100 hover:bg-gray-200'
-                                    }`}
+                                className={`px-3 py-1.5 rounded-lg font-medium transition-all duration-200 ${
+                                    idx === path.length - 1 
+                                        ? 'bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 border border-blue-200' 
+                                        : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 shadow-sm'
+                                }`}
                                 title={n.name}
                             >
                                 [{n.type}] {n.name || n.id}
                             </button>
-                            {idx < path.length - 1 && <span className="text-gray-400">›</span>}
+                            {idx < path.length - 1 && <ChevronRight className="w-4 h-4 text-gray-400" />}
                         </div>
                     ))}
                     {path.length > 1 && (
                         <button
-                            onClick={() => setPath((p) => p.slice(0, -1))}
-                            className="ml-2 px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200"
+                            onClick={goUp}
+                            className="ml-2 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 shadow-sm flex items-center gap-2"
                         >
+                            <ArrowUp className="w-4 h-4" />
                             Up one
                         </button>
                     )}
                 </div>
 
-                {/* Search */}
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <div className="relative">
-                        <input
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Search by name or type… (⌘/Ctrl+K)"
-                            className="h-9 w-72 sm:w-96 px-3 pr-16 text-sm bg-white border border-gray-300 rounded hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            onKeyDown={(e) => {
-                                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-                                    e.preventDefault();
-                                    const el = e.currentTarget;
-                                    el.focus();
-                                    el.select();
-                                }
-                                if (e.key === 'Escape') clearSearch();
-                            }}
-                        />
-                        {query && (
-                            <button onClick={clearSearch} className="absolute right-2 top-1.5 text-xs text-gray-500 hover:text-gray-700">
-                                Clear
-                            </button>
-                        )}
+                {/* Advanced Search Section */}
+                <div className="mt-6 flex flex-wrap items-center gap-4">
+                    <div className="relative flex-1 max-w-md">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input
+                                ref={searchInputRef}
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                placeholder="Search by name or type… (⌘/Ctrl+K)"
+                                className="w-full h-11 pl-10 pr-12 text-sm bg-white border border-gray-200 rounded-lg hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm"
+                            />
+                            {query && (
+                                <button 
+                                    onClick={clearSearch} 
+                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
+                        <div className="absolute -bottom-8 left-0 text-xs text-gray-500">
+                            Press ⌘/Ctrl+K to focus search
+                        </div>
                     </div>
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                    
+                    <label className="flex items-center gap-2 text-sm text-gray-700 bg-white px-3 py-2 rounded-lg border border-gray-200 hover:border-gray-300 transition-all duration-200 cursor-pointer">
                         <input
                             type="checkbox"
-                            className="rounded border-gray-300"
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             checked={deepSearch}
                             onChange={(e) => setDeepSearch(e.target.checked)}
                         />
                         Deep search subtree
                     </label>
+                    
                     {debouncedQuery && (
-                        <span className="text-xs text-gray-500">
-                            {gridTargets.length} result{gridTargets.length === 1 ? '' : 's'}
-                        </span>
+                        <div className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200">
+                            <span className="text-sm font-medium text-blue-700">
+                                {gridTargets.length} result{gridTargets.length === 1 ? '' : 's'}
+                            </span>
+                        </div>
                     )}
                 </div>
 
-                {/* Grid */}
-                <div className="mt-4 flex-1 overflow-auto">
+                {/* Modern Grid */}
+                <div className="mt-6 flex-1 overflow-auto">
                     {gridTargets.length ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                             {gridTargets.map((t) => (
                                 <div
                                     key={t.id}
-                                    className="group rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow-sm transition bg-white overflow-hidden"
+                                    className="group rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-lg transition-all duration-300 bg-white overflow-hidden transform hover:scale-105"
                                     title={`${t.type} • ${t.name}`}
                                 >
-                                    <div className="relative aspect-[4/3] w-full bg-gray-100 flex items-center justify-center">
+                                    <div className="relative aspect-[4/3] w-full bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
                                         {previewMap[t.id] ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
                                             <img src={previewMap[t.id]} alt={t.name} className="w-full h-full object-cover" />
                                         ) : (
-                                            <div className="text-xs text-gray-400">No preview</div>
+                                            <div className="text-center">
+                                                <Grid3X3 className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                                <div className="text-xs text-gray-400">No preview</div>
+                                            </div>
                                         )}
-                                        {hasChildren(t.node) && (
+                                        
+                                        {/* Modern Action Buttons */}
+                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all duration-300 flex items-end justify-between p-3 opacity-0 group-hover:opacity-100">
+                                            {hasChildren(t.node) && (
+                                                <button
+                                                    onClick={() => goEnter(t.node)}
+                                                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white/90 backdrop-blur-sm text-gray-700 hover:bg-white hover:text-gray-900 transition-all duration-200 shadow-lg flex items-center gap-1"
+                                                >
+                                                    <FolderOpen className="w-3 h-3" />
+                                                    Enter
+                                                </button>
+                                            )}
                                             <button
-                                                onClick={() => goEnter(t.node)}
-                                                className="absolute bottom-2 left-2 px-2 py-1 text-[11px] rounded bg-white/90 border hover:bg-white"
+                                                onClick={() => goPick(t.node)}
+                                                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg flex items-center gap-1"
                                             >
-                                                Enter
+                                                <Eye className="w-3 h-3" />
+                                                Select
                                             </button>
-                                        )}
-                                        <button
-                                            onClick={() => goPick(t.node)}
-                                            className="absolute bottom-2 right-2 px-2 py-1 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-700"
-                                        >
-                                            Select
-                                        </button>
-                                    </div>
-                                    <div className="px-2 py-2 flex items-center justify-between">
-                                        <div className="truncate text-sm font-medium" title={t.name}>
-                                            {highlight(t.name || t.id, debouncedQuery)}
                                         </div>
-                                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
-                                            {t.type}
-                                        </span>
+                                    </div>
+                                    
+                                    <div className="px-3 py-3">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="truncate text-sm font-medium text-gray-900" title={t.name}>
+                                                {highlight(t.name || t.id, debouncedQuery)}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] px-2 py-1 rounded-full bg-gradient-to-r from-gray-100 to-gray-200 text-gray-600 font-medium">
+                                                {t.type}
+                                            </span>
+                                            {hasChildren(t.node) && (
+                                                <span className="text-[10px] text-blue-500 font-medium">
+                                                    {t.node.children?.length || 0} items
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     ) : (
-                        <div className="h-full flex items-center justify-center text-gray-500 text-sm">
-                            {debouncedQuery ? 'No matches. Try a different term.' : 'No navigable children here.'}
+                        <div className="h-full flex flex-col items-center justify-center text-gray-500">
+                            <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mb-4">
+                                <Search className="w-8 h-8 text-gray-400" />
+                            </div>
+                            <p className="text-lg font-medium text-gray-700 mb-2">
+                                {debouncedQuery ? 'No matches found' : 'No navigable children here'}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                                {debouncedQuery ? 'Try a different search term' : 'This level contains no browseable elements'}
+                            </p>
                         </div>
                     )}
                 </div>

@@ -45,7 +45,7 @@ export class FigmaPluginIntegration {
 
   // Validate if JSON data is from our plugin
   isPluginExport(data: any): boolean {
-    return data?.metadata?.exportedBy === 'DesignStorm Plugin';
+    return data?.metadata?.exportedBy === 'LazyCode.ai Plugin';
   }
 
   // Parse plugin export JSON

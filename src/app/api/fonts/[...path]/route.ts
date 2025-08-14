@@ -35,7 +35,7 @@ export async function GET(
     try {
       const response = await fetch(targetUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; DesignStorm/1.0)',
+          'User-Agent': 'Mozilla/5.0 (compatible; LazyCode.ai/1.0)',
         },
       });
       

@@ -208,7 +208,7 @@ function OutputPageContent() {
         setAssetLoadingStatus('Not started');
 
         const isPluginExport = (data: any) =>
-            !!(data?.metadata?.exportedBy === 'DesignStorm Plugin' || data?.imageMap || data?.nodes);
+            !!(data?.metadata?.exportedBy === 'LazyCode.ai Plugin' || data?.imageMap || data?.nodes);
 
         if (isPluginExport(json)) {
           const { parsePluginData } = require('@/lib/figma-plugin');
@@ -314,7 +314,7 @@ function OutputPageContent() {
         } catch {}
 
         if (stored) {
-          setDataSource(stored.metadata?.exportedBy === 'DesignStorm Plugin' ? 'Plugin Export' : 'File Upload');
+          setDataSource(stored.metadata?.exportedBy === 'LazyCode.ai Plugin' ? 'Plugin Export' : 'File Upload');
           setFigmaData(stored);
 
           const chosen = synthesizeAbsoluteBB(
@@ -348,7 +348,16 @@ function OutputPageContent() {
         setLoading(false);
       } catch (e) {
         console.error(e);
-        setError(e instanceof Error ? e.message : 'Failed to load Figma data');
+        const errorMessage = e instanceof Error ? e.message : 'Failed to load Figma data';
+        
+        // Provide more helpful error messages for common issues
+        if (errorMessage.includes('authentication') || errorMessage.includes('403')) {
+          setError('This Figma file requires authentication. Please log in with your Figma account or add a Personal Access Token in Settings.');
+        } else if (errorMessage.includes('not found') || errorMessage.includes('404')) {
+          setError('Figma file not found. Please check the URL and ensure the file is accessible.');
+        } else {
+          setError(errorMessage);
+        }
         setLoading(false);
       }
     };
@@ -623,7 +632,7 @@ function OutputPageContent() {
 
       files.set(
           'src/app/layout.tsx',
-          `import './globals.css';\n\nexport const metadata = { title: '${componentName}', description: 'Exported from DesignStorm' };\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang="en">\n      <head>\n        ${headLinks}\n      </head>\n      <body style={{ margin: 0 }}>{children}</body>\n    </html>\n  );\n}\n`,
+          `import './globals.css';\n\nexport const metadata = { title: '${componentName}', description: 'Exported from LazyCode.ai' };\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang="en">\n      <head>\n        ${headLinks}\n      </head>\n      <body style={{ margin: 0 }}>{children}</body>\n    </html>\n  );\n}\n`,
       );
 
       files.set(
@@ -1200,11 +1209,51 @@ function OutputPageContent() {
 
   if (error) {
     return (
-        <div className="h-screen w-screen flex items-center justify-center bg-gray-50">
-          <div className="text-center max-w-md">
-            <div className="text-red-500 text-6xl mb-4">⚠️</div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Design</h1>
-            <p className="text-gray-600 mb-4">{error}</p>
+        <div className="h-screen w-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50">
+          <div className="text-center max-w-lg mx-4">
+            <div className="w-20 h-20 bg-gradient-to-br from-red-100 to-red-200 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">
+              Error Loading{' '}
+              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                Design
+              </span>
+            </h1>
+            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm mb-6">
+              <p className="text-gray-700 mb-4">{error}</p>
+              
+              {error.includes('authentication') && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-blue-900 mb-2">How to fix this:</h3>
+                  <ul className="text-sm text-blue-800 space-y-1">
+                    <li>• Log in with your Figma account using OAuth</li>
+                    <li>• Or add a Personal Access Token in the settings below</li>
+                    <li>• Make sure the file is accessible to your account</li>
+                  </ul>
+                </div>
+              )}
+              
+              {error.includes('not found') && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-yellow-900 mb-2">How to fix this:</h3>
+                  <ul className="text-sm text-yellow-800 space-y-1">
+                    <li>• Check that the Figma URL is correct</li>
+                    <li>• Ensure the file is public or you have access to it</li>
+                    <li>• Try uploading the JSON file directly instead</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+            
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+            >
+              Try Again
+            </button>
           </div>
         </div>
     );

@@ -11,17 +11,14 @@ export default function Home() {
               <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">DS</span>
               </div>
-              <h1 className="text-xl font-bold text-gray-900">DesignStorm</h1>
+              <h1 className="text-xl font-bold text-gray-900">LazyCode.ai</h1>
             </div>
             <nav className="flex items-center space-x-6">
               <Link href="/upload" className="text-gray-600 hover:text-gray-900 transition-colors">
                 Upload
               </Link>
-              <Link href="/test-plugin" className="text-gray-600 hover:text-gray-900 transition-colors">
-                Test Plugin
-              </Link>
-              <Link href="/docs" className="text-gray-600 hover:text-gray-900 transition-colors">
-                Docs
+              <Link href="/pricing" className="text-gray-600 hover:text-gray-900 transition-colors">
+                Pricing
               </Link>
               <Link href="/upload" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
                 Get Started
@@ -62,7 +59,7 @@ export default function Home() {
               From Design to Code in Minutes
             </h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              DesignStorm replicates your Figma designs pixel-for-pixel, then makes them production-ready with intelligent AI.
+              LazyCode.ai replicates your Figma designs pixel-for-pixel, then makes them production-ready with intelligent AI.
             </p>
           </div>
 
@@ -114,7 +111,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              The DesignStorm Workflow
+              The LazyCode.ai Workflow
             </h2>
             <p className="text-lg text-gray-600">
               Step-by-step transformation from exact layout to responsive, maintainable code.
@@ -193,7 +190,7 @@ export default function Home() {
                 <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
                   <span className="text-white font-bold text-sm">DS</span>
                 </div>
-                <h3 className="text-xl font-bold">DesignStorm.ai</h3>
+                <h3 className="text-xl font-bold">LazyCode.ai</h3>
               </div>
               <p className="text-gray-400">
                 The ultimate Figma-to-code platform for modern web development.
@@ -225,7 +222,7 @@ export default function Home() {
             </div>
           </div>
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2025 DesignStorm. All rights reserved.</p>
+            <p>&copy; 2025 LazyCode.ai. All rights reserved.</p>
           </div>
         </div>
       </footer>

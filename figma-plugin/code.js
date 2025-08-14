@@ -1,4 +1,4 @@
-// DesignStorm Exporter - Figma Plugin
+// LazyCode.ai Exporter - Figma Plugin
 // This plugin extracts all assets, images, and design data for better code generation
 
 figma.showUI(__html__, { width: 400, height: 600 });
@@ -87,7 +87,7 @@ async function exportCompleteDesign() {
         version: figma.root.version,
         lastModified: new Date().toISOString(),
         pluginVersion: '1.0.0',
-        exportedBy: 'DesignStorm Plugin'
+        exportedBy: 'LazyCode.ai Plugin'
       }
     };
 
@@ -225,7 +225,7 @@ async function exportSelectedNodes() {
       selectionCount: selection.length,
       exportedAt: new Date().toISOString(),
       pluginVersion: '1.0.0',
-      exportedBy: 'DesignStorm Plugin'
+              exportedBy: 'LazyCode.ai Plugin'
     }
   };
   
