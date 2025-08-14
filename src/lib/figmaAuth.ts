@@ -1,7 +1,7 @@
 // Figma OAuth and File Loading System
 // Handles OAuth login, file fetching, and direct link processing
 
-import { saveFigmaAuth, loadFigmaAuth, removeFigmaAuth } from './figmaStorage';
+import { saveFigmaAuth, loadFigmaAuth, removeFigmaAuth, removeFigmaToken, removeFigmaData, removeFigmaUrl } from './figmaStorage';
 
 interface FigmaUser {
   id: string;
@@ -84,30 +84,11 @@ class FigmaAuthManager {
    * Start OAuth login flow
    */
   loginWithFigma(): void {
+    // Always start OAuth via server so we use FIGMA_* from .env.prod
     try {
-      const clientId = FIGMA_CONFIG.CLIENT_ID;
-      const redirectUri = resolveRedirectUri();
-      const state = this.generateState();
-      
-      if (!clientId || clientId === 'your-figma-client-id') {
-        throw new Error('Figma client ID not configured');
-      }
-
-      const authUrl = new URL(FIGMA_CONFIG.AUTH_URL);
-      authUrl.searchParams.set('client_id', clientId);
-      authUrl.searchParams.set('redirect_uri', redirectUri);
-      authUrl.searchParams.set('scope', FIGMA_CONFIG.SCOPE);
-      authUrl.searchParams.set('state', state);
-      authUrl.searchParams.set('response_type', 'code');
-
-      console.log('🔗 Redirecting to Figma OAuth:', authUrl.toString());
-      // Add a small delay to show loading state
-      setTimeout(() => {
-        window.location.href = authUrl.toString();
-      }, 100);
-    } catch (error) {
-      console.error('Failed to start OAuth:', error);
-      alert('Failed to start Figma login. Please check your configuration.');
+      window.location.href = '/api/auth/figma/start';
+    } catch {
+      // no-op
     }
   }
 
@@ -464,6 +445,31 @@ class FigmaAuthManager {
    */
   async logout(): Promise<void> {
     this.authState = { isAuthenticated: false };
+    
+    // Clear all stored Figma data and tokens
+    if (typeof window !== 'undefined') {
+      try {
+        // Clear IndexedDB storage
+        await removeFigmaAuth();
+        await removeFigmaToken();
+        await removeFigmaData();
+        await removeFigmaUrl();
+        
+        // Clear localStorage fallback
+        localStorage.removeItem(FIGMA_CONFIG.STORAGE_KEY);
+        localStorage.removeItem('figmaData');
+        localStorage.removeItem('figmaToken');
+        localStorage.removeItem('figmaUrl');
+        
+        // Clear sessionStorage
+        sessionStorage.removeItem('figma_oauth_state');
+        
+        console.log('✅ Cleared all Figma authentication data');
+      } catch (error) {
+        console.error('❌ Error clearing Figma data:', error);
+      }
+    }
+    
     await this.saveAuthState();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('figma-auth-updated'));
