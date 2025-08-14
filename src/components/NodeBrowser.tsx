@@ -245,7 +245,7 @@ export default function NodeBrowser({
                 </div>
 
                 {/* Advanced Search Section */}
-                <div className="mt-6 flex flex-wrap items-center gap-4">
+                <div className="mt-6 mb-4 flex flex-wrap items-center gap-4">
                     <div className="relative flex-1 max-w-md">
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -290,7 +290,7 @@ export default function NodeBrowser({
                 </div>
 
                 {/* Modern Grid */}
-                <div className="mt-6 flex-1 overflow-auto">
+                <div className="mt-8 flex-1 overflow-auto">
                     {gridTargets.length ? (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                             {gridTargets.map((t) => (
