@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     }
     const user = await res.json();
     return NextResponse.json({ authenticated: true, user, access_token: token });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ authenticated: false }, { status: 500 });
   }
 }

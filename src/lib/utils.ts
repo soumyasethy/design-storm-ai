@@ -296,8 +296,6 @@ export const loadGoogleFont = (fontFamily: string): void => {
 export const getFontFamilyWithFallback = (family: string): string => {
   if (!family) return 'inherit';
   // Fonts are loaded centrally via loadFontsFromFigmaData, so we don't need to load here
-  // loadGoogleFont(family); // Disabled to prevent duplicate loading
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { createReactFontFamily } = require('./fontUtils');
   return createReactFontFamily(family);
 };

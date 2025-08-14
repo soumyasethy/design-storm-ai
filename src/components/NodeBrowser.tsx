@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { FigmaNode } from '@/lib/figmaTypes';
 import { NAV_TYPES, PREVIEWABLE_TYPES, hasChildren } from '@/lib/figmaNavigation';
-import { figmaAuthHeaders } from '@/lib/utils';
 import { Search, ArrowUp, X, ChevronRight, FolderOpen, Eye, Zap, Grid3X3 } from 'lucide-react';
 
 type BrowserTarget = { id: string; name: string; type: string; node: FigmaNode };

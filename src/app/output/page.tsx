@@ -78,7 +78,7 @@ function OutputPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState<string>('');
-  const [dataVersion, setDataVersion] = useState<number>(0);
+  const [dataVersion] = useState<number>(0);
 
   // auth + api
   const [authUser, setAuthUser] = useState<any>(null);
@@ -87,7 +87,6 @@ function OutputPageContent() {
   const [tokenMode, setTokenMode] = useState<'auto' | 'oauth' | 'pat'>(() => {
     try { return (localStorage.getItem('tokenMode') as any) || 'auto'; } catch { return 'auto'; }
   });
-  const [figmaUrl, setFigmaUrl] = useState<string>('');
 
   // assets
   const [assetMap, setAssetMap] = useState<Record<string, string>>({});
@@ -179,7 +178,7 @@ function OutputPageContent() {
   };
 
   // initial token hydrate
-  useEffect(() => { void hydrateBestToken(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { void hydrateBestToken(); }, []);
 
   const handleLogout = async () => {
     try {
@@ -293,7 +292,7 @@ function OutputPageContent() {
             setFrameNode(chosen);
             void loadFontsFromFigmaData(chosen);
 
-            setFigmaUrl(normalized);
+            // setFigmaUrl(normalized);
             const key = extractFileKeyFromUrl(normalized);
             setFileKey(key || '');
 
@@ -334,7 +333,7 @@ function OutputPageContent() {
 
           if (storedUrl) {
             const norm = normalizeToWebLink(storedUrl);
-            setFigmaUrl(norm);
+            // setFigmaUrl(norm);
             const key = extractFileKeyFromUrl(norm);
             setFileKey(key || '');
           }
@@ -886,7 +885,7 @@ function OutputPageContent() {
                 const val = String(st.fontStyle || '').toLowerCase();
                 return val === 'italic' || val === 'oblique' ? val : undefined;
               })(),
-              // these buffers match the “old code” look and avoid crowding
+              // these buffers match the "old code" look and avoid crowding
               // paddingLeft: `${TEXT_W_BUFFER}px`,
               // paddingRight: `${TEXT_W_BUFFER}px`,
               // paddingTop: `${TEXT_H_BUFFER}px`,
@@ -1343,7 +1342,7 @@ function OutputPageContent() {
                     className="mt-1 w-full border rounded px-2 py-1 text-sm"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    We’ll send <code>X-Figma-Token</code> for PATs or <code>Authorization: Bearer</code> for OAuth via the server proxy.
+                    We&apos;ll send <code>X-Figma-Token</code> for PATs or <code>Authorization: Bearer</code> for OAuth via the server proxy.
                   </p>
                 </label>
               </div>

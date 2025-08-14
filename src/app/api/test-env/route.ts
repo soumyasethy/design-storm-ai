@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const envVars = {
     FIGMA_CLIENT_ID: process.env.FIGMA_CLIENT_ID,
     FIGMA_CLIENT_SECRET: process.env.FIGMA_CLIENT_SECRET ? '***' : 'undefined',

@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     }).toString();
 
     const tokenUrl = 'https://api.figma.com/v1/oauth/token';
-    let tokenResponse = await fetch(tokenUrl, {
+    const tokenResponse = await fetch(tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
