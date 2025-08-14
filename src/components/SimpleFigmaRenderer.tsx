@@ -77,6 +77,7 @@ const fillStyles = (
         const A = f.color.a == null ? 1 : f.color.a;
         const isPureWhite = R === 255 && G === 255 && B === 255 && A >= 1;
         const isNearBlack = R <= 3 && G <= 3 && B <= 3; // ~#000
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const isShape = ['RECTANGLE', 'ELLIPSE', 'VECTOR', 'LINE'].includes(node?.type);
         const isContainer = ['FRAME','GROUP','INSTANCE','COMPONENT','PAGE','CANVAS'].includes(node?.type);
         const lowAlpha = A <= 0.12;
@@ -262,7 +263,6 @@ type Renderer = (p: RegistryProps) => React.ReactElement | null;
 const TextRenderer: Renderer = ({ node, styles, showDebug, devMode }) => {
     if (!node || typeof node !== 'object') return null;
     const characters: string = node.characters?.replace(/\u2028/g, '\n') || '';
-    if (!characters) return null;
     const st = node.style || {};
 
     useEffect(() => {
@@ -271,6 +271,8 @@ const TextRenderer: Renderer = ({ node, styles, showDebug, devMode }) => {
                 .then(({ loadFont }) => loadFont(st.fontFamily, [st.fontWeight || 400, 700]).catch(() => { }))
                 .catch(() => { });
     }, [st.fontFamily, st.fontWeight]);
+
+    if (!characters) return null;
 
     const align = getTextAlign(st?.textAlignHorizontal || 'LEFT');
 
@@ -753,10 +755,9 @@ const SimpleFigmaRenderer: React.FC<Props> = ({
     enableScaling = true,
     maxScale = 2,
 }) => {
-    if (!node || typeof node !== 'object') return <div>Invalid node</div>;
-
     // annotate once with parent bounds + order for stacking
     const annotated = useMemo(() => {
+        if (!node || typeof node !== 'object') return null;
         const mark = (n: any, parentBB?: any, depth = 0) => {
             const kids = (n.children || []).map((k: any, i: number) =>
                 mark({ ...k, __order: i }, n.absoluteBoundingBox, depth + 1)
@@ -765,6 +766,8 @@ const SimpleFigmaRenderer: React.FC<Props> = ({
         };
         return mark(node, undefined, 0);
     }, [node]);
+
+    if (!node || typeof node !== 'object') return <div>Invalid node</div>;
 
     const designWidth = node?.absoluteBoundingBox?.width ?? 1440;
     const scale = useFigmaScale(designWidth, maxScale);

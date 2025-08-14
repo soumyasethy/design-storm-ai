@@ -144,7 +144,7 @@ function OutputPageContent() {
   const hydrateBestToken = async () => {
     // Respect explicit mode first
     if (tokenMode === 'oauth') {
-      const t = figmaAuth.getAccessToken?.();
+      const t = await figmaAuth.getAccessToken?.();
       if (t) { setFigmaToken(t); return t; }
       return '';
     }
@@ -162,7 +162,7 @@ function OutputPageContent() {
     }
     // Auto: prefer OAuth, fallback PAT
     try {
-      const t = figmaAuth.getAccessToken?.();
+      const t = await figmaAuth.getAccessToken?.();
       if (t) { setFigmaToken(t); return t; }
     } catch {}
     try {
@@ -210,7 +210,7 @@ function OutputPageContent() {
             !!(data?.metadata?.exportedBy === 'LazyCode.ai Plugin' || data?.imageMap || data?.nodes);
 
         if (isPluginExport(json)) {
-          const { parsePluginData } = require('@/lib/figma-plugin');
+          const { parsePluginData } = await import('@/lib/figma-plugin');
           const pluginData = parsePluginData(json);
           setDataSource('Plugin Export');
           setFigmaData(pluginData);

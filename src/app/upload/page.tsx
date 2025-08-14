@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect, Suspense } from 'react';
-import { Upload, X, Eye, Code, ArrowRight, Figma, Zap, CheckCircle, AlertCircle, Link as LinkIcon } from 'lucide-react';
+import { Upload, X, Eye, Code, ArrowRight, Figma, CheckCircle, AlertCircle, Link as LinkIcon } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useFigmaFile } from '@/lib/useFigmaFile';
@@ -63,7 +63,9 @@ function UploadPageContent() {
   const [tokenMode, setTokenMode] = useState<'auto'|'oauth'|'pat'>(() => {
     try { return (localStorage.getItem('tokenMode') as any) || 'auto'; } catch { return 'auto'; }
   });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>('oauth');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedFileKey, setSelectedFileKey] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -78,10 +80,12 @@ function UploadPageContent() {
     error: oauthError,
     currentFile: oauthFile,
     availableFiles,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     projects,
     login,
     logout,
     loadFiles,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     loadFileByLink,
     loadFileByKey,
     clearError: clearOAuthError
@@ -361,6 +365,7 @@ function UploadPageContent() {
     }
   }, [router, figmaToken, tokenMode]);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleFileSelect = useCallback(async (fileKey: string) => {
     if (!fileKey) return;
 

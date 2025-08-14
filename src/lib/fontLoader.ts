@@ -53,6 +53,7 @@ class FontLoader {
     // Deduplicate and sort weights to avoid 700;700
     const uniqueWeights = Array.from(new Set(weights)).sort((a, b) => a - b);
     const weightParam = uniqueWeights.join(';');
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     // (styles currently unused by css2 shorthand we're forming)
     return `/api/fonts/css2?family=${familyParam}:wght@${weightParam}&display=${display}`;
   }

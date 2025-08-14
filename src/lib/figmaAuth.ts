@@ -129,7 +129,7 @@ class FigmaAuthManager {
       }).toString();
 
       const tokenUrl = 'https://api.figma.com/v1/oauth/token';
-      let tokenResponse = await fetch(tokenUrl, {
+      const tokenResponse = await fetch(tokenUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -247,7 +247,7 @@ class FigmaAuthManager {
       try {
         console.log('🔐 Trying authenticated access for file:', fileKey);
         return await this.getFileData(fileKey);
-      } catch (error) {
+      } catch {
         console.log('🔄 Authenticated access failed, falling back to public for file:', fileKey);
         return await this.getPublicFileData(fileKey);
       }
@@ -362,6 +362,7 @@ class FigmaAuthManager {
   /**
    * Alternative method to fetch public file data
    */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async getPublicFileDataAlternative(fileKey: string): Promise<FigmaFileData> {
     try {
       console.log('🔍 Public file requires authentication or is not accessible');
@@ -370,8 +371,8 @@ class FigmaAuthManager {
       // we'll provide a clear error message and suggest authentication
       throw new Error('This Figma file requires authentication. Please log in with your Figma account or use a Personal Access Token to access this file.');
 
-    } catch (error) {
-      console.error('Error with public file access:', error);
+    } catch {
+      console.error('Error with public file access');
       throw new Error('Public file access not available - file may require authentication');
     }
   }

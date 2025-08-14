@@ -122,7 +122,7 @@ export default function NodeBrowser({
                 n.type.toLowerCase().includes(debouncedQuery.toLowerCase()),
         );
         return filtered.map((n) => ({ id: n.id, name: n.name, type: n.type, node: n }));
-    }, [debouncedQuery, deepSearch, current, targetsImmediate]);
+    }, [debouncedQuery, deepSearch, current, targetsImmediate, collectDeep]);
 
     const showingSearch = debouncedQuery.length > 0;
     const gridTargets: BrowserTarget[] = showingSearch ? searchList : targetsImmediate;

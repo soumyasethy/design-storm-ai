@@ -14,7 +14,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   FigmaStorage,
-  STORAGE_KEYS,
   saveFigmaData as saveData,
   loadFigmaData as loadData,
   removeFigmaData,

@@ -195,7 +195,7 @@ export async function loadFigmaAssetsFromNodes({
       const url = `/api/assets?url=${encodeURIComponent(figmaUrl)}`;
 
       try {
-        let res = await fetch(url, { 
+        const res = await fetch(url, { 
           headers: { 'X-Figma-Token': figmaToken },
           signal 
         });
@@ -296,7 +296,7 @@ export const loadGoogleFont = (fontFamily: string): void => {
 export const getFontFamilyWithFallback = (family: string): string => {
   if (!family) return 'inherit';
   // Fonts are loaded centrally via loadFontsFromFigmaData, so we don't need to load here
-  const { createReactFontFamily } = require('./fontUtils');
+  import { createReactFontFamily } from './fontUtils';
   return createReactFontFamily(family);
 };
 
