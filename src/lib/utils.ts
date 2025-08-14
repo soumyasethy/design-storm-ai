@@ -1,3 +1,5 @@
+import { createReactFontFamily } from './fontUtils';
+
 /* ──────────────────────────────────────────────────────────
    Auth + URL helpers (exported)
 ─────────────────────────────────────────────────────────── */
@@ -296,7 +298,6 @@ export const loadGoogleFont = (fontFamily: string): void => {
 export const getFontFamilyWithFallback = (family: string): string => {
   if (!family) return 'inherit';
   // Fonts are loaded centrally via loadFontsFromFigmaData, so we don't need to load here
-  import { createReactFontFamily } from './fontUtils';
   return createReactFontFamily(family);
 };
 
