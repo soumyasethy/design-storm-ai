@@ -7,8 +7,6 @@ import { useSearchParams } from 'next/navigation';
 import SimpleFigmaRenderer from '@/components/SimpleFigmaRenderer';
 import NodeBrowser from '@/components/NodeBrowser';
 import SettingsPanel from '@/components/SettingsPanel';
-import { VisualAnalysisPanel } from '@/components/VisualAnalysisPanel';
-import { VisualAnalyzer } from '@/lib/visualAnalyzer';
 
 import { figmaAuth } from '@/lib/figmaAuth';
 import type { FigmaData, FigmaNode } from '@/lib/figmaTypes';
@@ -112,8 +110,6 @@ function OutputPageContent() {
   // overlays
   const [showBrowser, setShowBrowser] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
-  const [showVisualAnalysis, setShowVisualAnalysis] = useState<boolean>(false);
-  const [visualAnalysis, setVisualAnalysis] = useState<any>(null);
   // only download assets after an explicit target pick
   const [hasUserPickedTarget, setHasUserPickedTarget] = useState<boolean>(false);
 
@@ -1405,18 +1401,6 @@ function OutputPageContent() {
               <button onClick={() => setShowSettings(true)} className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200">
                 Settings
               </button>
-              <button 
-                onClick={() => {
-                  if (frameNode) {
-                    const analysis = VisualAnalyzer.analyzeVisualDesign(frameNode, assetMap);
-                    setVisualAnalysis(analysis);
-                    setShowVisualAnalysis(true);
-                  }
-                }}
-                className="px-2 py-1 text-xs rounded bg-gradient-to-r from-green-500 to-teal-500 text-white hover:from-green-600 hover:to-teal-600"
-              >
-                Visual AI
-              </button>
 
               <button
                   onClick={handleExport}
@@ -1581,12 +1565,6 @@ function OutputPageContent() {
             fileKey={fileKey}
             tokenMode={tokenMode}
             setTokenMode={(v) => { setTokenMode(v); try { localStorage.setItem('tokenMode', v); } catch {} }}
-        />
-        
-        <VisualAnalysisPanel
-            analysis={visualAnalysis}
-            isOpen={showVisualAnalysis}
-            onClose={() => setShowVisualAnalysis(false)}
         />
       </div>
   );

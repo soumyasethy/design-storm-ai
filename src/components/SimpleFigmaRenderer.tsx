@@ -14,8 +14,6 @@ import {
     isNodeVisible,
 } from '@/lib/utils';
 import { createReactFontFamily } from '@/lib/fontUtils';
-import { AILayoutAnalyzer, LayoutContext } from '../lib/aiLayoutAnalyzer';
-import { VisualAnalyzer } from '../lib/visualAnalyzer';
 
 /* ===================== config ===================== */
 /** set to true to use plain <img>, which avoids Next optimizer churn on signed figma urls */
@@ -564,41 +562,17 @@ const ContainerRenderer: Renderer = ({ node, styles, imageMap, showDebug, devMod
         }
     }
 
-    // AI Layout Analysis for enhanced container rendering
-    const aiLayoutAnalysis = useMemo(() => {
-        if (!node.children || node.children.length === 0) return null;
-        
-        const bb = node.absoluteBoundingBox;
-        const children = node.children || [];
-        
-        const context: LayoutContext = {
-            parentType: node.type,
-            parentWidth: bb?.width || 0,
-            parentHeight: bb?.height || 0,
-            childCount: children.length,
-            childrenTypes: [...new Set(children.map((c: any) => c.type))] as string[],
-            hasScrollableContent: checkScrollableContent(node, children),
-            isOverflowing: checkOverflowing(node, children),
-            depth: (node as any).__depth || 0,
-            isRoot: !(node as any).__parentBB
-        };
-        
-        return AILayoutAnalyzer.analyzeLayout(node, context);
-    }, [node]);
-
-    // Visual Pattern Analysis for intelligent detection
-    const visualAnalysis = useMemo(() => {
-        return VisualAnalyzer.analyzeVisualDesign(node, imageMap);
-    }, [node, imageMap]);
-
-    // Enhanced container rendering with AI layout analysis
-    const containerContent = (
-        <>
+    // default: compose its children normally
+    return (
+        <div
+            className="relative"
+            style={bg}
+            title={`${node.name} (${node.type})`}
+            data-figma-node-id={node.id}
+        >
             {showDebug && devMode && (
                 <div className="absolute -top-8 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 shadow">
                     {node.name} · {node.type}
-                    {aiLayoutAnalysis && ` · AI: ${aiLayoutAnalysis.layoutType}`}
-                    {visualAnalysis?.primaryPattern && ` · Visual: ${visualAnalysis.primaryPattern.type} (${visualAnalysis.primaryPattern.confidence}%)`}
                 </div>
             )}
             {node.children?.map((c: any) => (
@@ -610,23 +584,6 @@ const ContainerRenderer: Renderer = ({ node, styles, imageMap, showDebug, devMod
                     devMode={devMode}
                 />
             ))}
-        </>
-    );
-
-    // Use AI-generated component structure if available
-    if (aiLayoutAnalysis && aiLayoutAnalysis.layoutType !== 'relative') {
-        return AILayoutAnalyzer.generateComponentStructure(aiLayoutAnalysis, containerContent);
-    }
-
-    // default: compose its children normally
-    return (
-        <div
-            className="relative"
-            style={bg}
-            title={`${node.name} (${node.type})`}
-            data-figma-node-id={node.id}
-        >
-            {containerContent}
         </div>
     );
 };
@@ -702,12 +659,6 @@ const layoutStyles = (node: any, parentBB?: any): React.CSSProperties => {
 
     if (node.clipContent === true || ['CANVAS', 'PAGE'].includes(node.type)) s.overflow = 'hidden';
 
-    // ----- AI-Enhanced Layout Analysis -----
-    const aiLayoutAnalysis = analyzeNodeLayout(node, parentBB);
-    if (aiLayoutAnalysis) {
-        Object.assign(s, aiLayoutAnalysis.styles);
-    }
-
     // ----- Figma Auto-Layout ➜ CSS Flexbox -----
     const mapMain = (v?: string) => {
         switch (String(v || '').toUpperCase()) {
@@ -754,74 +705,6 @@ const layoutStyles = (node: any, parentBB?: any): React.CSSProperties => {
     }
 
     return sanitize(s);
-};
-
-/**
- * AI-powered layout analysis for enhanced layout detection
- */
-const analyzeNodeLayout = (node: any, parentBB?: any): { styles: React.CSSProperties; className?: string } | null => {
-    // Only analyze containers with children
-    if (!node.children || node.children.length === 0) return null;
-    
-    // Create layout context
-    const bb = node.absoluteBoundingBox;
-    const parentBoundingBox = parentBB;
-    const children = node.children || [];
-    
-    const context: LayoutContext = {
-        parentType: node.type,
-        parentWidth: bb?.width || 0,
-        parentHeight: bb?.height || 0,
-        childCount: children.length,
-        childrenTypes: [...new Set(children.map((c: any) => c.type))] as string[],
-        hasScrollableContent: checkScrollableContent(node, children),
-        isOverflowing: checkOverflowing(node, children),
-        depth: (node as any).__depth || 0,
-        isRoot: !parentBoundingBox
-    };
-    
-    // Analyze layout using AI
-    const analysis = AILayoutAnalyzer.analyzeLayout(node, context);
-    const { className, styles } = AILayoutAnalyzer.generateCSS(analysis);
-    
-    return { styles, className };
-};
-
-/**
- * Check if content would benefit from scrolling
- */
-const checkScrollableContent = (node: any, children: any[]): boolean => {
-    const bb = node.absoluteBoundingBox;
-    if (!bb) return false;
-    
-    // Calculate total content height/width
-    let maxX = 0, maxY = 0;
-    children.forEach((child: any) => {
-        const childBB = child.absoluteBoundingBox;
-        if (childBB) {
-            maxX = Math.max(maxX, childBB.x + childBB.width);
-            maxY = Math.max(maxY, childBB.y + childBB.height);
-        }
-    });
-    
-    return maxX > bb.width || maxY > bb.height;
-};
-
-/**
- * Check if content is overflowing the container
- */
-const checkOverflowing = (node: any, children: any[]): boolean => {
-    const bb = node.absoluteBoundingBox;
-    if (!bb) return false;
-    
-    return children.some((child: any) => {
-        const childBB = child.absoluteBoundingBox;
-        if (!childBB) return false;
-        
-        return childBB.x < 0 || childBB.y < 0 || 
-               (childBB.x + childBB.width) > bb.width || 
-               (childBB.y + childBB.height) > bb.height;
-    });
 };
 
 /* ===================== Node + root ===================== */

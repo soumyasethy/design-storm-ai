@@ -94,6 +94,14 @@ export async function GET(request: NextRequest) {
       maxAge: tokenData.expires_in || 3600
     });
     
+    // Also set a non-httpOnly cookie for client-side access
+    response.cookies.set('figma_auth_status', 'authenticated', {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: tokenData.expires_in || 3600
+    });
+    
     return response;
 
   } catch (error) {
