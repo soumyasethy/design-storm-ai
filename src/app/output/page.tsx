@@ -213,14 +213,26 @@ function OutputPageContent() {
           const { parsePluginData } = await import('@/lib/figma-plugin');
           const pluginData = parsePluginData(json);
           setDataSource('Plugin Export');
-          setFigmaData(pluginData);
-          if (pluginData.imageMap && Object.keys(pluginData.imageMap).length) {
-            setAssetMap(pluginData.imageMap);
-            setAssetLoadingStatus(`✅ Loaded ${Object.keys(pluginData.imageMap).length} assets from plugin`);
+          
+          // Convert PluginExportData to FigmaData format
+          const figmaData: FigmaData = {
+            document: pluginData.document,
+            components: pluginData.components || {},
+            componentSets: {}, // Plugin data doesn't have componentSets, use empty object
+            styles: pluginData.styles || {},
+            imageMap: pluginData.imageMap,
+            metadata: pluginData.metadata,
+            images: pluginData.images
+          };
+          
+          setFigmaData(figmaData);
+          if (figmaData.imageMap && Object.keys(figmaData.imageMap).length) {
+            setAssetMap(figmaData.imageMap);
+            setAssetLoadingStatus(`✅ Loaded ${Object.keys(figmaData.imageMap).length} assets from plugin`);
           }
           const doc =
-              pluginData.document ||
-              (pluginData?.nodes && pluginData?.nodes[Object.keys(pluginData?.nodes)[0]]?.document);
+              figmaData.document ||
+              (figmaData?.nodes && figmaData?.nodes[Object.keys(figmaData?.nodes)[0]]?.document);
           if (doc) {
             const pick = synthesizeAbsoluteBB(doc as any);
             setFrameNode(pick);
