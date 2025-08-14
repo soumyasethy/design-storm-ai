@@ -178,7 +178,7 @@ function OutputPageContent() {
   };
 
   // initial token hydrate
-  useEffect(() => { void hydrateBestToken(); }, []);
+  useEffect(() => { void hydrateBestToken(); }, [hydrateBestToken]);
 
   const handleLogout = async () => {
     try {
@@ -749,6 +749,7 @@ function OutputPageContent() {
          if (node.fills?.[0]) {
            const f = node.fills[0];
            if (node.type !== 'TEXT' && f.type === 'SOLID' && f.color) {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const hasVisualChildren =
                 Array.isArray(node.children) &&
                 node.children.some((c: any) => ['VECTOR', 'RECTANGLE', 'ELLIPSE', 'LINE'].includes(c?.type) ||
@@ -976,6 +977,7 @@ function OutputPageContent() {
               const inner = esc(ch);
               
               // Check if we can continue with current group
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
               const groupKey = `${styleAttr}|${href || ''}`;
               if (currentGroup && currentGroup.style === styleAttr && currentGroup.href === href) {
                 currentGroup.text += inner;
@@ -1124,7 +1126,7 @@ function OutputPageContent() {
           localAssetMap[key] = publicPath;
           for (const a of aliasKeys) localAssetMap[a] = publicPath;
           zip.file(path, buf);
-        } catch (e) {
+        } catch {
           if (abort.signal.aborted) break;
           failed++;
           // Fallback: map to remote URL so exported code can still display via <img>/CSS background
@@ -1394,7 +1396,6 @@ function OutputPageContent() {
               {authUser && (
                   <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-2 py-0.5 shadow-sm">
                     {authUser.img_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
                         <img src={authUser.img_url} alt="avatar" className="w-5 h-5 rounded-full object-cover" />
                     ) : (
                         <div className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-[10px] font-semibold text-gray-700">

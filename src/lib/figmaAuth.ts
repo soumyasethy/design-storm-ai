@@ -449,7 +449,7 @@ class FigmaAuthManager {
         try { window.dispatchEvent(new Event('figma-auth-updated')); } catch {}
         return true;
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
     return false;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FigmaNode } from '@/lib/figmaTypes';
 import { NAV_TYPES, PREVIEWABLE_TYPES, hasChildren } from '@/lib/figmaNavigation';
 import { Search, ArrowUp, X, ChevronRight, FolderOpen, Eye, Zap, Grid3X3 } from 'lucide-react';
@@ -97,13 +97,13 @@ export default function NodeBrowser({
         [children],
     );
 
-    const collectDeep = (n: FigmaNode, out: FigmaNode[]) => {
+    const collectDeep = useCallback((n: FigmaNode, out: FigmaNode[]) => {
         (n.children || []).forEach((c) => {
             if (NAV_TYPES.has(c.type) || PREVIEWABLE_TYPES.has(c.type) || (c.type === 'GROUP' && hasChildren(c)))
                 out.push(c);
             if (hasChildren(c)) collectDeep(c, out);
         });
-    };
+    }, []);
 
     const searchList: BrowserTarget[] = useMemo(() => {
         if (!debouncedQuery) return [];

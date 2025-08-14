@@ -447,7 +447,7 @@ const ImageRendererBase: Renderer = ({ node, styles, imageMap, showDebug, devMod
             ...strokeStyles(node),
             ...effectStyles(node),
         }),
-        [imgStyles, node.fills, node.id, imageMap, node.strokes, node.effects]
+        [imgStyles, node.fills, node.id, imageMap, node.strokes, node.effects, node]
     );
 
     return (
@@ -530,7 +530,7 @@ const ContainerRenderer: Renderer = ({ node, styles, imageMap, showDebug, devMod
             delete (base as any).backgroundColor;
         }
         return base;
-    }, [styles, node.backgroundColor, node.fills, node.id, imageMap]);
+    }, [styles, node.backgroundColor, node.fills, node.id, imageMap, node]);
 
     /* -------- case: FLATTEN MASK GROUP --------
        If a GROUP contains a child with isMask=true & maskType set, we render the
@@ -767,11 +767,11 @@ const SimpleFigmaRenderer: React.FC<Props> = ({
         return mark(node, undefined, 0);
     }, [node]);
 
-    if (!node || typeof node !== 'object') return <div>Invalid node</div>;
-
     const designWidth = node?.absoluteBoundingBox?.width ?? 1440;
     const scale = useFigmaScale(designWidth, maxScale);
     const rootBox = node?.absoluteBoundingBox;
+
+    if (!node || typeof node !== 'object') return <div>Invalid node</div>;
 
     const content = (
         <div
