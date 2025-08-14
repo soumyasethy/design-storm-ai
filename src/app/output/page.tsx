@@ -200,7 +200,7 @@ function OutputPageContent() {
     setLoading(true);
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const json = JSON.parse(e.target?.result as string) as FigmaData;
         setAssetMap({});
