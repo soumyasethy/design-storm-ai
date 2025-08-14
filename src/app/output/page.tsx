@@ -1,7 +1,7 @@
 // src/app/output/page.tsx
 'use client';
 
-import React, { Suspense, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 import SimpleFigmaRenderer from '@/components/SimpleFigmaRenderer';
@@ -141,7 +141,7 @@ function OutputPageContent() {
   }, []);
 
   // Find the best available token from: state -> localStorage -> IndexedDB -> OAuth
-  const hydrateBestToken = async () => {
+  const hydrateBestToken = useCallback(async () => {
     // Respect explicit mode first
     if (tokenMode === 'oauth') {
       const t = await figmaAuth.getAccessToken?.();
@@ -175,7 +175,7 @@ function OutputPageContent() {
       if (t) { setFigmaToken(t); try { localStorage.setItem('figmaToken', t); } catch {}; return t; }
     } catch {}
     return '';
-  };
+  }, [tokenMode]);
 
   // initial token hydrate
   useEffect(() => { void hydrateBestToken(); }, [hydrateBestToken]);

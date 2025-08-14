@@ -447,7 +447,7 @@ const ImageRendererBase: Renderer = ({ node, styles, imageMap, showDebug, devMod
             ...strokeStyles(node),
             ...effectStyles(node),
         }),
-        [imgStyles, node.fills, node.id, imageMap, node.strokes, node.effects, node]
+        [imgStyles, imageMap, node]
     );
 
     return (
@@ -530,7 +530,7 @@ const ContainerRenderer: Renderer = ({ node, styles, imageMap, showDebug, devMod
             delete (base as any).backgroundColor;
         }
         return base;
-    }, [styles, node.backgroundColor, node.fills, node.id, imageMap, node]);
+    }, [styles, imageMap, node]);
 
     /* -------- case: FLATTEN MASK GROUP --------
        If a GROUP contains a child with isMask=true & maskType set, we render the

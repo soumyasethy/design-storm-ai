@@ -47,7 +47,7 @@ class FontLoader {
     return fontMap[fontFamily] || fontFamily;
   }
 
-  private getGoogleFontsUrl(fontFamily: string, weights: number[] = [400, 700], styles: string[] = ['normal'], display: string = 'swap'): string {
+  private getGoogleFontsUrl(fontFamily: string, weights: number[] = [400, 700], _styles: string[] = ['normal'], display: string = 'swap'): string {
     const normalizedFamily = this.normalizeFontFamily(fontFamily);
     const familyParam = normalizedFamily.replace(/\s+/g, '+');
     // Deduplicate and sort weights to avoid 700;700
