@@ -138,7 +138,6 @@ function UploadPageContent() {
       setError(null);
       // Ensure auth UI sync
       try {
-        // @ts-ignore
         document.dispatchEvent(new Event('figma-auth-updated'));
       } catch {}
       // You can add a success message here if needed
@@ -553,7 +552,6 @@ function UploadPageContent() {
           {isAuthenticated && user ? (
             <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-3 py-1 shadow-sm">
               {user.img_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img src={user.img_url} alt="avatar" className="w-6 h-6 rounded-full object-cover" />
               ) : (
                 <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs font-semibold text-gray-700">

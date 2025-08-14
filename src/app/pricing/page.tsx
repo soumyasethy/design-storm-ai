@@ -240,7 +240,7 @@ export default function PricingPage() {
                 What happens if I exceed my plan limits?
               </h3>
               <p className="text-gray-600">
-                You'll receive a notification when you're close to your limits. You can upgrade your plan to continue without interruption.
+                You&apos;ll receive a notification when you&apos;re close to your limits. You can upgrade your plan to continue without interruption.
               </p>
             </div>
             <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
@@ -248,7 +248,7 @@ export default function PricingPage() {
                 Do you offer refunds?
               </h3>
               <p className="text-gray-600">
-                We offer a 30-day money-back guarantee for all paid plans. If you're not satisfied, contact our support team.
+                We offer a 30-day money-back guarantee for all paid plans. If you&apos;re not satisfied, contact our support team.
               </p>
             </div>
           </div>
