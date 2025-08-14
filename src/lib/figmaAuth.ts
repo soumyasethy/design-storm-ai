@@ -44,12 +44,28 @@ interface FigmaAuthState {
 
 // Figma OAuth Configuration
 const FIGMA_CONFIG = {
-  CLIENT_ID: process.env.NEXT_PUBLIC_FIGMA_CLIENT_ID || 'your-figma-client-id',
-  REDIRECT_URI: process.env.NEXT_PUBLIC_FIGMA_REDIRECT_URI || 'http://localhost:3000/api/auth/figma/callback',
+  CLIENT_ID:
+    process.env.NEXT_PUBLIC_FIGMA_CLIENT_ID ||
+    process.env.FIGMA_CLIENT_ID ||
+    'your-figma-client-id',
+  REDIRECT_URI:
+    process.env.NEXT_PUBLIC_FIGMA_REDIRECT_URI ||
+    process.env.FIGMA_REDIRECT_URI ||
+    'http://localhost:3000/api/auth/figma/callback',
   SCOPE: 'files:read',
   AUTH_URL: 'https://www.figma.com/oauth',
   API_BASE: 'https://api.figma.com/v1',
   STORAGE_KEY: 'figma_auth_state'
+};
+
+// Resolve redirect at runtime to current origin when possible (useful in dev when port changes)
+const resolveRedirectUri = (): string => {
+  try {
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      return `${window.location.origin}/api/auth/figma/callback`;
+    }
+  } catch {}
+  return FIGMA_CONFIG.REDIRECT_URI;
 };
 
 class FigmaAuthManager {
@@ -68,30 +84,12 @@ class FigmaAuthManager {
    * Start OAuth login flow
    */
   loginWithFigma(): void {
-    console.log('🔐 Starting OAuth flow...');
-    console.log('Config:', {
-      CLIENT_ID: FIGMA_CONFIG.CLIENT_ID,
-      REDIRECT_URI: FIGMA_CONFIG.REDIRECT_URI,
-      SCOPE: FIGMA_CONFIG.SCOPE
-    });
-    
-    const params = new URLSearchParams({
-      client_id: FIGMA_CONFIG.CLIENT_ID,
-      redirect_uri: FIGMA_CONFIG.REDIRECT_URI,
-      scope: FIGMA_CONFIG.SCOPE,
-      state: this.generateState(),
-      response_type: 'code'
-    });
-
-    const authUrl = `${FIGMA_CONFIG.AUTH_URL}?${params.toString()}`;
-    console.log('🔗 Auth URL:', authUrl);
-    console.log('🔗 Decoded redirect_uri:', decodeURIComponent(params.get('redirect_uri') || ''));
-    console.log('🔗 Full OAuth URL:', authUrl);
-    
-    // Add a small delay to see the URL before redirect
-    setTimeout(() => {
-      window.location.href = authUrl;
-    }, 100);
+    // Always start OAuth via server so we use FIGMA_* from .env.prod
+    try {
+      window.location.href = '/api/auth/figma/start';
+    } catch {
+      // no-op
+    }
   }
 
   /**
@@ -110,7 +108,7 @@ class FigmaAuthManager {
       // Call Figma OAuth API directly
       const clientId = FIGMA_CONFIG.CLIENT_ID;
       const clientSecret = process.env.FIGMA_CLIENT_SECRET || '';
-      const redirectUri = FIGMA_CONFIG.REDIRECT_URI;
+      const redirectUri = resolveRedirectUri();
       if (!clientId || !clientSecret) throw new Error('Missing FIGMA client credentials');
       const formBody = new URLSearchParams({
         client_id: clientId,

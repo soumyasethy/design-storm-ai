@@ -29,9 +29,9 @@ export async function GET(request: NextRequest) {
     // Call Figma OAuth API directly
     console.log('🔄 Exchanging code for token directly...');
     
-    const clientId = process.env.FIGMA_CLIENT_ID || process.env.NEXT_PUBLIC_FIGMA_CLIENT_ID || '';
+    const clientId = process.env.FIGMA_CLIENT_ID || process.env.FIGMA_CLIENT_ID || '';
     const clientSecret = process.env.FIGMA_CLIENT_SECRET || '';
-    const redirectUri = process.env.NEXT_PUBLIC_FIGMA_REDIRECT_URI || 'http://localhost:3000/api/auth/figma/callback';
+    const redirectUri = process.env.FIGMA_REDIRECT_URI || 'http://localhost:3000/api/auth/figma/callback';
 
     if (!clientId || !clientSecret) {
       console.error('❌ Missing FIGMA_CLIENT_ID or FIGMA_CLIENT_SECRET');
