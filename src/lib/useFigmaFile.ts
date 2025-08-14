@@ -32,21 +32,23 @@ export function useFigmaFile(): UseFigmaFileState {
   const [projects, setProjects] = useState<any[]>([]);
 
   // Reactive auth state (persisted by figmaAuth)
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(figmaAuth.isAuthenticated());
-  const [user, setUser] = useState<any>(figmaAuth.getUser());
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [user, setUser] = useState<any>(null);
 
-  const refreshAuth = useCallback(() => {
+  const refreshAuth = useCallback(async () => {
     try {
-      setIsAuthenticated(figmaAuth.isAuthenticated());
-      setUser(figmaAuth.getUser());
+      const auth = await figmaAuth.isAuthenticated();
+      const userData = await figmaAuth.getUser();
+      setIsAuthenticated(auth);
+      setUser(userData);
     } catch { /* noop */ }
   }, []);
 
   useEffect(() => {
     // Initial sync and a couple delayed retries in case IndexedDB loads late
     refreshAuth();
-    const t1 = setTimeout(refreshAuth, 200);
-    const t2 = setTimeout(refreshAuth, 1200);
+    const t1 = setTimeout(() => refreshAuth(), 200);
+    const t2 = setTimeout(() => refreshAuth(), 1200);
     const onFocus = () => refreshAuth();
     const onStorage = (e: StorageEvent) => {
       if (!e.key || /figma/i.test(e.key)) refreshAuth();

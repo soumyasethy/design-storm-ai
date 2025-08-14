@@ -72,12 +72,22 @@ class FigmaAuthManager {
   private authState: FigmaAuthState = {
     isAuthenticated: false
   };
+  private isInitialized = false;
 
   constructor() {
-    // Load auth state asynchronously
-    this.loadAuthState().catch(error => {
+    // Don't auto-load auth state - make it lazy
+  }
+
+  /**
+   * Initialize auth state (called when needed)
+   */
+  private async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+    
+    await this.loadAuthState().catch(error => {
       console.error('Failed to load auth state during initialization:', error);
     });
+    this.isInitialized = true;
   }
 
   /**
@@ -232,7 +242,8 @@ class FigmaAuthManager {
     }
 
     // Prefer authenticated access if available, then fall back to public
-    if (this.isAuthenticated() && this.authState.accessToken) {
+    const authenticated = await this.isAuthenticated();
+    if (authenticated && this.authState.accessToken) {
       try {
         console.log('🔐 Trying authenticated access for file:', fileKey);
         return await this.getFileData(fileKey);
@@ -393,7 +404,8 @@ class FigmaAuthManager {
   /**
    * Check if user is authenticated
    */
-  isAuthenticated(): boolean {
+  async isAuthenticated(): Promise<boolean> {
+    await this.initialize();
     return !!(this.authState.isAuthenticated && 
              this.authState.accessToken && 
              (!this.authState.expiresAt || Date.now() < this.authState.expiresAt));
@@ -402,14 +414,16 @@ class FigmaAuthManager {
   /**
    * Get current user info
    */
-  getUser(): FigmaUser | undefined {
+  async getUser(): Promise<FigmaUser | undefined> {
+    await this.initialize();
     return this.authState.user;
   }
 
   /**
    * Get access token
    */
-  getAccessToken(): string | undefined {
+  async getAccessToken(): Promise<string | undefined> {
+    await this.initialize();
     return this.authState.accessToken;
   }
 
@@ -571,6 +585,6 @@ export const getFigmaFiles = () => figmaAuth.getFigmaFiles();
 export const getFileByLink = (url: string) => figmaAuth.getFileByLink(url);
 export const getFileData = (fileKey: string) => figmaAuth.getFileData(fileKey);
 export const extractFileKeyFromUrl = (url: string) => figmaAuth.extractFileKeyFromUrl(url);
-export const isAuthenticated = () => figmaAuth.isAuthenticated();
-export const getUser = () => figmaAuth.getUser();
+export const isAuthenticated = async () => await figmaAuth.isAuthenticated();
+export const getUser = async () => await figmaAuth.getUser();
 export const logout = () => figmaAuth.logout(); 
