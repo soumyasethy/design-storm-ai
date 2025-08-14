@@ -140,14 +140,7 @@ function UploadPageContent() {
       try {
         document.dispatchEvent(new Event('figma-auth-updated'));
       } catch {}
-      // Show success message
-      setError(null);
-      // Force refresh auth state
-      setTimeout(() => {
-        try {
-          window.dispatchEvent(new Event('figma-auth-updated'));
-        } catch {}
-      }, 100);
+      // You can add a success message here if needed
     } else if (error) {
       console.error('❌ OAuth error:', error);
       let errorMessage = 'OAuth authentication failed';
