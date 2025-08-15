@@ -959,6 +959,9 @@ export async function OPTIONS() {
             if (!e?.visible) continue;
             if (e.type === 'DROP_SHADOW') drops.push(`drop-shadow(${roundToTwo(e.offset?.x || 0)}px ${roundToTwo(e.offset?.y || 0)}px ${roundToTwo(e.radius || 0)}px ${rgba(e.color || {})})`);
             else if (e.type === 'INNER_SHADOW') inners.push(`inset ${roundToTwo(e.offset?.x || 0)}px ${roundToTwo(e.offset?.y || 0)}px ${roundToTwo(e.radius || 0)}px ${rgba(e.color || {})}`);
+            else if (e.type === 'BACKGROUND_BLUR') {
+              (s as any).backdropFilter = `blur(${roundToTwo(e.radius || 0)}px)`;
+            }
           }
           if (node.type === 'TEXT') {
             if (drops.length) (s as any).textShadow = drops.map(d => d.replace(/^drop-shadow\(|\)$/g, '')).join(', ');
