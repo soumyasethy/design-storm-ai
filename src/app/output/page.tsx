@@ -836,34 +836,36 @@ export async function OPTIONS() {
       const styleFor = (node: any, parentBB?: any) => {
         const s: any = {};
         
-        // GENERIC FIX: Always prefer absoluteRenderBounds over absoluteBoundingBox when bounding box is problematic
-        // This handles all cases of microscopic/zero dimensions, rotation, strokes, etc.
+        // TARGETED FIX: Only use absoluteRenderBounds for specific problematic cases
+        // This prevents layout breakage while fixing microscopic dimension issues
         const renderBounds = node.absoluteRenderBounds;
         const boundingBox = node.absoluteBoundingBox;
         
-        // Check if bounding box has problematic dimensions
-        const hasProblematicBounds = boundingBox && (
-          // Zero or microscopic width/height
-          boundingBox.width <= 0.01 || 
-          boundingBox.height <= 0.01 || 
-          boundingBox.width < 1e-5 || 
-          boundingBox.height < 1e-5 ||
-          // Very large discrepancy between bounding box and render bounds (indicates transform issues)
-          (renderBounds && (
-            Math.abs(boundingBox.width - renderBounds.width) > Math.max(boundingBox.width, renderBounds.width) * 0.5 ||
-            Math.abs(boundingBox.height - renderBounds.height) > Math.max(boundingBox.height, renderBounds.height) * 0.5
+        // Only apply render bounds fix for specific problematic cases
+        const needsRenderBoundsFix = boundingBox && renderBounds && (
+          // VECTOR nodes with microscopic dimensions (lines, arrows, etc.)
+          (node.type === 'VECTOR' && (
+            boundingBox.width < 0.1 || 
+            boundingBox.height < 0.1 || 
+            boundingBox.width < 1e-5 || 
+            boundingBox.height < 1e-5
+          )) ||
+          // Nodes with rotation that have significantly different bounds
+          (node.rotation && Math.abs(node.rotation) > 0.01 && (
+            Math.abs(boundingBox.width - renderBounds.width) > Math.min(boundingBox.width, renderBounds.width) * 2 ||
+            Math.abs(boundingBox.height - renderBounds.height) > Math.min(boundingBox.height, renderBounds.height) * 2
           ))
         );
         
-        // Use render bounds if available and bounding box is problematic, otherwise use bounding box
-        const bb = (hasProblematicBounds && renderBounds) ? renderBounds : boundingBox;
+        // Use render bounds only for specific problematic cases, otherwise use bounding box
+        const bb = (needsRenderBoundsFix) ? renderBounds : boundingBox;
         
         if (bb) {
           let { x, y, width, height } = bb;
           
-          // Enforce minimum dimensions for very thin lines/strokes to ensure visibility
-          if (width < 1 && width > 0) width = Math.max(width, 1);
-          if (height < 1 && height > 0) height = Math.max(height, 1);
+          // Enforce minimum dimensions only for truly microscopic elements (< 0.5px)
+          if (width < 0.5 && width > 0) width = Math.max(width, 0.5);
+          if (height < 0.5 && height > 0) height = Math.max(height, 0.5);
           
           if (parentBB) {
             s.position = 'absolute';
