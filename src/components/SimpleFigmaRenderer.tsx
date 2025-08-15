@@ -631,14 +631,15 @@ const layoutStyles = (node: any, parentBB?: any): React.CSSProperties => {
 
     const hasImageFill = Array.isArray(node.fills) && node.fills.some((f: any) => f?.type === 'IMAGE');
     const t: string[] = [];
-    if (!hasImageFill) {
-        if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
-        else if (node.rotation && Math.abs(node.rotation) > 0) {
-            let deg = node.rotation;
-            if (Math.abs(deg) <= Math.PI) deg = (deg * 180) / Math.PI;
-            t.push(`rotate(${Math.round(deg * 100) / 100}deg)`);
-        }
-    }
+    // Ignore rotation transforms as requested
+    // if (!hasImageFill) {
+    //     if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
+    //     else if (node.rotation && Math.abs(node.rotation) > 0) {
+    //         let deg = node.rotation;
+    //         if (Math.abs(deg) <= Math.PI) deg = (deg * 180) / Math.PI;
+    //         t.push(`rotate(${Math.round(deg * 100) / 100}deg)`);
+    //     }
+    // }
     if (node.scale && (node.scale.x !== 1 || node.scale.y !== 1)) t.push(`scale(${node.scale.x}, ${node.scale.y})`);
     if (node.skew) t.push(`skew(${node.skew}deg)`);
     if (node.relativeTransform?.length) t.push(`matrix(${node.relativeTransform.flat().join(', ')})`);

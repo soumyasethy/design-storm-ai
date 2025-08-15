@@ -631,8 +631,20 @@ function OutputPageContent() {
                 name: projectSlug,
                 version: '0.1.0',
                 private: true,
-                scripts: { dev: 'next dev', build: 'next build', start: 'next start' },
-                dependencies: { next: '15.4.4', react: '19.1.0', 'react-dom': '19.1.0', typescript: '^5.6.0' },
+                scripts: { dev: 'next dev', build: 'next build', start: 'next start', lint: 'next lint' },
+                dependencies: { 
+                  next: '15.4.4', 
+                  react: '19.1.0', 
+                  'react-dom': '19.1.0'
+                },
+                devDependencies: {
+                  typescript: '^5.6.0',
+                  '@types/node': '^20',
+                  '@types/react': '^19',
+                  '@types/react-dom': '^19',
+                  'eslint': '^9',
+                  'eslint-config-next': '15.4.4'
+                }
               },
               null,
               2,
@@ -841,14 +853,15 @@ function OutputPageContent() {
         // transforms
         const hasImageFill = Array.isArray(node.fills) && node.fills.some((ff: any) => ff?.type === 'IMAGE');
         const t: string[] = [];
-        if (!hasImageFill) {
-          if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
-          else if (node.rotation && Math.abs(node.rotation) > 0) {
-            let deg = node.rotation;
-            if (Math.abs(deg) <= Math.PI) deg = (deg * 180) / Math.PI;
-            t.push(`rotate(${Math.round(deg * 100) / 100}deg)`);
-          }
-        }
+        // Ignore rotation transforms as requested
+        // if (!hasImageFill) {
+        //   if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
+        //   else if (node.rotation && Math.abs(node.rotation) > 0) {
+        //     let deg = node.rotation;
+        //     if (Math.abs(deg) <= Math.PI) deg = (deg * 180) / Math.PI;
+        //     t.push(`rotate(${Math.round(deg * 100) / 100}deg)`);
+        //   }
+        // }
         if (node.scale && (node.scale.x !== 1 || node.scale.y !== 1)) t.push(`scale(${node.scale.x}, ${node.scale.y})`);
         if (node.skew) t.push(`skew(${node.skew}deg)`);
         if (Array.isArray(node.relativeTransform)) t.push(`matrix(${node.relativeTransform.flat().join(', ')})`);
