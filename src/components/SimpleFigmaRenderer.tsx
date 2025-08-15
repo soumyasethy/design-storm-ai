@@ -735,16 +735,7 @@ const layoutStyles = (node: any, parentBB?: any): React.CSSProperties => {
     if (node.maxHeight !== undefined) s.maxHeight = `${node.maxHeight}px`;
 
     const t: string[] = [];
-    // Allow rotation for VECTOR nodes (they need it to be visible), ignore for others
-    const allowRotation = node.type === 'VECTOR';
-    if (allowRotation) {
-        if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
-        else if (node.rotation && Math.abs(node.rotation) > 0) {
-            let deg = node.rotation;
-            if (Math.abs(deg) <= Math.PI) deg = (deg * 180) / Math.PI;
-            t.push(`rotate(${Math.round(deg * 100) / 100}deg)`);
-        }
-    }
+    // Ignore rotation transforms - Figma exports already rotated elements in correct position
     if (node.scale && (node.scale.x !== 1 || node.scale.y !== 1)) t.push(`scale(${node.scale.x}, ${node.scale.y})`);
     if (node.skew) t.push(`skew(${node.skew}deg)`);
     if (node.relativeTransform?.length) t.push(`matrix(${node.relativeTransform.flat().join(', ')})`);
