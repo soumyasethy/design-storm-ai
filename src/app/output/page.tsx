@@ -1053,7 +1053,7 @@ export async function OPTIONS() {
             const overrides: number[] = (node as any).characterStyleOverrides || [];
             const table: Record<string, any> = (node as any).styleOverrideTable || {};
             const runForIndex = (i: number) => table[String(overrides[i] || 0)] || {};
-            const toSpanStyle = (cs: any) => {
+            const toSpanStyle = (cs: any, inheritBaseColor = false) => {
               const style: Record<string, any> = {};
               if (cs.fontFamily) style.fontFamily = createReactFontFamily(normalizeFamily(cs.fontFamily));
               if (cs.fontSize) style.fontSize = `${roundToTwo(cs.fontSize)}px`;
@@ -1066,7 +1066,12 @@ export async function OPTIONS() {
               if (cs.lineHeightPx) style.lineHeight = `${roundToTwo(cs.lineHeightPx)}px`;
               else if (cs.lineHeightPercent) style.lineHeight = `${roundToTwo(cs.lineHeightPercent)}%`;
               const f = cs.fills?.[0];
-              if (f?.type === 'SOLID' && f.color) style.color = rgba(f.color);
+              if (f?.type === 'SOLID' && f.color) {
+                style.color = rgba(f.color);
+              } else if (inheritBaseColor && baseTextStyle.color) {
+                // Inherit base text color for hyperlinks that don't have their own color
+                style.color = baseTextStyle.color;
+              }
               const deco = (cs.textDecoration || cs.textDecorationLine || '').toString().toLowerCase();
               if (deco.includes('underline')) style.textDecoration = 'underline';
               if (deco.includes('underline')) {
@@ -1097,8 +1102,8 @@ export async function OPTIONS() {
               }
               
               const cs = runForIndex(i);
-              const styleAttr = toSpanStyle(cs);
               const href = cs?.hyperlink?.url;
+              const styleAttr = toSpanStyle(cs, !!href); // Inherit base color for hyperlinks
               const inner = esc(ch);
               
               // Check if we can continue with current group
