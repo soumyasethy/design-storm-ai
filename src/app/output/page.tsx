@@ -836,23 +836,27 @@ export async function OPTIONS() {
       const styleFor = (node: any, parentBB?: any) => {
         const s: any = {};
         
-        // For VECTOR nodes, prefer absoluteRenderBounds over absoluteBoundingBox if available
-        // This handles cases where rotation/transforms make the bounding box microscopic
-        // or where lines have zero width/height in bounding box but actual render dimensions
-        const isVector = node.type === 'VECTOR';
-        const hasRotation = node.rotation && Math.abs(node.rotation) > 0.01;
+        // GENERIC FIX: Always prefer absoluteRenderBounds over absoluteBoundingBox when bounding box is problematic
+        // This handles all cases of microscopic/zero dimensions, rotation, strokes, etc.
         const renderBounds = node.absoluteRenderBounds;
         const boundingBox = node.absoluteBoundingBox;
         
-        // Check if bounding box has zero/microscopic dimensions
-        const hasZeroDimensions = boundingBox && (
+        // Check if bounding box has problematic dimensions
+        const hasProblematicBounds = boundingBox && (
+          // Zero or microscopic width/height
           boundingBox.width <= 0.01 || 
           boundingBox.height <= 0.01 || 
           boundingBox.width < 1e-5 || 
-          boundingBox.height < 1e-5
+          boundingBox.height < 1e-5 ||
+          // Very large discrepancy between bounding box and render bounds (indicates transform issues)
+          (renderBounds && (
+            Math.abs(boundingBox.width - renderBounds.width) > Math.max(boundingBox.width, renderBounds.width) * 0.5 ||
+            Math.abs(boundingBox.height - renderBounds.height) > Math.max(boundingBox.height, renderBounds.height) * 0.5
+          ))
         );
         
-        const bb = (isVector && (hasRotation || hasZeroDimensions) && renderBounds) ? renderBounds : boundingBox;
+        // Use render bounds if available and bounding box is problematic, otherwise use bounding box
+        const bb = (hasProblematicBounds && renderBounds) ? renderBounds : boundingBox;
         
         if (bb) {
           if (parentBB) {
