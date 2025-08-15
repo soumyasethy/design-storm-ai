@@ -837,12 +837,22 @@ export async function OPTIONS() {
         const s: any = {};
         
         // For VECTOR nodes, prefer absoluteRenderBounds over absoluteBoundingBox if available
+        // This handles cases where rotation/transforms make the bounding box microscopic
+        // or where lines have zero width/height in bounding box but actual render dimensions
         const isVector = node.type === 'VECTOR';
         const hasRotation = node.rotation && Math.abs(node.rotation) > 0.01;
         const renderBounds = node.absoluteRenderBounds;
         const boundingBox = node.absoluteBoundingBox;
         
-        const bb = (isVector && hasRotation && renderBounds) ? renderBounds : boundingBox;
+        // Check if bounding box has zero/microscopic dimensions
+        const hasZeroDimensions = boundingBox && (
+          boundingBox.width <= 0.01 || 
+          boundingBox.height <= 0.01 || 
+          boundingBox.width < 1e-5 || 
+          boundingBox.height < 1e-5
+        );
+        
+        const bb = (isVector && (hasRotation || hasZeroDimensions) && renderBounds) ? renderBounds : boundingBox;
         
         if (bb) {
           if (parentBB) {
