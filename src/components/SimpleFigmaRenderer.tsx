@@ -210,6 +210,10 @@ const effectStyles = (node: any): React.CSSProperties => {
         }
         if (e.type === 'BACKGROUND_BLUR') {
             s.backdropFilter = `blur(${e.radius || 0}px)`;
+            // Debug log for backdrop-filter elements
+            if (node.name?.includes('Rectangle 109')) {
+                console.log('🔍 Rectangle 109 backdrop-filter applied:', s.backdropFilter, node);
+            }
         }
     });
     return s;
@@ -693,10 +697,10 @@ const layoutStyles = (node: any, parentBB?: any): React.CSSProperties => {
     
     // Only apply render bounds fix for specific problematic cases
     const needsRenderBoundsFix = boundingBox && renderBounds && (
-        // VECTOR nodes with microscopic dimensions (lines, arrows, etc.)
+        // VECTOR nodes with small dimensions (lines, arrows, etc.) - be more generous
         (node.type === 'VECTOR' && (
-            boundingBox.width < 2 || 
-            boundingBox.height < 2 || 
+            boundingBox.width < 5 || 
+            boundingBox.height < 5 || 
             boundingBox.width < 1e-5 || 
             boundingBox.height < 1e-5
         )) ||
@@ -711,6 +715,18 @@ const layoutStyles = (node: any, parentBB?: any): React.CSSProperties => {
     
     // Use render bounds only for specific problematic cases, otherwise use bounding box
     const bb = (needsRenderBoundsFix) ? renderBounds : boundingBox;
+    
+    // Debug log for Line 9
+    if (node.name?.includes('Line 9')) {
+        console.log('🔍 Line 9 bounds check:', {
+            name: node.name,
+            type: node.type,
+            needsRenderBoundsFix,
+            boundingBox,
+            renderBounds,
+            finalBB: bb
+        });
+    }
 
     if (bb) {
         let { x, y, width, height } = bb;

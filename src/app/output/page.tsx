@@ -843,10 +843,10 @@ export async function OPTIONS() {
         
         // Only apply render bounds fix for specific problematic cases
         const needsRenderBoundsFix = boundingBox && renderBounds && (
-          // VECTOR nodes with microscopic dimensions (lines, arrows, etc.)
+          // VECTOR nodes with small dimensions (lines, arrows, etc.) - be more generous
           (node.type === 'VECTOR' && (
-            boundingBox.width < 2 || 
-            boundingBox.height < 2 || 
+            boundingBox.width < 5 || 
+            boundingBox.height < 5 || 
             boundingBox.width < 1e-5 || 
             boundingBox.height < 1e-5
           )) ||
