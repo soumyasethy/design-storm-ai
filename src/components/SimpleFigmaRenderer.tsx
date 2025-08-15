@@ -750,6 +750,12 @@ const layoutStyles = (node: any, parentBB?: any): React.CSSProperties => {
     }
 
     if (node.opacity !== undefined && node.opacity !== 1) s.opacity = node.opacity;
+    
+    // DEBUG: Make Rectangle 109 more visible for testing
+    if (node.name === 'Rectangle 109') {
+        (s as any).border = '2px solid red';
+        s.opacity = 0.8; // Increase opacity temporarily
+    }
 
     // Stacking: explicit zIndex else child order (cap at reasonable values)
     if (node.zIndex !== undefined) {
