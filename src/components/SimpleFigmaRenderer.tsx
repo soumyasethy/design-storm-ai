@@ -788,14 +788,13 @@ const SimpleFigmaRenderer: React.FC<Props> = ({
         <div
             style={{
                 width: '100vw',
-                height: `${(rootBox?.height || 800) * scale + 40}px`,
+                height: '100vh',
                 overflowX: 'hidden',
                 overflowY: 'auto',
                 display: 'flex',
                 justifyContent: 'center',
-                alignItems: 'flex-start',
-                paddingTop: '20px',
-                paddingBottom: '20px',
+                alignItems: 'center',
+                padding: '20px',
             }}
         >
             <div
@@ -803,9 +802,10 @@ const SimpleFigmaRenderer: React.FC<Props> = ({
                     width: `${designWidth}px`,
                     height: `${rootBox?.height || 800}px`,
                     transform: `scale(${scale})`,
-                    transformOrigin: 'top center',
+                    transformOrigin: 'center center',
                     position: 'relative',
                     flexShrink: 0,
+                    maxHeight: 'calc(100vh - 40px)', // Prevent overflow on tall designs
                 }}
             >
                 {devMode && (
