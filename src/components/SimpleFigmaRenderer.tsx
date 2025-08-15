@@ -540,28 +540,9 @@ const ShapeRenderer: Renderer = ({ node, styles, imageMap }) => {
 /* ===================== CONTAINER ===================== */
 
 // Helper function to determine if a container can be flattened
-const canFlattenContainer = (node: any): boolean => {
-    // Don't flatten if it has visual properties
-    const hasVisualFills = Array.isArray(node.fills) && node.fills.some((f: any) => 
-        f?.type !== 'SOLID' || f?.color?.a > 0 || (f?.color?.r + f?.color?.g + f?.color?.b) < 2.97 // not white
-    );
-    const hasBackground = node.backgroundColor && (
-        node.backgroundColor.a > 0 && 
-        (node.backgroundColor.r + node.backgroundColor.g + node.backgroundColor.b) < 2.97 // not white
-    );
-    const hasRadius = node.cornerRadius > 0 || 
-        node.rectangleCornerRadii?.some((r: number) => r > 0);
-    const hasStroke = Array.isArray(node.strokes) && node.strokes.length > 0;
-    const hasEffects = Array.isArray(node.effects) && node.effects.length > 0;
-    
-    // Don't flatten if it has layout properties (auto-layout, constraints)
-    const hasAutoLayout = node.layoutMode && node.layoutMode !== 'NONE';
-    
-    // Don't flatten if it has multiple children (would change layout)
-    const childCount = (node.children || []).length;
-    
-    return !hasVisualFills && !hasBackground && !hasRadius && !hasStroke && 
-           !hasEffects && !hasAutoLayout && childCount <= 1;
+const canFlattenContainer = (_node: any): boolean => {
+    // Disable container flattening to avoid positioning issues with nested groups
+    return false;
 };
 
 const ContainerRenderer: Renderer = ({ node, styles, imageMap, showDebug, devMode }) => {

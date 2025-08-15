@@ -1241,25 +1241,8 @@ export async function OPTIONS() {
               }
             }
             
-            // Check if this GROUP can be flattened (same logic as renderer)
-            const canFlatten = (() => {
-              const hasVisualFills = Array.isArray(node.fills) && node.fills.some((f: any) => 
-                f?.type !== 'SOLID' || f?.color?.a > 0 || (f?.color?.r + f?.color?.g + f?.color?.b) < 2.97
-              );
-              const hasBackground = node.backgroundColor && (
-                node.backgroundColor.a > 0 && 
-                (node.backgroundColor.r + node.backgroundColor.g + node.backgroundColor.b) < 2.97
-              );
-              const hasRadius = node.cornerRadius > 0 || 
-                node.rectangleCornerRadii?.some((r: number) => r > 0);
-              const hasStroke = Array.isArray(node.strokes) && node.strokes.length > 0;
-              const hasEffects = Array.isArray(node.effects) && node.effects.length > 0;
-              const hasAutoLayout = node.layoutMode && node.layoutMode !== 'NONE';
-              const childCount = (node.children || []).length;
-              
-              return !hasVisualFills && !hasBackground && !hasRadius && !hasStroke && 
-                     !hasEffects && !hasAutoLayout && childCount <= 1;
-            })();
+            // Disable container flattening to avoid positioning issues with nested groups
+            const canFlatten = false;
             
             // If we can flatten and have exactly one child, render child with parent's positioning
             if (canFlatten && Array.isArray(node.children) && node.children.length === 1) {
