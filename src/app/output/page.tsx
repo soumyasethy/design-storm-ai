@@ -845,11 +845,13 @@ export async function OPTIONS() {
         const needsRenderBoundsFix = boundingBox && renderBounds && (
           // VECTOR nodes with microscopic dimensions (lines, arrows, etc.)
           (node.type === 'VECTOR' && (
-            boundingBox.width < 0.1 || 
-            boundingBox.height < 0.1 || 
+            boundingBox.width < 2 || 
+            boundingBox.height < 2 || 
             boundingBox.width < 1e-5 || 
             boundingBox.height < 1e-5
           )) ||
+          // LINE nodes (always use render bounds as they often have dimension issues)
+          (node.type === 'LINE') ||
           // Nodes with rotation that have significantly different bounds
           (node.rotation && Math.abs(node.rotation) > 0.01 && (
             Math.abs(boundingBox.width - renderBounds.width) > Math.min(boundingBox.width, renderBounds.width) * 2 ||
