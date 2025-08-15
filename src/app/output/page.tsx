@@ -859,16 +859,22 @@ export async function OPTIONS() {
         const bb = (hasProblematicBounds && renderBounds) ? renderBounds : boundingBox;
         
         if (bb) {
+          let { x, y, width, height } = bb;
+          
+          // Enforce minimum dimensions for very thin lines/strokes to ensure visibility
+          if (width < 1 && width > 0) width = Math.max(width, 1);
+          if (height < 1 && height > 0) height = Math.max(height, 1);
+          
           if (parentBB) {
             s.position = 'absolute';
-            s.left = `${roundToTwo(bb.x - parentBB.x)}px`;
-            s.top = `${roundToTwo(bb.y - parentBB.y)}px`;
-            s.width = `${roundToTwo(bb.width)}px`;
-            s.height = `${roundToTwo(bb.height)}px`;
+            s.left = `${roundToTwo(x - parentBB.x)}px`;
+            s.top = `${roundToTwo(y - parentBB.y)}px`;
+            s.width = `${roundToTwo(width)}px`;
+            s.height = `${roundToTwo(height)}px`;
           } else {
             s.position = 'relative';
-            s.width = `${roundToTwo(bb.width)}px`;
-            s.height = `${roundToTwo(bb.height)}px`;
+            s.width = `${roundToTwo(width)}px`;
+            s.height = `${roundToTwo(height)}px`;
           }
         }
          // background (skip pure white placeholders)

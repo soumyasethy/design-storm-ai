@@ -709,7 +709,12 @@ const layoutStyles = (node: any, parentBB?: any): React.CSSProperties => {
     const bb = (hasProblematicBounds && renderBounds) ? renderBounds : boundingBox;
 
     if (bb) {
-        const { x, y, width, height } = bb;
+        let { x, y, width, height } = bb;
+        
+        // Enforce minimum dimensions for very thin lines/strokes to ensure visibility
+        if (width < 1 && width > 0) width = Math.max(width, 1);
+        if (height < 1 && height > 0) height = Math.max(height, 1);
+        
         if (parentBB) {
             s.position = 'absolute';
             s.left = `${x - parentBB.x}px`;
