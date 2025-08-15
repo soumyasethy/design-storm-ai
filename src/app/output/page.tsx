@@ -982,12 +982,6 @@ export async function OPTIONS() {
         }
 
         if (node.opacity !== undefined && node.opacity !== 1) s.opacity = node.opacity;
-        
-        // DEBUG: Make Rectangle 109 more visible for testing
-        if (node.name === 'Rectangle 109') {
-          s.border = '2px solid red';
-          s.opacity = 0.8; // Increase opacity temporarily
-        }
         if (node.clipContent) s.overflow = 'hidden';
 
         // transforms
