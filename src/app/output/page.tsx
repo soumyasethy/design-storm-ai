@@ -843,15 +843,19 @@ export async function OPTIONS() {
         
         // Only apply render bounds fix for specific problematic cases
         const needsRenderBoundsFix = boundingBox && renderBounds && (
-          // VECTOR nodes with small dimensions (lines, arrows, etc.) - be more generous
+          // VECTOR nodes with small dimensions (lines, arrows, etc.) - very generous threshold
           (node.type === 'VECTOR' && (
-            boundingBox.width < 5 || 
-            boundingBox.height < 5 || 
+            boundingBox.width < 10 || 
+            boundingBox.height < 10 || 
             boundingBox.width < 1e-5 || 
-            boundingBox.height < 1e-5
+            boundingBox.height < 1e-5 ||
+            // Also check for lines with specific names
+            node.name?.toLowerCase().includes('line')
           )) ||
           // LINE nodes (always use render bounds as they often have dimension issues)
           (node.type === 'LINE') ||
+          // Any node with "Line" in the name (catch all line elements)
+          (node.name?.toLowerCase().includes('line')) ||
           // Nodes with rotation that have significantly different bounds
           (node.rotation && Math.abs(node.rotation) > 0.01 && (
             Math.abs(boundingBox.width - renderBounds.width) > Math.min(boundingBox.width, renderBounds.width) * 2 ||
@@ -865,9 +869,13 @@ export async function OPTIONS() {
         if (bb) {
           let { x, y, width, height } = bb;
           
-          // Enforce minimum dimensions only for truly microscopic elements (< 0.5px)
-          if (width < 0.5 && width > 0) width = Math.max(width, 0.5);
-          if (height < 0.5 && height > 0) height = Math.max(height, 0.5);
+          // Enforce minimum dimensions for microscopic elements
+          // Be more aggressive for line elements
+          const isLineElement = node.type === 'LINE' || node.name?.toLowerCase().includes('line');
+          const minDim = isLineElement ? 1 : 0.5;
+          
+          if (width < minDim && width > 0) width = Math.max(width, minDim);
+          if (height < minDim && height > 0) height = Math.max(height, minDim);
           
           if (parentBB) {
             s.position = 'absolute';
