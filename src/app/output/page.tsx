@@ -835,7 +835,15 @@ export async function OPTIONS() {
       // the big style factory, with the BORDER FIX
       const styleFor = (node: any, parentBB?: any) => {
         const s: any = {};
-        const bb = node.absoluteBoundingBox;
+        
+        // For VECTOR nodes, prefer absoluteRenderBounds over absoluteBoundingBox if available
+        const isVector = node.type === 'VECTOR';
+        const hasRotation = node.rotation && Math.abs(node.rotation) > 0.01;
+        const renderBounds = node.absoluteRenderBounds;
+        const boundingBox = node.absoluteBoundingBox;
+        
+        const bb = (isVector && hasRotation && renderBounds) ? renderBounds : boundingBox;
+        
         if (bb) {
           if (parentBB) {
             s.position = 'absolute';
@@ -954,17 +962,17 @@ export async function OPTIONS() {
         if (node.clipContent) s.overflow = 'hidden';
 
         // transforms
-        const hasImageFill = Array.isArray(node.fills) && node.fills.some((ff: any) => ff?.type === 'IMAGE');
         const t: string[] = [];
-        // Ignore rotation transforms as requested
-        // if (!hasImageFill) {
-        //   if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
-        //   else if (node.rotation && Math.abs(node.rotation) > 0) {
-        //     let deg = node.rotation;
-        //     if (Math.abs(deg) <= Math.PI) deg = (deg * 180) / Math.PI;
-        //     t.push(`rotate(${Math.round(deg * 100) / 100}deg)`);
-        //   }
-        // }
+        // Allow rotation for VECTOR nodes (they need it to be visible), ignore for others
+        const allowRotation = node.type === 'VECTOR';
+        if (allowRotation) {
+          if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
+          else if (node.rotation && Math.abs(node.rotation) > 0) {
+            let deg = node.rotation;
+            if (Math.abs(deg) <= Math.PI) deg = (deg * 180) / Math.PI;
+            t.push(`rotate(${Math.round(deg * 100) / 100}deg)`);
+          }
+        }
         if (node.scale && (node.scale.x !== 1 || node.scale.y !== 1)) t.push(`scale(${node.scale.x}, ${node.scale.y})`);
         if (node.skew) t.push(`skew(${node.skew}deg)`);
         if (Array.isArray(node.relativeTransform)) t.push(`matrix(${node.relativeTransform.flat().join(', ')})`);
@@ -1111,26 +1119,78 @@ export async function OPTIONS() {
               groups.push(currentGroup);
             }
             
-            // Build content from groups
+            // Build content from groups - optimize to avoid empty style spans
             let content = '';
             for (const group of groups) {
               if (group.text === '<br/>') {
                 content += group.text;
               } else if (group.href) {
                 content += `<a href="${group.href}" style=${group.style}>${group.text}</a>`;
-              } else if (group.style && group.style !== '{{}}') {
+              } else if (group.style && group.style !== '{{}}' && group.style.trim() !== '') {
                 content += `<span style=${group.style}>${group.text}</span>`;
               } else {
+                // No style or empty style - output plain text without span wrapper
                 content += group.text;
               }
             }
             return `${pad}<div style=${sText} data-figma-node-id="${node.id}">\n${pad}  <span style=${tStyle}>${content}</span>\n${pad}</div>`;
           }
 
+          case 'LINE': {
+            // Handle lines as CSS borders/backgrounds instead of images
+            if (Array.isArray(node.strokes) && node.strokes.length > 0) {
+              const stroke = node.strokes[0];
+              if (stroke?.type === 'SOLID' && stroke.color) {
+                const strokeColor = rgba(stroke.color);
+                const strokeWeight = node.strokeWeight || 1;
+                const bb = node.absoluteBoundingBox;
+                
+                if (bb) {
+                  const { width, height } = bb;
+                  const isVertical = height > width;
+                  
+                  const lineStyle = {
+                    ...styleFor(node, parentBB),
+                    backgroundColor: strokeColor,
+                    // Ensure minimum visibility for thin lines
+                    width: isVertical ? `${Math.max(strokeWeight, 1)}px` : `${formatCSSValue(width)}px`,
+                    height: isVertical ? `${formatCSSValue(height)}px` : `${Math.max(strokeWeight, 1)}px`,
+                  };
+                  
+                  const sLine = toStyleJSX(lineStyle);
+                  return `${pad}<div style=${sLine} data-figma-node-id="${node.id}" />`;
+                }
+              }
+            }
+            
+            // Fallback to image if stroke rendering fails
+            const p = getLocalImagePath(node.id);
+            if (p) {
+              const layoutOnly: any = { ...styleFor(node, parentBB) };
+              delete layoutOnly.background;
+              delete layoutOnly.backgroundColor;
+              delete layoutOnly.backgroundImage;
+              delete layoutOnly.backgroundRepeat;
+              delete layoutOnly.backgroundSize;
+              delete layoutOnly.backgroundPosition;
+              delete layoutOnly.border;
+              delete (layoutOnly as any).borderTop;
+              delete (layoutOnly as any).borderRight;
+              delete (layoutOnly as any).borderBottom;
+              delete (layoutOnly as any).borderLeft;
+              delete (layoutOnly as any).outline;
+              delete (layoutOnly as any).boxShadow;
+              delete (layoutOnly as any).transform;
+              delete (layoutOnly as any).transformOrigin;
+              const sOnly = toStyleJSX(layoutOnly);
+              return `${pad}<div style=${sOnly}>\n${pad}  <img src="${p}" alt="${(node.name || 'line').replace(/"/g, '&quot;')}" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />\n${pad}</div>`;
+            }
+            return `${pad}<div style=${s} data-figma-node-id="${node.id}" />`;
+          }
+
           case 'RECTANGLE':
           case 'ELLIPSE':
-          case 'VECTOR':
-          case 'LINE': {
+          case 'VECTOR': {
             const p = getLocalImagePath(node.id);
             if (p) {
               const layoutOnly: any = { ...styleFor(node, parentBB) };
@@ -1189,7 +1249,40 @@ export async function OPTIONS() {
                 return `${pad}<div style=${s2} data-figma-node-id="${node.id}" />`;
               }
             }
-            // default container
+            
+            // Check if this GROUP can be flattened (same logic as renderer)
+            const canFlatten = (() => {
+              const hasVisualFills = Array.isArray(node.fills) && node.fills.some((f: any) => 
+                f?.type !== 'SOLID' || f?.color?.a > 0 || (f?.color?.r + f?.color?.g + f?.color?.b) < 2.97
+              );
+              const hasBackground = node.backgroundColor && (
+                node.backgroundColor.a > 0 && 
+                (node.backgroundColor.r + node.backgroundColor.g + node.backgroundColor.b) < 2.97
+              );
+              const hasRadius = node.cornerRadius > 0 || 
+                node.rectangleCornerRadii?.some((r: number) => r > 0);
+              const hasStroke = Array.isArray(node.strokes) && node.strokes.length > 0;
+              const hasEffects = Array.isArray(node.effects) && node.effects.length > 0;
+              const hasAutoLayout = node.layoutMode && node.layoutMode !== 'NONE';
+              const childCount = (node.children || []).length;
+              
+              return !hasVisualFills && !hasBackground && !hasRadius && !hasStroke && 
+                     !hasEffects && !hasAutoLayout && childCount <= 1;
+            })();
+            
+            // If we can flatten and have exactly one child, render child with parent's positioning
+            if (canFlatten && Array.isArray(node.children) && node.children.length === 1) {
+              const child = node.children[0];
+              if (child?.type === 'TEXT') {
+                // Generate the flattened container with child content
+                const childContent = genNode(child, node.absoluteBoundingBox, indent + 2);
+                if (childContent) {
+                  return `${pad}<div style=${s} data-figma-node-id="${node.id}">\n${childContent}\n${pad}</div>`;
+                }
+              }
+            }
+            
+            // default container - fall through to default case
           }
 
           default: {

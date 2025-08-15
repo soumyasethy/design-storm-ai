@@ -312,7 +312,7 @@ const TextRenderer: Renderer = ({ node, styles, showDebug, devMode }) => {
         wordBreak: 'break-word' as any,
         background: 'transparent',
         pointerEvents: 'auto',
-        zIndex: (typeof (styles as any).zIndex === 'number' ? (styles as any).zIndex : 0) + 10,
+        zIndex: Math.min((typeof (styles as any).zIndex === 'number' ? (styles as any).zIndex : 0) + 10, 50),
     };
 
     const overrides: number[] = node.characterStyleOverrides || [];
@@ -382,14 +382,15 @@ const TextRenderer: Renderer = ({ node, styles, showDebug, devMode }) => {
                     groups.push(currentGroup);
                 }
                 
-                // Render groups
+                // Render groups - optimize to avoid unnecessary spans
                 return groups.map((group, index) => {
                     if (group.text === '\n') {
                         return <br key={group.key} />;
                     }
                     
-                    if (group.text.trim() && Object.keys(group.style).length === 0) {
-                        return <span key={`group-${index}`}>{group.text}</span>;
+                    // Only wrap in span if there are actual styles to apply
+                    if (Object.keys(group.style).length === 0) {
+                        return group.text; // Return plain text without wrapper
                     }
                     
                     return (
@@ -410,6 +411,39 @@ const TextRenderer: Renderer = ({ node, styles, showDebug, devMode }) => {
             <div style={{ display: 'inline', lineHeight: 'inherit' }}>{rich}</div>
         </div>
     );
+};
+
+/* ===================== LINE ===================== */
+const LineRenderer: Renderer = ({ node, styles }) => {
+    if (!node || !node.strokes || !Array.isArray(node.strokes) || node.strokes.length === 0) {
+        return null;
+    }
+
+    const stroke = node.strokes[0];
+    if (!stroke || stroke.type !== 'SOLID' || !stroke.color) {
+        return null;
+    }
+
+    const { r, g, b, a } = stroke.color;
+    const strokeColor = rgbaToCss(r, g, b, a);
+    const strokeWeight = node.strokeWeight || 1;
+    
+    // Get dimensions from bounding box
+    const bb = node.absoluteBoundingBox;
+    if (!bb) return null;
+    
+    const { width, height } = bb;
+    const isVertical = height > width;
+    
+    const lineStyle: React.CSSProperties = {
+        ...styles,
+        backgroundColor: strokeColor,
+        // For very thin lines, ensure minimum visibility
+        width: isVertical ? Math.max(strokeWeight, 1) + 'px' : styles.width,
+        height: isVertical ? styles.height : Math.max(strokeWeight, 1) + 'px',
+    };
+
+    return <div style={lineStyle} title={`${node.name} (LINE)`} data-figma-node-id={node.id} />;
 };
 
 /* ===================== IMAGE/SHAPE ===================== */
@@ -504,8 +538,34 @@ const ShapeRenderer: Renderer = ({ node, styles, imageMap }) => {
 };
 
 /* ===================== CONTAINER ===================== */
+
+// Helper function to determine if a container can be flattened
+const canFlattenContainer = (node: any): boolean => {
+    // Don't flatten if it has visual properties
+    const hasVisualFills = Array.isArray(node.fills) && node.fills.some((f: any) => 
+        f?.type !== 'SOLID' || f?.color?.a > 0 || (f?.color?.r + f?.color?.g + f?.color?.b) < 2.97 // not white
+    );
+    const hasBackground = node.backgroundColor && (
+        node.backgroundColor.a > 0 && 
+        (node.backgroundColor.r + node.backgroundColor.g + node.backgroundColor.b) < 2.97 // not white
+    );
+    const hasRadius = node.cornerRadius > 0 || 
+        node.rectangleCornerRadii?.some((r: number) => r > 0);
+    const hasStroke = Array.isArray(node.strokes) && node.strokes.length > 0;
+    const hasEffects = Array.isArray(node.effects) && node.effects.length > 0;
+    
+    // Don't flatten if it has layout properties (auto-layout, constraints)
+    const hasAutoLayout = node.layoutMode && node.layoutMode !== 'NONE';
+    
+    // Don't flatten if it has multiple children (would change layout)
+    const childCount = (node.children || []).length;
+    
+    return !hasVisualFills && !hasBackground && !hasRadius && !hasStroke && 
+           !hasEffects && !hasAutoLayout && childCount <= 1;
+};
+
 const ContainerRenderer: Renderer = ({ node, styles, imageMap, showDebug, devMode }) => {
-    // background for frames/containers
+    // background for frames/containers - moved to top to avoid conditional hook usage
     const bg = useMemo<React.CSSProperties>(() => {
         const base: React.CSSProperties = { ...styles };
         const hasFills = Array.isArray(node.fills) && node.fills.length > 0;
@@ -531,6 +591,43 @@ const ContainerRenderer: Renderer = ({ node, styles, imageMap, showDebug, devMod
         }
         return base;
     }, [styles, imageMap, node]);
+
+    // Check if this container can be flattened
+    const shouldFlatten = node.type === 'GROUP' && canFlattenContainer(node);
+    const children = node.children || [];
+    
+    // If we can flatten and have exactly one child, render the child with merged positioning
+    if (shouldFlatten && children.length === 1) {
+        const child = children[0];
+        
+        // For TEXT nodes, we want to preserve the container's positioning
+        if (child.type === 'TEXT') {
+            return (
+                <div
+                    style={styles}
+                    data-figma-node-id={node.id}
+                    title={`${node.name} (${node.type}, flattened)`}
+                >
+                    <Node
+                        key={child.id}
+                        node={{
+                            ...child,
+                            __parentBB: (node as any).__parentBB,
+                            // Adjust child's positioning to be relative to the flattened container
+                            absoluteBoundingBox: {
+                                ...child.absoluteBoundingBox,
+                                x: (child.absoluteBoundingBox?.x || 0) - (node.absoluteBoundingBox?.x || 0),
+                                y: (child.absoluteBoundingBox?.y || 0) - (node.absoluteBoundingBox?.y || 0)
+                            }
+                        }}
+                        imageMap={imageMap}
+                        showDebug={showDebug}
+                        devMode={devMode}
+                    />
+                </div>
+            );
+        }
+    }
 
     /* -------- case: FLATTEN MASK GROUP --------
        If a GROUP contains a child with isMask=true & maskType set, we render the
@@ -595,7 +692,7 @@ const Registry: Record<string, Renderer> = {
     RECTANGLE: (p) => (getNodeImageUrl(p.node, p.imageMap) ? ImageRenderer(p) : ShapeRenderer(p)),
     ELLIPSE: (p) => (getNodeImageUrl(p.node, p.imageMap) ? ImageRenderer(p) : ShapeRenderer(p)),
     VECTOR: (p) => (getNodeImageUrl(p.node, p.imageMap) ? ImageRenderer(p) : ShapeRenderer(p)),
-    LINE: (p) => (getNodeImageUrl(p.node, p.imageMap) ? ImageRenderer(p) : ShapeRenderer(p)),
+    LINE: LineRenderer,
     FRAME: ContainerRenderer,
     GROUP: ContainerRenderer,
     CANVAS: ContainerRenderer,
@@ -607,7 +704,15 @@ const Registry: Record<string, Renderer> = {
 /* ===================== layout + stacking ===================== */
 const layoutStyles = (node: any, parentBB?: any): React.CSSProperties => {
     const s: React.CSSProperties = {};
-    const bb = node.absoluteBoundingBox;
+    
+    // For VECTOR nodes, prefer absoluteRenderBounds over absoluteBoundingBox if available
+    // This handles cases where rotation/transforms make the bounding box microscopic
+    const isVector = node.type === 'VECTOR';
+    const hasRotation = node.rotation && Math.abs(node.rotation) > 0.01;
+    const renderBounds = node.absoluteRenderBounds;
+    const boundingBox = node.absoluteBoundingBox;
+    
+    const bb = (isVector && hasRotation && renderBounds) ? renderBounds : boundingBox;
 
     if (bb) {
         const { x, y, width, height } = bb;
@@ -629,17 +734,17 @@ const layoutStyles = (node: any, parentBB?: any): React.CSSProperties => {
     if (node.minHeight !== undefined) s.minHeight = `${node.minHeight}px`;
     if (node.maxHeight !== undefined) s.maxHeight = `${node.maxHeight}px`;
 
-    const hasImageFill = Array.isArray(node.fills) && node.fills.some((f: any) => f?.type === 'IMAGE');
     const t: string[] = [];
-    // Ignore rotation transforms as requested
-    // if (!hasImageFill) {
-    //     if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
-    //     else if (node.rotation && Math.abs(node.rotation) > 0) {
-    //         let deg = node.rotation;
-    //         if (Math.abs(deg) <= Math.PI) deg = (deg * 180) / Math.PI;
-    //         t.push(`rotate(${Math.round(deg * 100) / 100}deg)`);
-    //     }
-    // }
+    // Allow rotation for VECTOR nodes (they need it to be visible), ignore for others
+    const allowRotation = node.type === 'VECTOR';
+    if (allowRotation) {
+        if (node.vectorRotation) t.push(`rotate(${node.vectorRotation}deg)`);
+        else if (node.rotation && Math.abs(node.rotation) > 0) {
+            let deg = node.rotation;
+            if (Math.abs(deg) <= Math.PI) deg = (deg * 180) / Math.PI;
+            t.push(`rotate(${Math.round(deg * 100) / 100}deg)`);
+        }
+    }
     if (node.scale && (node.scale.x !== 1 || node.scale.y !== 1)) t.push(`scale(${node.scale.x}, ${node.scale.y})`);
     if (node.skew) t.push(`skew(${node.skew}deg)`);
     if (node.relativeTransform?.length) t.push(`matrix(${node.relativeTransform.flat().join(', ')})`);
@@ -656,9 +761,12 @@ const layoutStyles = (node: any, parentBB?: any): React.CSSProperties => {
 
     if (node.opacity !== undefined && node.opacity !== 1) s.opacity = node.opacity;
 
-    // Stacking: explicit zIndex else child order
-    if (node.zIndex !== undefined) s.zIndex = node.zIndex;
-    else if ((node as any).__order !== undefined) s.zIndex = (node as any).__order;
+    // Stacking: explicit zIndex else child order (cap at reasonable values)
+    if (node.zIndex !== undefined) {
+        s.zIndex = Math.min(Math.max(node.zIndex, -1000), 1000);
+    } else if ((node as any).__order !== undefined) {
+        s.zIndex = Math.min(Math.max((node as any).__order, 0), 100);
+    }
 
     if (node.clipContent === true || ['CANVAS', 'PAGE'].includes(node.type)) s.overflow = 'hidden';
 
